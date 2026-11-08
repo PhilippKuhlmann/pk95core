@@ -46,6 +46,7 @@ class ContainerSpecTest extends TestCase
 
         $this->assertSame('host', $spec['HostConfig']['NetworkMode']);
         $this->assertSame(['NET_ADMIN', 'NET_RAW'], $spec['HostConfig']['CapAdd']);
+        $this->assertContains('PK95_CORE_URL=http://127.0.0.1:8080', $spec['Env']);
         $this->assertArrayNotHasKey('NetworkingConfig', $spec);
         $this->assertArrayNotHasKey('PortBindings', $spec['HostConfig']);
     }

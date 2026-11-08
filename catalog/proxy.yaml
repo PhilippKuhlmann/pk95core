@@ -1,0 +1,29 @@
+# PK95 Proxy (repo proxypanel): Caddy reverse proxy with hosts, streams, certificates and
+# statistics. Image built by the proxypanel repo's GitHub Actions ("proxypanel container"
+# runs Caddy, panel, streams, login and export service; it replaces the systemd units).
+#
+# Host network: Caddy takes 80/443 of the LXC, the panel listens on 8090 (8080 is Core).
+# NET_ADMIN/NET_RAW: country rules, IP bans and blocklists are nftables tables in the
+# LXC's network namespace (tested in an unprivileged LXC with nesting).
+id: proxy
+name: PK95 Proxy
+summary: Reverse Proxy mit automatischem TLS, Statistik, Zugriffslisten, Ländersperre und IP-Sperre. Belegt Port 80 und 443 des LXC.
+image: ghcr.io/philippkuhlmann/pk95-proxy
+tag: latest
+port: 8090
+icon: globe
+module: proxy
+health: /core/health
+network_mode: host
+cap_add: [NET_ADMIN, NET_RAW]
+volumes:
+  - name: data
+    target: /var/lib/proxypanel
+  - name: caddy
+    target: /var/lib/caddy
+  - name: agent
+    target: /var/lib/proxypanel-agent
+  - name: logs
+    target: /var/log/caddy
+env:
+  PROXYPANEL_LISTEN: 0.0.0.0:8090

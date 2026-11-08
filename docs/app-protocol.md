@@ -10,7 +10,7 @@ Core startet jede App mit diesen Umgebungsvariablen:
 | Variable | Inhalt |
 |---|---|
 | `PK95_CORE_MODE` | `1`: die App läuft unter Core |
-| `PK95_CORE_URL` | Adresse von Core im Docker-Netz, z. B. `http://pk95core:8080` |
+| `PK95_CORE_URL` | Adresse von Core im Docker-Netz, z. B. `http://pk95core:8080`. Apps mit `network_mode: host` können den Namen nicht auflösen und bekommen den veröffentlichten Port im LXC: `http://127.0.0.1:8080` (`config/pk95.php → host_core_url`). |
 | `PK95_CORE_TOKEN` | zufälliger Service-Token dieser App (48 Zeichen). Er wird bei jeder (Neu-)Aktivierung neu erzeugt. |
 | `TZ` | Zeitzone von Core |
 

@@ -1,3 +1,5 @@
+import { registerProxyMap } from './proxy-map';
+
 /*
  * PK95 Core UI behaviour. Alpine comes with the standard Livewire bundle, so everything
  * here is registered on 'alpine:init' (this module runs before Livewire starts Alpine).
@@ -38,6 +40,7 @@ async function copyToClipboard(value) {
 }
 
 document.addEventListener('alpine:init', () => {
+    registerProxyMap(window.Alpine);
     const Alpine = window.Alpine;
 
     // ---- page layout: desktop collapse + mobile drawer -----------------------------

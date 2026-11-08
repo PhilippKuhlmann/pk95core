@@ -18,7 +18,8 @@ final class ContainerSpec
         // exact image that ran before an update even if the tag has moved on.
         $env = $app->env + [
             'PK95_CORE_MODE' => '1',
-            'PK95_CORE_URL' => (string) config('pk95.core_url'),
+            // A host-network app cannot resolve "pk95core": it reaches Core's published port.
+            'PK95_CORE_URL' => (string) config($app->networkMode === 'host' ? 'pk95.host_core_url' : 'pk95.core_url'),
             'PK95_CORE_TOKEN' => $token,
             'TZ' => (string) config('app.timezone', 'Europe/Berlin'),
         ];

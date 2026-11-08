@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\ProxApps\ProxAppsModule;
+use App\Modules\Proxy\ProxyModule;
 use App\Modules\Uptime\UptimeModule;
 
 return [
@@ -45,6 +46,8 @@ return [
     | the Core container maps host.docker.internal to the host gateway (docker-compose.yml).
     */
     'host_address' => env('PK95_HOST_ADDRESS', 'host.docker.internal'),
+    // ...and they reach Core through its published port on the LXC (docker-compose.yml: 8080).
+    'host_core_url' => env('PK95_HOST_CORE_URL', 'http://127.0.0.1:8080'),
 
     /*
     | Container and volume names: <prefix><app id>.
@@ -69,6 +72,7 @@ return [
     'modules' => [
         'uptime' => UptimeModule::class,
         'proxapps' => ProxAppsModule::class,
+        'proxy' => ProxyModule::class,
     ],
 
     /*
