@@ -1,0 +1,15 @@
+# Catalog entry for the demo app. Copy into the catalog directory Core reads (PK95_CATALOG)
+# after building the image locally: docker build -t pk95-demo:1.0.0 tools/demo-app
+id: demo
+name: Demo-App
+summary: Kleinste App nach App-Protokoll v1 – zum Ausprobieren von Core.
+image: pk95-demo
+tag: 1.0.0
+port: 8080
+icon: list
+module: demo
+volumes:
+  - name: data
+    target: /data
+env:
+  DATA_DIR: /data

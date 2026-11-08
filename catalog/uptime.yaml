@@ -1,0 +1,21 @@
+# PK95 Uptime (~/code/Uptime): monitors, incidents, status pages.
+# Image built by the Uptime repo's GitHub Actions; it needs the Core mode of app protocol v1.
+id: uptime
+name: PK95 Uptime
+summary: Überwacht Dienste und Webseiten, meldet Ausfälle und liefert öffentliche Statusseiten.
+image: ghcr.io/philippkuhlmann/pk95-uptime
+tag: latest
+port: 3001
+icon: signal
+module: uptime
+health: /core/health
+# Ping monitors: unprivileged ICMP sockets instead of NET_RAW (the app runs as user node).
+# "0 65535" and not "0 2147483647": in an unprivileged LXC only 65536 group ids are mapped.
+sysctls:
+  net.ipv4.ping_group_range: "0 65535"
+volumes:
+  - name: data
+    target: /data
+env:
+  DATA_DIR: /data
+  RETENTION_DAYS: 90

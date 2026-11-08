@@ -1,0 +1,39 @@
+# PK95 Core in the Proxmox LXC. Start once with "docker compose up -d"; everything else
+# (the app containers) is started by Core itself through the Docker socket.
+services:
+  pk95core:
+    image: ghcr.io/philippkuhlmann/pk95core:latest
+    build:
+      context: .
+      # Build steps download packages (Composer, npm, apk). Using the host network
+      # avoids broken downloads when the uplink MTU is below 1500 (e.g. PPPoE).
+      network: host
+    container_name: pk95core
+    restart: unless-stopped
+    ports:
+      # Only reachable in the LAN; later published through PK95 Proxy under its own domain.
+      - "8080:8080"
+    volumes:
+      # Docker Engine API: Core creates, starts and stops the app containers (root-equivalent!).
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Core's own data (SQLite, app key, setup code)
+      - /opt/pk95/core:/app/storage
+      # Data root under the SAME path inside and outside: backups and bind mounts that Core
+      # hands to Docker are host paths and must also be valid inside this container.
+      - /opt/pk95:/opt/pk95
+    extra_hosts:
+      # Apps with network_mode "host" (PK95 Proxy) are reached through the LXC itself.
+      - "host.docker.internal:host-gateway"
+    networks:
+      - pk95
+    environment:
+      APP_URL: "${APP_URL:-http://localhost:8080}"
+      TZ: Europe/Berlin
+      # Only set when a TLS reverse proxy is in front:
+      # SESSION_SECURE_COOKIE: "true"
+      # TRUSTED_PROXIES: "172.16.0.0/12"
+
+networks:
+  # Shared bridge network: Core and every bridge-mode app (pk95-<id>).
+  pk95:
+    name: pk95
