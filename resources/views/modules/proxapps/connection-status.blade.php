@@ -5,8 +5,8 @@
             {{ $bridgeError ?? 'Lade Status …' }}
         </div>
     @else
-        @php($i = $info)
-        @php($c = $remote->connection)
+        @php $i = $info; @endphp
+        @php $c = $remote->connection; @endphp
         <div @class([
             'rounded-xl border bg-white px-4 py-3 shadow-xs dark:bg-gray-800',
             'border-gray-200 dark:border-gray-700' => $i['ok'],

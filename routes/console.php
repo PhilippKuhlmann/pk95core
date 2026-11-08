@@ -2,8 +2,10 @@
 
 use App\Http\Controllers\Auth\SetupController;
 use App\Jobs\AppOperation;
+use App\Models\AppLink;
 use App\Models\InstalledApp;
 use App\Services\Apps\AppManager;
+use App\Services\Automation\Linker;
 use App\Services\Docker\DockerClient;
 use App\Services\Updates\UpdateService;
 use App\Support\Settings;
@@ -15,6 +17,8 @@ Schedule::command('pk95:sync')->everyMinute()->withoutOverlapping();
 // New images in the registry; the maintenance window runs backups and automatic updates.
 Schedule::command('pk95:check-updates')->everySixHours()->withoutOverlapping();
 Schedule::command('pk95:maintenance')->everyMinute()->withoutOverlapping();
+// Proxy hosts waiting for DNS are switched on once the domain points here.
+Schedule::command('pk95:links')->everyTenMinutes()->withoutOverlapping();
 
 Artisan::command('pk95:check-updates', function (UpdateService $updates) {
     foreach (InstalledApp::query()->get() as $app) {
@@ -50,6 +54,13 @@ Artisan::command('pk95:maintenance {--force : Unabhängig von der Uhrzeit ausfü
 
     return 0;
 })->purpose('Wartungsfenster: geplante Sicherungen und automatische Updates');
+
+Artisan::command('pk95:links', function (Linker $linker) {
+    foreach (AppLink::query()->where('state', AppLink::PENDING_DNS)->get() as $link) {
+        $linker->recheck($link);
+        $this->line("{$link->domain}: {$link->fresh()->state}");
+    }
+})->purpose('Automatisch angelegte Proxy-Hosts einschalten, sobald DNS passt');
 
 // Docker entrypoint: while no account exists, create (or re-print) the one-time code the
 // first-run page asks for; once an account exists, remove a left-over code file.

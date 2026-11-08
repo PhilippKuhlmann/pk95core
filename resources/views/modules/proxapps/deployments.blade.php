@@ -1,8 +1,18 @@
-{{-- Port of proxapps resources/views/livewire/deployments/index.blade.php --}}
+{{-- Port of proxapps resources/views/livewire/deployments/index.blade.php, without a filter
+     grouped: running right now, active apps (container exists), history. --}}
+@php
+    $grouped = $status === '' && isset($live, $running, $history);
+    $section = 'mx-3 mt-5 flex items-baseline gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400';
+    $iconOf = fn ($d) => (object) ['id' => $d->app_id, 'iconPath' => ($icons[$d->app_id] ?? false) ? $d->app_id : null];
+@endphp
+
 <div @if ($hasActive) wire:poll.5s @endif>
     <x-page-header title="Deployments">
+        @if ($grouped)
+            <x-slot:sub>{{ count($live) }} {{ count($live) === 1 ? 'App läuft' : 'Apps laufen' }}@if (count($running)) · {{ count($running) }} in Arbeit @endif</x-slot:sub>
+        @endif
         <x-input.select wire:model.live="status" class="w-48 py-2! text-sm!" aria-label="Status filtern">
-            <option value="">Alle Status</option>
+            <option value="">Übersicht</option>
             <option value="active">Laufend</option>
             <option value="success">Erfolgreich</option>
             <option value="failed">Fehlgeschlagen</option>
@@ -14,71 +24,91 @@
         </x-input.linkbutton>
     </x-page-header>
 
-    @if ($deployments->items->isEmpty())
+    @if ($grouped)
+        @if (! count($live) && ! count($running) && $history->items->isEmpty())
+            <x-emptystate message="Noch nichts ausgerollt.">
+                <x-input.linkbutton :href="$this->pageUrl('apps')">Zum App-Katalog</x-input.linkbutton>
+            </x-emptystate>
+        @endif
+
+        {{-- running right now: deploying or removing --}}
+        @if (count($running))
+            <div class="{{ $section }}"><span class="h-2 w-2 animate-pulse rounded-full bg-cerulean-500"></span>Läuft gerade</div>
+            <div class="m-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                @foreach ($running as $d)
+                    @php
+                        $order = $d->status === 'removing' ? $stepOrder['remove'] : $stepOrder['deploy'];
+                        $pos = array_search($d->step, collect($order)->all(), true);
+                        $pct = $d->status === 'queued' || $pos === false ? 4 : (int) round(($pos + 0.5) / count($order) * 100);
+                    @endphp
+                    <a href="{{ $this->pageUrl('deployment', ['id' => $d->id]) }}" wire:key="run-{{ $d->id }}"
+                        class="block rounded-xl border border-cerulean-300 bg-cerulean-50/60 p-4 shadow-xs transition hover:border-cerulean-500 dark:border-cerulean-800 dark:bg-cerulean-900/20">
+                        <div class="flex items-start gap-3">
+                            <x-app-icon :app="$iconOf($d)" :installed="$installedApp" class="h-10 w-10" />
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center justify-between gap-2">
+                                    <span class="truncate font-medium text-gray-900 dark:text-gray-100">{{ $d->app_name }} <span class="font-mono text-sm text-gray-500">· {{ $d->hostname }}</span></span>
+                                    <x-status-pill :status="$d->status" class="shrink-0" />
+                                </div>
+                                <div class="mt-1 text-sm text-cerulean-800 dark:text-cerulean-200">
+                                    {{ $d->status === 'queued' ? 'Wartet auf den Start' : ($stepLabels[$d->step] ?? $d->step) }}
+                                    @if ($pos !== false && $d->status !== 'queued')<span class="text-xs text-gray-500">(Schritt {{ $pos + 1 }} von {{ count($order) }})</span>@endif
+                                </div>
+                                <div class="mt-2 h-1.5 rounded-full bg-cerulean-100 dark:bg-cerulean-950">
+                                    <div class="h-1.5 rounded-full bg-cerulean-500 transition-all" style="width: {{ $pct }}%"></div>
+                                </div>
+                                <div class="mt-1.5 text-xs text-gray-500"><span class="font-mono">CT {{ $d->vmid }}</span> · {{ $d->node }} · gestartet {{ \App\Http\Support\Format::dt($d->created_at) }}</div>
+                            </div>
+                        </div>
+                    </a>
+                @endforeach
+            </div>
+        @endif
+
+        {{-- apps whose container exists --}}
+        @if (count($live))
+            <div class="{{ $section }}"><span class="h-2 w-2 rounded-full bg-green-500"></span>Aktive Apps <span class="font-normal normal-case tracking-normal">({{ count($live) }})</span></div>
+            <div class="m-3 grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
+                @foreach ($live as $d)
+                    <div wire:key="live-{{ $d->id }}" onclick="if (!event.target.closest('a')) window.location='{{ $this->pageUrl('deployment', ['id' => $d->id]) }}'"
+                        class="cursor-pointer rounded-xl border border-gray-200 bg-white p-4 shadow-xs transition hover:border-cerulean-400 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-cerulean-600">
+                        <div class="flex items-start gap-3">
+                            <x-app-icon :app="$iconOf($d)" :installed="$installedApp" class="h-12 w-12" />
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center justify-between gap-2">
+                                    <a href="{{ $this->pageUrl('deployment', ['id' => $d->id]) }}" class="truncate font-medium text-gray-900 hover:text-cerulean-600 dark:text-gray-100">{{ $d->app_name }}</a>
+                                    <span class="flex shrink-0 items-center gap-1.5 text-xs text-green-700 dark:text-green-300"><span class="h-2 w-2 rounded-full bg-green-500"></span>Aktiv</span>
+                                </div>
+                                <div class="truncate font-mono text-sm text-gray-500 dark:text-gray-400">{{ $d->hostname }}</div>
+                                <x-proxapps.domain :deployment-id="$d->id" class="mt-1 text-sm" />
+                            </div>
+                        </div>
+                        <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-gray-100 pt-2 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                            <span class="font-mono">{{ $d->ip ?: (($d->spec['net']['mode'] ?? '') === 'dhcp' ? 'DHCP' : '—') }}</span>
+                            <span class="font-mono">CT {{ $d->vmid }}</span>
+                            <span>{{ $d->node }}@if ($d->connection) · {{ $d->connection->name }}@endif</span>
+                            <span>seit {{ \App\Http\Support\Format::dt($d->finished_at ?? $d->created_at) }}</span>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        @elseif (count($running) || ! $history->items->isEmpty())
+            <div class="{{ $section }}">Aktive Apps</div>
+            <p class="mx-3 mt-2 text-sm text-gray-500 dark:text-gray-400">Gerade läuft keine ausgerollte App.</p>
+        @endif
+
+        {{-- history: failed, cancelled, removed --}}
+        @unless ($history->items->isEmpty())
+            <div class="{{ $section }}">Verlauf <span class="font-normal normal-case tracking-normal">(fehlgeschlagen, abgebrochen, entfernt)</span></div>
+            @include('modules.proxapps.partials.deployment-table', ['page' => $history])
+        @endunless
+    @elseif ($deployments->items->isEmpty())
         <x-emptystate :message="$status === '' ? 'Noch nichts ausgerollt.' : 'Keine Deployments mit diesem Status.'">
             @if ($status === '')
                 <x-input.linkbutton :href="$this->pageUrl('apps')">Zum App-Katalog</x-input.linkbutton>
             @endif
         </x-emptystate>
     @else
-        <div class="m-3">
-            <div class="rounded-xl border border-gray-200 bg-white shadow-xs dark:border-gray-700 dark:bg-gray-800 overflow-x-auto">
-                <table class="w-full min-w-max text-sm text-left text-gray-500 dark:text-gray-400 sm:min-w-0">
-                    <thead class="text-xs uppercase tracking-wide text-gray-500 bg-gray-50 border-b border-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600">
-                        <tr>
-                            <th scope="col" class="py-2.5 px-4 font-semibold">Status</th>
-                            <th scope="col" class="py-2.5 px-4 font-semibold">App</th>
-                            <th scope="col" class="py-2.5 px-4 font-semibold">Hostname</th>
-                            <th scope="col" class="py-2.5 px-4 font-semibold">VMID</th>
-                            <th scope="col" class="py-2.5 px-4 font-semibold">IP</th>
-                            <th scope="col" class="py-2.5 px-4 font-semibold">Node</th>
-                            <th scope="col" class="py-2.5 px-4 font-semibold">Verbindung</th>
-                            <th scope="col" class="py-2.5 px-4 font-semibold">Erstellt</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($deployments->items as $d)
-                            <tr wire:key="dep-{{ $d->id }}" onclick="if (!event.target.closest('a')) window.location='{{ $this->pageUrl('deployment', ['id' => is_numeric($d) ? $d : $d->id]) }}'"
-                                @class([
-                                    'cursor-pointer bg-white border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700/50',
-                                    'opacity-60' => $d->status === 'removed',
-                                ])>
-                                <td class="py-2.5 px-4"><x-status-pill :status="$d->status" /></td>
-                                <td class="py-2.5 px-4 text-gray-900 dark:text-gray-100">{{ $d->app_name }}</td>
-                                <td class="py-2.5 px-4">
-                                    <a href="{{ $this->pageUrl('deployment', ['id' => is_numeric($d) ? $d : $d->id]) }}" class="text-cerulean-500 hover:text-cerulean-600">{{ $d->hostname }}</a>
-                                </td>
-                                <td class="py-2.5 px-4 font-mono text-sm text-gray-900 dark:text-gray-100">{{ $d->vmid }}</td>
-                                <td class="py-2.5 px-4 font-mono text-sm text-gray-900 dark:text-gray-100">
-                                    @if ($d->ip)
-                                        {{ $d->ip }}
-                                    @else
-                                        <span class="text-gray-400 dark:text-gray-500">{{ ($d->spec['net']['mode'] ?? '') === 'dhcp' ? 'DHCP' : '—' }}</span>
-                                    @endif
-                                </td>
-                                <td class="py-2.5 px-4 text-gray-900 dark:text-gray-100">{{ $d->node }}</td>
-                                <td class="py-2.5 px-4">
-                                    @if ($d->connection)
-                                        {{ $d->connection->name }}
-                                    @else
-                                        <span class="text-gray-400 dark:text-gray-500">—</span>
-                                    @endif
-                                </td>
-                                <td class="py-2.5 px-4 font-mono text-sm text-gray-900 dark:text-gray-100">{{ \App\Http\Support\Format::dt($d->created_at) }}</td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        @if ($deployments->last_page > 1)
-            <div class="flex items-center justify-between px-3 pb-3 text-sm text-gray-600 dark:text-gray-300">
-                <span>Seite {{ $deployments->current_page }} von {{ $deployments->last_page }} · {{ $deployments->total }} Deployments</span>
-                <span class="flex gap-2">
-                    <x-input.button type="button" color="gray" size="sm" wire:click="goToPage({{ $deployments->current_page - 1 }})" :disabled="$deployments->current_page <= 1">Zurück</x-input.button>
-                    <x-input.button type="button" color="gray" size="sm" wire:click="goToPage({{ $deployments->current_page + 1 }})" :disabled="$deployments->current_page >= $deployments->last_page">Weiter</x-input.button>
-                </span>
-            </div>
-        @endif
+        @include('modules.proxapps.partials.deployment-table', ['page' => $deployments])
     @endif
 </div>

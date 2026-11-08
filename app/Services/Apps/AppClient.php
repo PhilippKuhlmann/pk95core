@@ -55,7 +55,9 @@ class AppClient
 
     public function delete(string $path): Response
     {
-        return $this->call(fn () => $this->request()->delete($path));
+        // Without a body Laravel sends no Content-Type; apps that guard every writing request
+        // against CSRF with "application/json only" (PK95 Uptime) would answer 415.
+        return $this->call(fn () => $this->request()->contentType('application/json')->delete($path));
     }
 
     public function healthy(string $path = '/core/health'): bool

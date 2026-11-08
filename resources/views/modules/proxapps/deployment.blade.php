@@ -4,10 +4,22 @@
 
     $active = $d->is_active;
     $net = (array) ($spec['net'] ?? []);
+    // What Core created for this deployment (proxy host, monitors), also when already taken down.
+    $link = \App\Models\AppLink::anyForProxApps((int) $d->id);
+    $linkGone = $link && $link->state === \App\Models\AppLink::REMOVED;
+    $removal = in_array($d->status, ['removing', 'removed'], true) || ! empty($result['removal_error']);
+    // Core takes down proxy host and monitors after the container: keep polling until done.
+    $coreCleanup = $link && ! $linkGone && $d->status === 'removed';
+    $removeTracker = $removeSteps ?? [];
+    $removeStates = $removeStepStates ?? [];
+    if ($link && ($link->proxy_host_id || $link->monitor_ids || $linkGone)) {
+        $removeTracker[] = ['r_core', 'Proxy & Monitore entfernen'];
+        $removeStates['r_core'] = $linkGone ? 'done' : ($d->status === 'removed' ? 'active' : 'pending');
+    }
 @endphp
 
 <div>
-    @if ($active || $updateActive)
+    @if ($active || $updateActive || $coreCleanup)
         <div wire:poll.1500ms="refreshLive"></div>
     @endif
 
@@ -71,7 +83,7 @@
     {{-- step tracker --}}
     <ol class="m-3 grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8" aria-label="Fortschritt">
         @foreach ($steps as $i => [$key, $label])
-            @php($state = ($stepStates[$key] ?? 'pending'))
+            @php $state = ($stepStates[$key] ?? 'pending'); @endphp
             <li @class([
                 'flex items-center gap-2 rounded-lg border px-2.5 py-2 text-sm shadow-xs',
                 'border-gray-200 bg-white text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200' => $state === 'done',
@@ -101,6 +113,51 @@
         @endforeach
     </ol>
 
+    {{-- removal tracker: ProxApps steps, then Core taking down proxy host and monitors --}}
+    @if ($removal && $removeTracker)
+        <div class="mx-3 mt-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Container entfernen</div>
+        <ol class="m-3 mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5" aria-label="Fortschritt beim Entfernen">
+            @foreach ($removeTracker as $i => [$key, $label])
+                @php $state = $removeStates[$key] ?? 'pending'; @endphp
+                <li @class([
+                    'flex items-center gap-2 rounded-lg border px-2.5 py-2 text-sm shadow-xs',
+                    'border-gray-200 bg-white text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200' => $state === 'done',
+                    'border-cerulean-400 bg-cerulean-50 text-cerulean-800 ring-1 ring-cerulean-400 dark:border-cerulean-600 dark:bg-cerulean-900/20 dark:text-cerulean-200' => $state === 'active',
+                    'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-900/20 dark:text-rose-200' => $state === 'error',
+                    'border-gray-200 bg-white/60 text-gray-400 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-500' => $state === 'pending',
+                ]) @if ($state === 'active') aria-current="step" @endif>
+                    <span @class([
+                        'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold',
+                        'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200' => $state === 'done',
+                        'bg-cerulean-600 text-white' => $state === 'active',
+                        'bg-rose-600 text-white' => $state === 'error',
+                        'bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-500' => $state === 'pending',
+                    ])>
+                        @if ($state === 'done')
+                            <x-icon name="check" class="h-3.5 w-3.5" sw="2.6" />
+                        @elseif ($state === 'active')
+                            <svg class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity=".3" stroke-width="3"/><path d="M21 12a9 9 0 00-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+                        @elseif ($state === 'error')
+                            <x-icon name="x" class="h-3.5 w-3.5" sw="2.6" />
+                        @else
+                            {{ $i + 1 }}
+                        @endif
+                    </span>
+                    <span class="min-w-0 truncate">{{ $label }}</span>
+                </li>
+            @endforeach
+        </ol>
+        @if (! empty($result['removal_error']) && $d->status !== 'removing')
+            <div class="m-3 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-900/20" role="alert">
+                <div class="text-sm font-medium text-red-800 dark:text-red-300">Entfernen fehlgeschlagen</div>
+                <div class="mt-1 text-sm text-red-700/90 wrap-anywhere dark:text-red-400/90">{{ $result['removal_error'] }}</div>
+            </div>
+        @endif
+        @if ($linkGone && $link->message)
+            <div class="mx-3 text-sm text-amber-800 dark:text-amber-300">{{ $link->message }}</div>
+        @endif
+    @endif
+
     @if (in_array($d->status, ['failed', 'cancelled'], true) && $d->error)
         <div class="m-3 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-900/20" role="alert">
             <div class="text-sm font-medium text-red-800 dark:text-red-300">{{ $d->status === 'cancelled' ? 'Ausrollen abgebrochen' : 'Ausrollen fehlgeschlagen' }}</div>
@@ -124,18 +181,33 @@
                         </span>
                         <div class="min-w-0 flex-1">
                             <div class="text-lg font-CoconPro text-gray-900 dark:text-gray-100">{{ $d->app_name }} ist bereit</div>
-                            @if (! empty($result['url']))
-                                <a href="{{ $result['url'] }}" target="_blank" rel="noopener noreferrer"
+                            {{-- one link: the public domain once it works, otherwise the internal address --}}
+                            @php
+                                $hasDomain = $link?->shownDomain() && ! $linkGone;
+                                $mainUrl = $hasDomain && $link->state === \App\Models\AppLink::ACTIVE ? 'https://'.$link->domain.'/' : ($result['url'] ?? '');
+                            @endphp
+                            @if ($mainUrl !== '')
+                                <a href="{{ $mainUrl }}" target="_blank" rel="noopener noreferrer"
                                     class="mt-1 inline-flex items-center gap-1.5 font-mono text-sm text-cerulean-600 hover:text-cerulean-700 hover:underline dark:text-cerulean-400">
-                                    {{ $result['url'] }}<x-icon name="external" class="h-4 w-4" />
+                                    {{ $mainUrl }}<x-icon name="external" class="h-4 w-4" />
                                 </a>
                             @endif
                         </div>
                     </div>
 
                     <table class="mt-4 w-full text-sm">
+                        @if ($link?->shownDomain() && ! $linkGone)
+                            <x-kv label="Domain">
+                                <span class="inline-flex flex-wrap items-center gap-2">
+                                    <x-copy :value="'https://'.$link->domain" class="font-mono text-[13px]" />
+                                    @if ($link->state !== \App\Models\AppLink::ACTIVE)
+                                        <span class="text-xs text-amber-700 dark:text-amber-300">{{ $link->message ?: \App\Models\AppLink::STATES[$link->state] }}</span>
+                                    @endif
+                                </span>
+                            </x-kv>
+                        @endif
                         @if (! empty($result['url']))
-                            <x-kv label="Adresse"><x-copy :value="$result['url']" class="font-mono text-[13px]" /></x-kv>
+                            <x-kv :label="$hasDomain ? 'Intern' : 'Adresse'"><x-copy :value="$result['url']" class="font-mono text-[13px]" /></x-kv>
                         @endif
                         @if (! empty($result['user']))
                             <x-kv label="Benutzer"><x-copy :value="$result['user']" class="font-mono text-[13px]" /></x-kv>
@@ -224,6 +296,9 @@
                             DHCP
                         @endif
                     </x-kv>
+                    @if (\App\Models\AppLink::forProxApps((int) $d->id)?->shownDomain())
+                        <x-kv label="Proxy"><x-proxapps.domain :deployment-id="$d->id" /></x-kv>
+                    @endif
                     <x-kv label="Ressourcen" :value="($spec['cores'] ?? '?').' Kern(e) · '.($spec['memory'] ?? '?').' MB RAM · '.($spec['swap'] ?? '?').' MB Swap · '.($spec['disk'] ?? '?').' GB'" />
                     <x-kv label="Speicher" :value="$spec['rootfs_storage'] ?? null" mono />
                     <x-kv label="Netzwerk">

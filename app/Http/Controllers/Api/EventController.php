@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\LinkDeployment;
 use App\Models\AppEvent;
 use App\Models\InstalledApp;
 use Illuminate\Http\JsonResponse;
@@ -19,7 +20,7 @@ class EventController extends Controller
 {
     public function __invoke(Request $request): JsonResponse
     {
-        $app = $this->appForToken((string) $request->bearerToken());
+        $app = self::appForToken((string) $request->bearerToken());
         if ($app === null) {
             return response()->json(['error' => 'Ungültiger Service-Token'], 401);
         }
@@ -50,10 +51,15 @@ class EventController extends Controller
 
         $event = AppEvent::record($app->app_id, $input['type'], $input['severity'], $input['title'], $input['body'] ?? null, $input['data'] ?? [], $occurredAt);
 
+        // A deployed app gets a proxy host and monitors; a removed one loses them again.
+        if ($app->app_id === 'proxapps' && in_array($input['type'], ['deployment.succeeded', 'deployment.removed'], true)) {
+            LinkDeployment::dispatch($app->app_id, $input['type'], $input['data'] ?? []);
+        }
+
         return response()->json(['id' => $event->id], 202);
     }
 
-    private function appForToken(string $token): ?InstalledApp
+    public static function appForToken(string $token): ?InstalledApp
     {
         if (strlen($token) < 32) {
             return null;

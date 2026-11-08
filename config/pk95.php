@@ -85,6 +85,12 @@ return [
         'maintenance_last_run' => '',
         // Backups kept per app (older ones are deleted; failed ones do not count).
         'backup_keep' => 7,
+        // Automation: a deployed app (ProxApps) gets a proxy host <subdomain>.<base domain>
+        // and monitors in PK95 Uptime. Public IP empty = determined from the outside.
+        'automation_base_domain' => '',
+        'automation_proxy' => true,
+        'automation_uptime' => true,
+        'automation_public_ip' => '',
     ],
 
     /*

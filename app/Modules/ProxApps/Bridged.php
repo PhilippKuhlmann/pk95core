@@ -81,10 +81,21 @@ trait Bridged
         return route('apps.page', [$this->installedApp, $page]).($query ? '?'.http_build_query($query) : '');
     }
 
+    /** "Erneut versuchen" on the unreachable page: render asks ProxApps again. */
+    public function retry(): void
+    {
+        $this->bridgeError = null;
+    }
+
     public function render()
     {
         if ($this->view === [] && $this->bridgeError === null) {
             $this->bridge(['state' => $this->bridgeState(), 'query' => $this->query()]);
+        }
+        // ProxApps unreachable before it sent any data: the page itself cannot render without
+        // its view data, so show the reason and a retry instead.
+        if ($this->view === [] && $this->bridgeError !== null) {
+            return view('modules.proxapps.unreachable', ['bridgeError' => $this->bridgeError]);
         }
 
         // $remote: all view data of the original. Livewire hands public properties to the view

@@ -154,6 +154,37 @@
                 </x-field>
             </div>
 
+            {{-- ============ Domain (PK95 Core links the app with proxy and monitoring) ============ --}}
+            @if (! empty($app->proxy))
+                @php
+                    $baseDomain = (string) \App\Support\Settings::get('automation_base_domain');
+                    $sub = strtolower(trim((string) ($v['subdomain'] ?? ''), ' .'));
+                    $fullDomain = $sub === '' ? '' : (str_contains($sub, '.') ? $sub : ($baseDomain !== '' ? $sub.'.'.$baseDomain : ''));
+                @endphp
+                <x-form-section title="Domain" />
+                <div class="mt-3">
+                    <x-input.checkbox label="Im Proxy eintragen" wire:model.live="v.proxy"
+                        hilfe="PK95 Core legt einen öffentlichen Proxy-Host mit Let's-Encrypt-Zertifikat an. Ohne Proxy-Eintrag überwacht Uptime nur IP und Port." />
+                </div>
+                @if (! empty($v['proxy']) && $baseDomain === '' && ! str_contains($sub, '.'))
+                    <x-callout title="Keine Basisdomain festgelegt" ton="gelb" class="mt-3">
+                        Ohne Basisdomain kann Core aus „{{ $sub ?: 'Subdomain' }}“ keine Domain bilden und legt keinen Proxy-Host an. Lege sie unter
+                        <a href="{{ route('automation') }}" wire:navigate class="underline">Automatik</a> fest oder trage hier eine ganze Domain ein (z. B. cloud.example.de).
+                    </x-callout>
+                @endif
+                <div @class(['mt-3 grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2', 'hidden' => empty($v['proxy'])])>
+                    <x-field label="Subdomain" for="f-sub" feld="subdomain"
+                        :hilfe="$fullDomain !== '' ? 'Wird zu '.$fullDomain.'. Core legt den Proxy-Host und die Monitore an.' : ($sub === '' ? 'Leer lassen: kein Proxy-Host, nur Monitore.' : 'Lege unter Automatik eine Basisdomain fest oder trage eine ganze Domain ein.')">
+                        <div class="mt-1 flex items-center gap-2">
+                            <x-input.text id="f-sub" feld="subdomain" wire:model.live.debounce.400ms="v.subdomain" class="w-full min-w-0 font-mono" autocomplete="off" spellcheck="false" />
+                            @if ($baseDomain !== '' && ! str_contains($sub, '.'))
+                                <span class="shrink-0 font-mono text-sm text-gray-500">.{{ $baseDomain }}</span>
+                            @endif
+                        </div>
+                    </x-field>
+                </div>
+            @endif
+
             {{-- ============ Ressourcen ============ --}}
             <x-form-section title="Ressourcen">
                 @if ($resourcesChanged)
@@ -276,7 +307,7 @@
                 <x-form-section title="App-Einstellungen" />
                 <div class="mt-3 grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
                     @foreach ($app->parameters as $p)
-                        @php($fk = 'param_'.$p['key'])
+                        @php $fk = 'param_'.$p['key']; @endphp
                         @if ($p['type'] === 'boolean')
                             <div class="flex flex-col sm:col-span-2">
                                 <x-input.checkbox :label="$p['label']" :hilfe="$p['help'] ?: null" wire:model="v.params.{{ $p['key'] }}" />

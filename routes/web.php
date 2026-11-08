@@ -7,6 +7,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RemoteIconController;
 use App\Livewire\Apps\Index as AppsIndex;
 use App\Livewire\Apps\Show as AppShow;
+use App\Livewire\Automation\Index as AutomationIndex;
 use App\Livewire\Dashboard;
 use App\Livewire\Events\Index as EventsIndex;
 use App\Livewire\Notifications\Index as NotificationsIndex;
@@ -33,6 +34,7 @@ Route::middleware('auth')->group(function () {
     Route::livewire('/events', EventsIndex::class)->name('events.index');
     Route::livewire('/notifications', NotificationsIndex::class)->name('notifications.index');
     Route::livewire('/settings', SettingsIndex::class)->name('settings');
+    Route::livewire('/automation', AutomationIndex::class)->name('automation');
 
     // Catalog + lifecycle of the app containers
     Route::livewire('/apps', AppsIndex::class)->name('apps.index');

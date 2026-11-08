@@ -102,7 +102,13 @@ class UptimeModuleTest extends FeatureTestCase
         $this->get('/')->assertOk()
             ->assertSee('data-app-menu="uptime"', false)
             ->assertSee(route('apps.page', [$this->installed, 'monitors']), false)
-            ->assertSee(route('apps.page', [$this->installed, 'status-pages']), false);
+            ->assertSee(route('apps.page', [$this->installed, 'status-pages']), false)
+            ->assertSee('open: false', false);
+
+        // on one of its pages the group of the app is open and the page is marked
+        $this->get(route('apps.page', [$this->installed, 'monitors']))->assertOk()
+            ->assertSee('open: true', false)
+            ->assertSee('aria-current="page"', false);
     }
 
     public function test_monitor_list_shows_status_from_the_api(): void

@@ -5,12 +5,32 @@
 <aside id="logo-sidebar"
     class="fixed top-0 left-0 z-40 w-64 h-screen pt-20 transition-transform -translate-x-full text-gray-900 bg-white border-r border-gray-200 lg:translate-x-0 dark:bg-gray-900 dark:border-gray-700"
     x-bind:class="{ 'lg:-translate-x-full!': menuEin, 'translate-x-0!': mobilOffen }" aria-label="Seitenleiste">
-    <div class="flex justify-between flex-col h-full px-3 pb-4 overflow-y-auto bg-white dark:bg-gray-900">
+    {{-- Page changes reload the page: keep the scroll position of the sidebar (sessionStorage)
+         and bring the current entry into view if it is outside. --}}
+    <div class="flex justify-between flex-col h-full px-3 pb-4 overflow-y-auto bg-white dark:bg-gray-900"
+        x-data="{
+            key: 'pk95-aside-scroll',
+            save() { try { sessionStorage.setItem(this.key, this.$el.scrollTop); } catch (e) {} },
+            init() {
+                requestAnimationFrame(() => {
+                    try { const y = sessionStorage.getItem(this.key); if (y !== null) this.$el.scrollTop = +y; } catch (e) {}
+                    const a = this.$el.querySelector('[aria-current=page]');
+                    if (a) {
+                        const r = a.getBoundingClientRect(), c = this.$el.getBoundingClientRect();
+                        if (r.top < c.top || r.bottom > c.bottom) a.scrollIntoView({ block: 'center' });
+                    }
+                });
+            },
+        }"
+        x-on:scroll.debounce.100ms="save()" x-on:click="save()">
         <div class="space-y-1">
             <ul class="space-y-1">
                 <x-aside.toplink label="Dashboard" icon="home" :href="route('dashboard')" :aktiv="request()->routeIs('dashboard')" />
             </ul>
 
+            <div class="pt-3 mt-2 border-t border-gray-200 dark:border-gray-700">
+                <span class="px-2 text-[10.5px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Apps</span>
+            </div>
             {{-- grows and shrinks with the running apps (Livewire event "apps-changed") --}}
             <livewire:app-menu />
 
@@ -21,6 +41,7 @@
                 <x-aside.toplink label="Apps" icon="apps" :href="route('apps.index')" :aktiv="request()->routeIs('apps.index')" />
                 <x-aside.toplink label="Ereignisse" icon="list" :href="route('events.index')" :aktiv="request()->routeIs('events.*')" />
                 <x-aside.toplink label="Benachrichtigungen" icon="signal" :href="route('notifications.index')" :aktiv="request()->routeIs('notifications.*')" />
+                <x-aside.toplink label="Automatik" icon="sparkles" :href="route('automation')" :aktiv="request()->routeIs('automation')" />
                 <x-aside.toplink label="Einstellungen" icon="cog" :href="route('settings')" :aktiv="request()->routeIs('settings')" />
             </ul>
         </div>

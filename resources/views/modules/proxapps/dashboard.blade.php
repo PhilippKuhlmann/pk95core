@@ -3,7 +3,7 @@
     @if ($bridgeError)
         <x-callout title="ProxApps antwortet nicht" ton="gelb" class="mb-5">{{ $bridgeError }}</x-callout>
     @else
-        @php($active = ($counts['queued'] ?? 0) + ($counts['running'] ?? 0))
+        @php $active = ($counts['queued'] ?? 0) + ($counts['running'] ?? 0); @endphp
         <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
             <div class="text-3xl font-CoconPro text-gray-900 dark:text-gray-100">ProxApps</div>
             <x-input.linkbutton :href="$this->pageUrl('apps')">
@@ -63,7 +63,7 @@
                                 <span class="min-w-0">
                                     <span class="block truncate text-gray-800 dark:text-gray-100">{{ $d->hostname }} <span class="text-gray-400 dark:text-gray-500">· {{ $d->app_name }}</span></span>
                                     <span class="block truncate text-xs text-gray-400 dark:text-gray-500">
-                                        <span class="font-mono">CT {{ $d->vmid }}</span>{{ $d->ip ? ' · '.$d->ip : '' }} · {{ $d->node }} · {{ \App\Http\Support\Format::dt($d->created_at) }}
+                                        <span class="font-mono">CT {{ $d->vmid }}</span>{{ $d->ip ? ' · '.$d->ip : '' }}@if (\App\Models\AppLink::forProxApps((int) $d->id)?->shownDomain()) · <x-proxapps.domain :deployment-id="$d->id" compact />@endif · {{ $d->node }} · {{ \App\Http\Support\Format::dt($d->created_at) }}
                                     </span>
                                 </span>
                                 <x-status-pill :status="$d->status" class="shrink-0" />
