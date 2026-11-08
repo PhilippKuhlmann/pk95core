@@ -2,6 +2,11 @@
 
 @php
     $map = [
+        // ProxApps deployments and update runs
+        'queued' => ['Eingeplant', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200'],
+        'success' => ['Erfolgreich', 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100'],
+        'cancelled' => ['Abgebrochen', 'bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100'],
+        'removed' => ['Entfernt', 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'],
         'available' => ['Verfügbar', 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'],
         'installing' => ['Wird aktiviert', 'bg-cerulean-100 text-cerulean-800 dark:bg-cerulean-900 dark:text-cerulean-200'],
         'starting' => ['Startet', 'bg-cerulean-100 text-cerulean-800 dark:bg-cerulean-900 dark:text-cerulean-200'],

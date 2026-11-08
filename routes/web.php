@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\SetupController;
 use App\Http\Controllers\ModulePageController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\RemoteIconController;
 use App\Livewire\Apps\Index as AppsIndex;
 use App\Livewire\Apps\Show as AppShow;
 use App\Livewire\Dashboard;
@@ -36,6 +37,7 @@ Route::middleware('auth')->group(function () {
     // Catalog + lifecycle of the app containers
     Route::livewire('/apps', AppsIndex::class)->name('apps.index');
     Route::livewire('/apps/{installedApp}', AppShow::class)->name('apps.show');
+    Route::get('/apps/{installedApp}/icon/{icon}', RemoteIconController::class)->name('apps.remote-icon');
 
     // Pages a Core module renders for a running app (menu entries from its manifest)
     Route::get('/apps/{installedApp}/{page}', ModulePageController::class)

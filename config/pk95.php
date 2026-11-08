@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\ProxApps\ProxAppsModule;
 use App\Modules\Uptime\UptimeModule;
 
 return [
@@ -67,6 +68,7 @@ return [
     */
     'modules' => [
         'uptime' => UptimeModule::class,
+        'proxapps' => ProxAppsModule::class,
     ],
 
     /*

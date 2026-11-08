@@ -1,0 +1,16 @@
+# ProxApps (~/Proxmox/proxapps): deploys catalog apps as Debian LXC containers on Proxmox VE.
+# Image built by the ProxApps repo's GitHub Actions; Core shows it through /api/bridge.
+id: proxapps
+name: ProxApps
+summary: Rollt Apps als Debian-LXC auf Proxmox VE aus, mit Netzwerkprofilen, Live-Protokoll und zentralen Updates.
+image: ghcr.io/philippkuhlmann/pk95-proxapps
+tag: latest
+port: 8080
+icon: server
+module: proxapps
+health: /core/health
+volumes:
+  - name: storage
+    target: /app/storage
+env:
+  TZ: Europe/Berlin

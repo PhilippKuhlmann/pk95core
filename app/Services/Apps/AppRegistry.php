@@ -77,9 +77,13 @@ class AppRegistry
             || $this->unavailableReason($app) !== null) {
             return null;
         }
+        $module = $this->module($app);
+        if (array_key_exists($key, $module->subPages())) {
+            return $module->subPages()[$key];
+        }
         $announced = collect($app->manifest()->menu)->contains('key', $key);
 
-        return $announced ? ($this->module($app)->pages()[$key] ?? null) : null;
+        return $announced ? ($module->pages()[$key] ?? null) : null;
     }
 
     /**

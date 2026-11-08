@@ -20,6 +20,16 @@ abstract class Module
      */
     abstract public function pages(): array;
 
+    /**
+     * Pages reachable by link but without a sidebar entry (forms, detail pages).
+     *
+     * @return array<string, class-string<Component>>
+     */
+    public function subPages(): array
+    {
+        return [];
+    }
+
     /** Lowest supported app version (inclusive), null = any. */
     public function minVersion(): ?string
     {
