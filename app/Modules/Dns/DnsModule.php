@@ -5,8 +5,8 @@ namespace App\Modules\Dns;
 use App\Modules\Module;
 
 /**
- * PK95 DNS (repo pk95dns): network-wide DNS filter with block lists, own rules, local
- * records, blocked services, clients and query log. Pages call the app's JSON API
+ * PK95 DNS (repo pk95dns): network-wide DNS filter and DNS server with block lists, own rules,
+ * own zones and records, blocked services, clients and query log. Pages call the app's JSON API
  * (pk95dns docs/api.md).
  */
 class DnsModule extends Module
@@ -18,7 +18,7 @@ class DnsModule extends Module
             'log' => QueryLog::class,
             'lists' => Lists::class,
             'rules' => Rules::class,
-            'rewrites' => Rewrites::class,
+            'records' => Records::class,
             'services' => Services::class,
             'clients' => Clients::class,
             'settings' => Settings::class,
@@ -27,7 +27,8 @@ class DnsModule extends Module
 
     public function minVersion(): ?string
     {
-        return '1.0.0';
+        // 1.1.0 brought zones and records (/api/zones, /api/records)
+        return '1.1.0';
     }
 
     public function maxVersion(): ?string

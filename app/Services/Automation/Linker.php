@@ -6,6 +6,7 @@ use App\Models\AppEvent;
 use App\Models\AppLink;
 use App\Models\InstalledApp;
 use App\Modules\Proxy\Hosts;
+use App\Services\Apps\AppClient;
 use App\Services\Apps\AppException;
 use App\Support\Settings;
 use Illuminate\Http\Client\Response;
@@ -169,7 +170,7 @@ class Linker
         }
         if ($link->dns_record_id) {
             $dnsApp = $this->app('dns');
-            $notes[] = $dnsApp ? $this->delete($dnsApp, '/api/rewrites/'.$link->dns_record_id, 'DNS-Eintrag')
+            $notes[] = $dnsApp ? $this->deleteRecord($dnsApp, $link)
                 : "DNS-Eintrag {$link->domain} nicht gelöscht: PK95 DNS läuft nicht. Lösche ihn dort von Hand.";
         }
         $link->update(['state' => AppLink::REMOVED, 'proxy_host_id' => null, 'monitor_ids' => [],
@@ -235,33 +236,43 @@ class Linker
 
             return false;
         }
-        $body = ['domain' => $link->domain, 'answer' => $ip, 'enabled' => true];
+        if ($link->dns_record_id && $link->dns_answer === $ip) {
+            $link->dns_message = null;
+
+            return false;
+        }
         try {
             $client = $dnsApp->client();
+            $found = $client->get('/api/records', ['name' => $link->domain]);
+            if ($found->status() === 404) {
+                return $this->ensureRewrite($client, $link, $ip); // PK95 DNS 1.0.x
+            }
+            self::ensureOk($found);
+            $body = ['name' => $link->domain, 'type' => str_contains($ip, ':') ? 'AAAA' : 'A', 'value' => $ip, 'ttl' => 300,
+                'enabled' => true, 'managed_by' => 'core'];
+            $named = collect((array) $found->json())->filter(fn ($r) => strtolower((string) ($r['name'] ?? '')) === $link->domain);
             if ($link->dns_record_id) {
-                if ($link->dns_answer === $ip) {
-                    $link->dns_message = null;
-
-                    return false;
-                }
-                $response = $client->put('/api/rewrites/'.$link->dns_record_id, $body);
-                if ($response->status() !== 404) {
-                    self::ensureOk($response);
+                $ours = $named->first(fn ($r) => (int) ($r['id'] ?? 0) === (int) $link->dns_record_id);
+                if ($ours !== null && self::isCores($ours, $link)) {
+                    self::ensureOk($client->put('/api/records/'.$link->dns_record_id, $body));
                     $link->fill(['dns_answer' => $ip, 'dns_message' => null]);
 
                     return true;
                 }
-                $link->dns_record_id = null; // deleted in PK95 DNS in the meantime: create it again
+                // deleted or renamed in PK95 DNS in the meantime (create it again), or taken
+                // over there (managed_by cleared: no longer Core's, left alone below)
+                $link->dns_record_id = null;
             }
-            $existing = collect((array) $client->get('/api/rewrites')->json())
-                ->first(fn ($r) => strtolower((string) ($r['domain'] ?? '')) === $link->domain);
+            // A name with an address or alias that Core did not create stays as it is. Other
+            // types (TXT, MX, …) of the same name do not compete with Core's A/AAAA record.
+            $existing = $named->first(fn ($r) => in_array($r['type'] ?? '', ['A', 'AAAA', 'CNAME'], true));
             if ($existing !== null) {
-                $link->fill(['dns_answer' => '', 'dns_message' => "Für {$link->domain} gibt es in PK95 DNS schon einen lokalen Eintrag (→ "
-                    .($existing['answer'] ?? '?').'). Core lässt ihn unverändert.']);
+                $link->fill(['dns_answer' => '', 'dns_message' => "Für {$link->domain} gibt es in PK95 DNS schon einen Eintrag ("
+                    .($existing['type'] ?? '?').' → '.($existing['value'] ?? '?').'). Core lässt ihn unverändert.']);
 
                 return false;
             }
-            $response = $client->post('/api/rewrites', $body);
+            $response = $client->post('/api/records', $body);
             self::ensureOk($response);
             $link->fill(['dns_record_id' => (int) $response->json('id'), 'dns_answer' => $ip, 'dns_message' => null]);
 
@@ -271,6 +282,81 @@ class Linker
 
             return false;
         }
+    }
+
+    /**
+     * ensureRecord() for PK95 DNS 1.0.x, which only knows /api/rewrites (domain → answer).
+     */
+    private function ensureRewrite(AppClient $client, AppLink $link, string $ip): bool
+    {
+        $body = ['domain' => $link->domain, 'answer' => $ip, 'enabled' => true];
+        if ($link->dns_record_id) {
+            $response = $client->put('/api/rewrites/'.$link->dns_record_id, $body);
+            if ($response->status() !== 404) {
+                self::ensureOk($response);
+                $link->fill(['dns_answer' => $ip, 'dns_message' => null]);
+
+                return true;
+            }
+            $link->dns_record_id = null;
+        }
+        $existing = collect((array) $client->get('/api/rewrites')->json())
+            ->first(fn ($r) => strtolower((string) ($r['domain'] ?? '')) === $link->domain);
+        if ($existing !== null) {
+            $link->fill(['dns_answer' => '', 'dns_message' => "Für {$link->domain} gibt es in PK95 DNS schon einen lokalen Eintrag (→ "
+                .($existing['answer'] ?? '?').'). Core lässt ihn unverändert.']);
+
+            return false;
+        }
+        $response = $client->post('/api/rewrites', $body);
+        self::ensureOk($response);
+        $link->fill(['dns_record_id' => (int) $response->json('id'), 'dns_answer' => $ip, 'dns_message' => null]);
+
+        return true;
+    }
+
+    /**
+     * Deletes Core's record. A record someone took over in PK95 DNS (managed_by cleared and
+     * a different address) stays. PK95 DNS 1.0.x only knows /api/rewrites (same ids); a
+     * record that is gone already needs nothing.
+     */
+    private function deleteRecord(InstalledApp $dnsApp, AppLink $link): ?string
+    {
+        $id = (int) $link->dns_record_id;
+        try {
+            $client = $dnsApp->client();
+            $found = $client->get('/api/records', ['name' => $link->domain]);
+            if ($found->status() === 404) {
+                $response = $client->delete('/api/rewrites/'.$id); // PK95 DNS 1.0.x
+            } else {
+                self::ensureOk($found);
+                $record = collect((array) $found->json())->first(fn ($r) => (int) ($r['id'] ?? 0) === $id);
+                if ($record === null) {
+                    return null; // removed or renamed in PK95 DNS already
+                }
+                if (! self::isCores($record, $link)) {
+                    return "DNS-Eintrag {$link->domain} bleibt: Er wurde in PK95 DNS übernommen.";
+                }
+                $response = $client->delete('/api/records/'.$id);
+            }
+
+            return $response->successful() || $response->status() === 404 ? null : "DNS-Eintrag nicht gelöscht: HTTP {$response->status()}.";
+        } catch (Throwable $e) {
+            return "DNS-Eintrag nicht gelöscht: {$e->getMessage()}";
+        }
+    }
+
+    /**
+     * Whether Core may change or remove the record of a link: marked as Core's, or migrated
+     * from PK95 DNS 1.0 (no marker yet) and still exactly the address Core wrote.
+     *
+     * @param  array<string, mixed>  $record
+     */
+    private static function isCores(array $record, AppLink $link): bool
+    {
+        $by = (string) ($record['managed_by'] ?? '');
+
+        return $by === 'core' || ($by === '' && $link->dns_answer !== '' && (string) ($record['value'] ?? '') === $link->dns_answer);
     }
 
     private static function ensureOk(Response $response): void

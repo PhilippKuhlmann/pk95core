@@ -66,7 +66,7 @@
                             @if ($prot['state'] === 'on')
                                 {{ Fmt::num($status['rules']['list_rules'] + $status['rules']['custom_rules']) }} Regeln aus {{ Fmt::plural($status['rules']['lists'], 'Liste', 'Listen') }} und eigenen Regeln
                             @else
-                                Nichts wird blockiert. Lokale Einträge gelten weiter.
+                                Nichts wird blockiert. Eigene DNS-Einträge gelten weiter.
                             @endif
                         </div>
                     </div>

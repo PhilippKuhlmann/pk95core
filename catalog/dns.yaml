@@ -1,5 +1,5 @@
 # PK95 DNS (repo pk95dns): network-wide DNS filter like AdGuard Home / Pi-hole with block
-# lists, own rules, local records, blocked services, clients and query log. Image built by
+# lists, own rules, own DNS zones and records, blocked services, clients and query log. Image built by
 # the pk95dns repo's GitHub Actions; it needs the Core mode of app protocol v1.
 #
 # Host network: DNS takes port 53 (UDP and TCP) of the LXC and sees the real client
@@ -7,7 +7,7 @@
 # No capabilities needed: the app runs as root inside the container for port 53.
 id: dns
 name: PK95 DNS
-summary: Filtert Werbung und Tracker für das ganze Netz, mit Blocklisten, eigenen Regeln, lokalen Einträgen und Abfragelog. Belegt Port 53 des LXC.
+summary: Filtert Werbung und Tracker für das ganze Netz und beantwortet eigene DNS-Zonen und -Einträge (A, AAAA, CNAME, MX, TXT, SRV, PTR). Mit Blocklisten, eigenen Regeln und Abfragelog. Belegt Port 53 des LXC.
 image: ghcr.io/philippkuhlmann/pk95-dns
 tag: latest
 port: 8053

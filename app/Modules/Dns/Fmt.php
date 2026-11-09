@@ -16,7 +16,7 @@ final class Fmt
         'blocked' => 'Blockiert',
         'blocked_service' => 'Dienst blockiert',
         'safesearch' => 'SafeSearch',
-        'rewrite' => 'Lokaler Eintrag',
+        'rewrite' => 'Eigener Eintrag',
         'refused' => 'Abgelehnt',
         'error' => 'Fehler',
     ];
@@ -26,7 +26,8 @@ final class Fmt
         'custom' => 'Eigene Regel',
         'service' => 'Dienst',
         'safesearch' => 'SafeSearch',
-        'rewrite' => 'Lokaler Eintrag',
+        'record' => 'DNS-Eintrag',
+        'zone' => 'Eigene Zone',
         'access' => 'Zugriff nicht erlaubt',
         'any' => 'ANY-Anfrage',
         'ratelimit' => 'Ratenlimit',
