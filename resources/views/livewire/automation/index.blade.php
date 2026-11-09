@@ -5,9 +5,9 @@
     };
 @endphp
 
-<div wire:poll.30s>
+<div wire:poll.30s @if ($lanIp === '' && $detected === null) wire:init="loadLanIp" @endif>
     <x-page-header title="Automatik">
-        <x-slot:sub>Rollst du mit ProxApps eine App aus, richtet Core sie im Proxy ein und überwacht sie mit Uptime.</x-slot:sub>
+        <x-slot:sub>Rollst du mit ProxApps eine App aus, richtet Core sie im Proxy ein, trägt die Domain in PK95 DNS ein und überwacht sie mit Uptime.</x-slot:sub>
     </x-page-header>
 
     @if (trim((string) \App\Support\Settings::get('automation_base_domain')) === '')
@@ -25,6 +25,8 @@
             <div class="flex flex-col gap-1">
                 <x-input.checkbox label="Proxy-Host in PK95 Proxy anlegen" wire:model="proxy"
                     hilfe="Öffentlich, mit Angriffsfilter. Aktiv, sobald die Domain per DNS auf deine öffentliche IP zeigt, vorher deaktiviert (schützt vor dem Let's-Encrypt-Limit). Core prüft alle 10 Minuten nach." />
+                <x-input.checkbox label="Lokalen DNS-Eintrag in PK95 DNS anlegen" wire:model="dns"
+                    hilfe="Dieselbe Domain wie im Proxy, Antwort ist die LAN-IP des Proxy. Geräte im Netz erreichen die App so direkt statt über den Router. Einträge, die es schon gibt, lässt Core unverändert." />
                 <x-input.checkbox label="Monitore in PK95 Uptime anlegen" wire:model="uptime"
                     hilfe="Einer prüft die App direkt (IP und Port), einer die Domain über den Proxy samt Zertifikat." />
             </div>
@@ -32,12 +34,32 @@
                 :hilfe="'Leer lassen: Core ermittelt sie selbst'.($detectedIp ? ' (gerade '.$detectedIp.')' : '').'. Nötig nur bei mehreren Anschlüssen oder wenn die Ermittlung scheitert.'">
                 <x-input.text id="a-ip" feld="publicIp" wire:model="publicIp" placeholder="203.0.113.10" class="mt-1 w-full max-w-xs font-mono" />
             </x-field>
+            @php
+                $lanHelp = match (true) {
+                    $detected === null => 'Leer lassen: Core ermittelt sie selbst, das läuft gerade.',
+                    ($detected['ip'] ?? null) !== null => 'Leer lassen: Core nimmt die erkannte Adresse '.$detected['ip'].' (Route des LXC ins Internet, geprüft '
+                        .\Illuminate\Support\Carbon::parse($detected['at'])->timezone((string) \App\Support\Settings::get('timezone'))->format('d.m.Y H:i').'). Ein Eintrag hier hat immer Vorrang.',
+                    default => 'Nicht erkannt: '.($detected['error'] ?? 'unbekannter Fehler').' Trag die Adresse von Hand ein.',
+                };
+            @endphp
+            <x-field label="LAN-IP des Proxy" for="a-lan" feld="lanIp" :hilfe="$lanHelp">
+                <div class="mt-1 flex flex-wrap items-center gap-2">
+                    <x-input.text id="a-lan" feld="lanIp" wire:model="lanIp" :placeholder="$detected['ip'] ?? '192.168.1.20'" class="w-full max-w-xs font-mono" />
+                    <x-input.button type="button" size="sm" color="gray" wire:click="detectLanIp" wire:loading.attr="disabled" wire:target="detectLanIp">Erneut erkennen</x-input.button>
+                </div>
+            </x-field>
             <div><x-input.button type="submit" wire:loading.attr="disabled">Speichern</x-input.button></div>
         </form>
     </x-panel>
 
     <x-panel class="m-3 overflow-x-auto" polster="keins">
-        <div class="px-4 pt-4 font-DINPro-bold text-gray-900 dark:text-gray-100">Automatisch eingerichtete Apps</div>
+        <div class="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
+            <div class="font-DINPro-bold text-gray-900 dark:text-gray-100">Automatisch eingerichtete Apps</div>
+            @if ($links->isNotEmpty())
+                <x-input.button type="button" size="sm" color="gray" wire:click="syncDns" wire:loading.attr="disabled" wire:target="syncDns"
+                    title="Fehlende lokale DNS-Einträge der Apps anlegen und auf die aktuelle LAN-IP setzen">DNS abgleichen</x-input.button>
+            @endif
+        </div>
         @if ($links->isEmpty())
             <p class="px-4 pb-4 pt-2 text-sm text-gray-500 dark:text-gray-400">Noch keine. Rolle eine App mit ProxApps aus, dann erscheint sie hier.</p>
         @else
@@ -60,9 +82,12 @@
                             <td class="px-4 py-3 align-top">
                                 <div class="flex items-center gap-2"><span class="h-2 w-2 rounded-full {{ $tone($l->state) }}"></span>{{ AppLink::STATES[$l->state] ?? $l->state }}</div>
                                 <div class="text-xs text-gray-500">
-                                    {{ $l->proxy_host_id ? 'Proxy-Host' : 'kein Proxy-Host' }} · {{ count($l->monitor_ids ?? []) }} {{ count($l->monitor_ids ?? []) === 1 ? 'Monitor' : 'Monitore' }}
+                                    {{ $l->proxy_host_id ? 'Proxy-Host' : 'kein Proxy-Host' }}
+                                    · {{ $l->dns_record_id ? 'DNS → '.$l->dns_answer : 'kein DNS-Eintrag' }}
+                                    · {{ count($l->monitor_ids ?? []) }} {{ count($l->monitor_ids ?? []) === 1 ? 'Monitor' : 'Monitore' }}
                                 </div>
                                 @if ($l->message)<div class="mt-1 max-w-md text-xs text-gray-500 dark:text-gray-400">{{ $l->message }}</div>@endif
+                                @if ($l->dns_message && $l->state !== AppLink::REMOVED)<div class="mt-1 max-w-md text-xs text-amber-700 dark:text-amber-300">{{ $l->dns_message }}</div>@endif
                             </td>
                             <td class="px-4 py-3 text-right align-top">
                                 @if ($l->state === AppLink::PENDING_DNS)

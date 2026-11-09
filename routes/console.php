@@ -67,7 +67,11 @@ Artisan::command('pk95:links', function (Linker $linker) {
         $linker->recheck($link);
         $this->line("{$link->domain}: {$link->fresh()->state}");
     }
-})->purpose('Automatisch angelegte Proxy-Hosts einschalten, sobald DNS passt');
+    $dns = $linker->syncDns();
+    if ($dns['changed'] || $dns['open']) {
+        $this->line("Lokale DNS-Einträge: {$dns['changed']} angelegt oder angepasst".($dns['open'] ? ', offen: '.implode(', ', $dns['open']) : ''));
+    }
+})->purpose('Automatisch angelegte Proxy-Hosts einschalten, sobald DNS passt, und lokale DNS-Einträge nachholen');
 
 // Docker entrypoint: while no account exists, create (or re-print) the one-time code the
 // first-run page asks for; once an account exists, remove a left-over code file.

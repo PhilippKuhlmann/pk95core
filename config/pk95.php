@@ -102,6 +102,10 @@ return [
         'automation_proxy' => true,
         'automation_uptime' => true,
         'automation_public_ip' => '',
+        // Local DNS record in PK95 DNS for a deployed app's domain: answer = LAN IP of the
+        // proxy (the LXC). Empty = detected by a helper container in the host network.
+        'automation_dns' => true,
+        'automation_lan_ip' => '',
     ],
 
     /*

@@ -174,7 +174,7 @@
                 @endif
                 <div @class(['mt-3 grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2', 'hidden' => empty($v['proxy'])])>
                     <x-field label="Subdomain" for="f-sub" feld="subdomain"
-                        :hilfe="$fullDomain !== '' ? 'Wird zu '.$fullDomain.'. Core legt den Proxy-Host und die Monitore an.' : ($sub === '' ? 'Leer lassen: kein Proxy-Host, nur Monitore.' : 'Lege unter Automatik eine Basisdomain fest oder trage eine ganze Domain ein.')">
+                        :hilfe="$fullDomain !== '' ? 'Wird zu '.$fullDomain.'. Core legt den Proxy-Host, den lokalen DNS-Eintrag und die Monitore an.' : ($sub === '' ? 'Leer lassen: kein Proxy-Host, nur Monitore.' : 'Lege unter Automatik eine Basisdomain fest oder trage eine ganze Domain ein.')">
                         <div class="mt-1 flex items-center gap-2">
                             <x-input.text id="f-sub" feld="subdomain" wire:model.live.debounce.400ms="v.subdomain" class="w-full min-w-0 font-mono" autocomplete="off" spellcheck="false" />
                             @if ($baseDomain !== '' && ! str_contains($sub, '.'))

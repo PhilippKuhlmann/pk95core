@@ -8,9 +8,11 @@ use App\Models\AppEvent;
 use App\Models\AppLink;
 use App\Models\InstalledApp;
 use App\Modules\Proxy\Hosts;
+use App\Services\Automation\LanIp;
 use App\Services\Automation\Linker;
 use App\Support\Settings;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -31,22 +33,65 @@ class AutomationTest extends FeatureTestCase
 
     private int $monitorSeq = 0;
 
+    /** @var array<int, array<string, mixed>> local DNS records in PK95 DNS */
+    private array $rewrites = [];
+
+    /** PK95 DNS answers rewrite requests with 500 (unreachable app is Http::failedConnection). */
+    private bool $dnsBroken = false;
+
     protected function setUp(): void
     {
         parent::setUp();
         config(['pk95.catalog_dir' => base_path('catalog')]);
-        foreach (['proxapps', 'proxy', 'uptime'] as $id) {
+        foreach (['proxapps', 'proxy', 'uptime', 'dns'] as $id) {
             InstalledApp::factory()->create(['app_id' => $id, 'status' => InstalledApp::RUNNING, 'version' => '1.0.0',
                 'manifest' => ['id' => $id, 'name' => $id, 'version' => '1.0.0', 'protocol' => 1, 'menu' => [], 'capabilities' => [], 'events' => []]]);
         }
         Settings::put('automation_base_domain', 'example.de');
         Settings::put('automation_public_ip', '203.0.113.10');
+        Settings::put('automation_lan_ip', '10.10.250.50');
 
         Http::fake([
             'cloudflare-dns.com/*' => fn () => Http::response(['Status' => 0, 'Answer' => array_map(fn ($ip) => ['type' => 1, 'data' => $ip], $this->dnsAnswer)]),
             'host.docker.internal:8090/*' => fn (Request $r) => $this->proxy($r),
             'pk95-uptime:3001/*' => fn (Request $r) => $this->uptime($r),
+            'host.docker.internal:8053/*' => fn (Request $r) => $this->dnsApp($r),
         ]);
+    }
+
+    /** PK95 DNS: /api/rewrites like docs/api.md of pk95dns. */
+    private function dnsApp(Request $r)
+    {
+        $this->calls[] = ['method' => $r->method(), 'url' => $r->url(), 'body' => $r->data()];
+        if ($this->dnsBroken) {
+            return Http::response(['error' => 'Datenbank gesperrt'], 500);
+        }
+        $path = parse_url($r->url(), PHP_URL_PATH);
+        if ($path === '/api/rewrites') {
+            if ($r->method() === 'GET') {
+                return Http::response(array_values($this->rewrites));
+            }
+            $id = ($this->rewrites ? max(array_keys($this->rewrites)) : 0) + 1;
+            $this->rewrites[$id] = ['id' => $id] + $r->data();
+
+            return Http::response($this->rewrites[$id], 201);
+        }
+        if (preg_match('#^/api/rewrites/(\d+)$#', $path, $m)) {
+            $id = (int) $m[1];
+            if (! isset($this->rewrites[$id])) {
+                return Http::response(['error' => 'nicht gefunden'], 404);
+            }
+            if ($r->method() === 'DELETE') {
+                unset($this->rewrites[$id]);
+
+                return Http::response('', 204);
+            }
+            $this->rewrites[$id] = ['id' => $id] + $r->data();
+
+            return Http::response($this->rewrites[$id]);
+        }
+
+        return Http::response(['error' => 'unbekannt'], 404);
     }
 
     private function proxy(Request $r)
@@ -202,8 +247,9 @@ class AutomationTest extends FeatureTestCase
         $this->assertSame(AppLink::REMOVED, $link->fresh()->state);
         $this->assertNull($link->fresh()->message, 'everything deleted without errors');
         $this->assertSame([], $this->hosts);
+        $this->assertSame([], $this->rewrites);
         $deleted = array_values(array_filter($this->calls, fn ($c) => $c['method'] === 'DELETE'));
-        $this->assertCount(3, $deleted, 'host and two monitors');
+        $this->assertCount(4, $deleted, 'host, local DNS record and two monitors');
     }
 
     public function test_context_api_and_settings_page(): void
@@ -220,5 +266,121 @@ class AutomationTest extends FeatureTestCase
             ->set('baseDomain', 'Andere.de.')->set('uptime', false)->call('save')->assertHasNoErrors();
         $this->assertSame('andere.de', Settings::get('automation_base_domain'));
         $this->assertFalse(Settings::get('automation_uptime'));
+    }
+
+    public function test_deploy_creates_a_local_dns_record_for_the_proxy_domain_and_removal_deletes_it(): void
+    {
+        $this->dnsAnswer = []; // public DNS not there yet: host waits disabled, the local record is created anyway
+        $link = app(Linker::class)->link('proxapps', $this->event());
+
+        $this->assertSame(AppLink::PENDING_DNS, $link->state);
+        $this->assertSame([['domain' => 'cloud.example.de', 'answer' => '10.10.250.50', 'enabled' => true]], $this->sent('POST', '/api/rewrites'));
+        $this->assertSame(1, $link->dns_record_id);
+        $this->assertSame('10.10.250.50', $link->dns_answer);
+        $this->assertNull($link->dns_message);
+
+        app(Linker::class)->unlink('proxapps', 7);
+        $this->assertSame([], $this->rewrites);
+        $this->assertNull($link->fresh()->dns_record_id);
+    }
+
+    public function test_foreign_dns_record_with_the_same_name_is_left_alone(): void
+    {
+        $this->rewrites[5] = ['id' => 5, 'domain' => 'Cloud.example.de', 'answer' => '192.168.1.5', 'enabled' => true];
+        $this->dnsAnswer = ['203.0.113.10'];
+        $link = app(Linker::class)->link('proxapps', $this->event());
+
+        $this->assertSame(AppLink::ACTIVE, $link->state, 'the deploy itself is fine');
+        $this->assertCount(0, $this->sent('POST', '/api/rewrites'));
+        $this->assertNull($link->dns_record_id);
+        $this->assertStringContainsString('schon einen lokalen Eintrag (→ 192.168.1.5)', $link->dns_message);
+        $this->assertDatabaseHas('app_events', ['type' => 'core.link.active', 'severity' => 'warning']);
+
+        app(Linker::class)->unlink('proxapps', 7);
+        $this->assertArrayHasKey(5, $this->rewrites, 'not ours: not deleted');
+    }
+
+    public function test_without_dns_app_the_deploy_works_and_the_record_is_caught_up_later(): void
+    {
+        $this->dnsAnswer = ['203.0.113.10'];
+        InstalledApp::query()->where('app_id', 'dns')->delete();
+        $link = app(Linker::class)->link('proxapps', $this->event());
+        $this->assertSame(AppLink::ACTIVE, $link->state);
+        $this->assertNotNull($link->proxy_host_id);
+        $this->assertStringContainsString('nicht installiert', $link->dns_message);
+
+        // installed, but stopped
+        $dns = InstalledApp::factory()->create(['app_id' => 'dns', 'status' => InstalledApp::STOPPED, 'version' => '1.0.0',
+            'manifest' => ['id' => 'dns', 'name' => 'dns', 'version' => '1.0.0', 'protocol' => 1, 'menu' => [], 'capabilities' => [], 'events' => []]]);
+        $this->assertSame(['changed' => 0, 'open' => ['cloud.example.de']], app(Linker::class)->syncDns());
+        $this->assertStringContainsString('läuft gerade nicht', $link->fresh()->dns_message);
+
+        // running, but failing
+        $dns->update(['status' => InstalledApp::RUNNING]);
+        $this->dnsBroken = true;
+        app(Linker::class)->syncDns();
+        $this->assertStringContainsString('nicht angelegt: Datenbank gesperrt', $link->fresh()->dns_message);
+
+        // works again: the button on the Automatik page catches it up
+        $this->dnsBroken = false;
+        $this->signIn();
+        Livewire::test(AutomationIndex::class)->call('syncDns')->assertDispatched('notice', kind: 'success', text: '1 DNS-Eintrag angelegt oder angepasst.');
+        $link->refresh();
+        $this->assertNull($link->dns_message);
+        $this->assertSame('10.10.250.50', $this->rewrites[$link->dns_record_id]['answer']);
+        $this->assertDatabaseHas('app_events', ['type' => 'core.link.dns']);
+        $this->assertSame(['changed' => 0, 'open' => []], app(Linker::class)->syncDns(), 'nothing to do twice');
+
+        // a new LAN IP moves Core's record, nothing else
+        Settings::put('automation_lan_ip', '10.10.250.60');
+        $this->artisan('pk95:links')->assertSuccessful();
+        $this->assertSame('10.10.250.60', $this->rewrites[$link->dns_record_id]['answer']);
+        $this->assertSame('10.10.250.60', $link->fresh()->dns_answer);
+    }
+
+    public function test_dns_records_switched_off_or_without_proxy_host(): void
+    {
+        $this->dnsAnswer = ['203.0.113.10'];
+        Settings::put('automation_dns', false);
+        $link = app(Linker::class)->link('proxapps', $this->event());
+        $this->assertNotNull($link->proxy_host_id);
+        $this->assertNull($link->dns_record_id);
+        $this->assertNull($link->dns_message);
+
+        Settings::put('automation_dns', true);
+        $other = app(Linker::class)->link('proxapps', ['deploymentId' => 9, 'proxy' => false] + $this->event('mail.example.de'));
+        $this->assertNull($other->dns_record_id, 'no proxy host, no DNS record');
+        $this->assertSame([], $this->sent('POST', '/api/rewrites'));
+    }
+
+    public function test_lan_ip_is_detected_in_the_host_network_and_the_setting_wins(): void
+    {
+        Settings::put('automation_lan_ip', '');
+        $this->docker['helperOutput'] = '1.1.1.1 via 10.10.250.1 dev eth0  src 10.10.250.50 ';
+        $this->assertSame('10.10.250.50', app(LanIp::class)->current());
+        $run = $this->docker['helperRuns'][0];
+        $this->assertSame(['ip', '-4', 'route', 'get', '1.1.1.1'], $run['cmd']);
+        $this->assertSame('host', $run['network']);
+
+        app(LanIp::class)->current();
+        $this->assertCount(1, $this->docker['helperRuns'], 'cached');
+
+        Settings::put('automation_lan_ip', '192.168.1.9');
+        $this->assertSame('192.168.1.9', app(LanIp::class)->current());
+
+        // the page: detection again, failure is shown, a manual value is validated
+        Settings::put('automation_lan_ip', '');
+        $this->docker['helperOutput'] = 'RTNETLINK answers: Network unreachable';
+        $this->signIn();
+        $this->get(route('automation'))->assertSee('LAN-IP des Proxy')->assertSee('10.10.250.50');
+        Livewire::test(AutomationIndex::class)
+            ->call('detectLanIp')->assertDispatched('notice', kind: 'error')
+            ->assertSee('Nicht erkannt: Keine Route ins Internet gefunden: RTNETLINK answers: Network unreachable. Trag')
+            ->set('lanIp', '10.10.250')->call('save')->assertHasErrors('lanIp')
+            ->set('lanIp', '10.10.250.70')->set('dns', false)->call('save')->assertHasNoErrors();
+        $this->assertSame('10.10.250.70', Settings::get('automation_lan_ip'));
+        $this->assertFalse(Settings::get('automation_dns'));
+        Cache::forget(LanIp::CACHE);
+        $this->assertSame('10.10.250.70', app(LanIp::class)->current());
     }
 }
