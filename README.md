@@ -21,18 +21,28 @@ Auf dem **Proxmox-Host** als `root` in der Shell (Weboberfläche → Node → �
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/PhilippKuhlmann/pk95core/main/install/proxmox.sh)"
 ```
 
-Das Skript fragt einmal nach und erledigt dann alles allein:
+Das Skript fragt Schritt für Schritt, Enter übernimmt jeweils den Vorschlag in Klammern:
+
+```
+1. Container     CT-ID [nächste freie] · Hostname [pk95core]
+2. Ressourcen    CPU-Kerne [2] · RAM in MB [2048] · Disk in GB [16] · Speicher (Auswahlliste)
+3. Netzwerk      Bridge (Auswahlliste) · VLAN-Tag [leer] · IP mit Präfix oder dhcp [dhcp] · Gateway
+                 Zusammenfassung → Jetzt installieren? [J/n]
+```
+
+Ungültige Eingaben (vergebene ID, Hostname mit Großbuchstaben, zu wenig RAM …) werden sofort angemerkt
+und neu abgefragt. Danach erledigt das Skript alles allein:
 
 1. lädt bei Bedarf die Debian-13-Vorlage,
-2. legt einen unprivilegierten LXC an (2 Kerne, 2 GB RAM, 16 GB, DHCP auf `vmbr0`, Nesting und Keyctl für Docker,
-   startet mit dem Host),
+2. legt einen unprivilegierten LXC mit Nesting und Keyctl für Docker an, der mit dem Host startet,
 3. installiert darin Docker und startet PK95 Core,
 4. zeigt die Adresse und den **Einrichtungscode** an.
 
 Danach `http://<IP>:8080` öffnen, den Code eingeben, das Admin-Konto anlegen und unter **Apps** PK95 Proxy, Uptime
 und ProxApps aktivieren.
 
-**Eigene Werte** stehen als Variablen vor dem Befehl, zum Beispiel eine feste Adresse:
+**Vorschläge vorbelegen** lassen sich mit Variablen vor dem Befehl. Ohne Terminal (z. B. aus einem anderen Skript)
+läuft die Installation mit ihnen ganz ohne Fragen:
 
 ```bash
 CTID=250 IP=10.10.250.50/24 GW=10.10.250.1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/PhilippKuhlmann/pk95core/main/install/proxmox.sh)"

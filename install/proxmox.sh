@@ -7,23 +7,17 @@
 # starts PK95 Core with the docker-compose.yml of this repository. Everything else (apps such as
 # PK95 Proxy, Uptime, ProxApps) is activated afterwards in the web interface.
 #
-# Settings via environment variables, e.g. a fixed address:
-#   CTID=250 IP=10.10.250.50/24 GW=10.10.250.1 bash -c "$(curl -fsSL …/install/proxmox.sh)"
+# Asks step by step for ID, hostname, resources, storage and network (Enter keeps the suggestion).
+# Environment variables become the suggestions, e.g. CTID=250 IP=10.10.250.50/24 GW=10.10.250.1;
+# without a terminal the script runs unattended with them.
 set -euo pipefail
 
 RAW="${PK95_RAW:-https://raw.githubusercontent.com/PhilippKuhlmann/pk95core/main}"
-CT_HOSTNAME="${CT_HOSTNAME:-pk95core}"
-CORES="${CORES:-2}"
-MEMORY="${MEMORY:-2048}"
 SWAP="${SWAP:-512}"
-DISK="${DISK:-16}"
-BRIDGE="${BRIDGE:-vmbr0}"
-IP="${IP:-dhcp}"
-GW="${GW:-}"
-VLAN="${VLAN:-}"
 TEMPLATE_STORAGE="${TEMPLATE_STORAGE:-local}"
 
 blue() { printf '\033[1;34m==> %s\033[0m\n' "$*"; }
+bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 fail() { printf '\033[1;31mFehler: %s\033[0m\n' "$*" >&2; exit 1; }
 
 # --- checks --------------------------------------------------------------------------------
@@ -31,35 +25,112 @@ fail() { printf '\033[1;31mFehler: %s\033[0m\n' "$*" >&2; exit 1; }
 command -v pct >/dev/null && command -v pveam >/dev/null && command -v pvesh >/dev/null \
   || fail "pct/pveam/pvesh fehlen – das Skript läuft nur auf einem Proxmox-VE-Host."
 
-CTID="${CTID:-$(pvesh get /cluster/nextid)}"
-pct status "$CTID" >/dev/null 2>&1 && fail "Die CT-ID $CTID ist schon vergeben (CTID=… setzen)."
+# --- questions -----------------------------------------------------------------------------
+# Questions go to the terminal (bash -c "$(curl …)" keeps it). Without one the defaults and the
+# environment variables apply, so the script also runs unattended.
+TTY=0
+{ exec 3</dev/tty; } 2>/dev/null && TTY=1
 
-# Storage for the root disk: given, else local-lvm/local-zfs, else the first one for containers.
-if [[ -z "${STORAGE:-}" ]]; then
-  storages="$(pvesm status --content rootdir 2>/dev/null | awk 'NR>1 && $3=="active" {print $1}')"
-  for s in local-lvm local-zfs; do
-    grep -qx "$s" <<<"$storages" && STORAGE="$s" && break
+# ask VAR "question" default check "hint": ask until check accepts the answer (Enter = default).
+ask() {
+  local var=$1 question=$2 default=$3 check=$4 hint=$5 value
+  while :; do
+    value=""
+    if (( TTY )); then
+      read -r -u 3 -p "  ${question} [${default:-leer}]: " value || value=""
+    fi
+    value="${value:-$default}"
+    if "$check" "$value"; then
+      printf -v "$var" '%s' "$value"
+      return
+    fi
+    (( TTY )) || fail "${question}: ${hint} (${value:-leer})"
+    printf '    \033[33m%s\033[0m\n' "$hint"
   done
-  STORAGE="${STORAGE:-$(head -n1 <<<"$storages")}"
-fi
-[[ -n "$STORAGE" ]] || fail "Kein Speicher für Container gefunden (STORAGE=… setzen)."
+}
 
-if [[ "$IP" != dhcp ]]; then
-  [[ "$IP" == */* ]] || fail "IP bitte mit Präfix angeben, z. B. IP=10.10.250.50/24."
-  [[ -n "$GW" ]] || fail "Bei fester IP bitte auch das Gateway angeben (GW=…)."
+# choose VAR "question" default item…: numbered list, answer with number or name.
+choose() {
+  local var=$1 question=$2 default=$3; shift 3
+  local items=("$@") i value
+  (( ${#items[@]} )) || fail "${question}: nichts zur Auswahl gefunden."
+  if (( TTY )); then
+    for i in "${!items[@]}"; do printf '    %d) %s\n' $((i + 1)) "${items[$i]}"; done
+  fi
+  while :; do
+    value=""
+    (( TTY )) && { read -r -u 3 -p "  ${question} [${default}]: " value || value=""; }
+    value="${value:-$default}"
+    [[ "$value" =~ ^[0-9]+$ ]] && (( value >= 1 && value <= ${#items[@]} )) && value="${items[$((value - 1))]}"
+    for i in "${items[@]}"; do
+      [[ "$i" == "$value" ]] && { printf -v "$var" '%s' "$value"; return; }
+    done
+    (( TTY )) || fail "${question}: ${value} gibt es nicht."
+    printf '    \033[33mBitte eine Nummer oder einen Namen aus der Liste.\033[0m\n'
+  done
+}
+
+id_free() {
+  [[ "$1" =~ ^[0-9]+$ ]] && (( $1 >= 100 && $1 <= 999999999 )) || return 1
+  ! pct status "$1" >/dev/null 2>&1 && ! { command -v qm >/dev/null && qm status "$1" >/dev/null 2>&1; }
+}
+hostname_ok() { [[ "$1" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]; }
+cores_ok() { [[ "$1" =~ ^[0-9]+$ ]] && (( $1 >= 1 && $1 <= 64 )); }
+memory_ok() { [[ "$1" =~ ^[0-9]+$ ]] && (( $1 >= 1024 )); }
+disk_ok() { [[ "$1" =~ ^[0-9]+$ ]] && (( $1 >= 8 )); }
+vlan_ok() { [[ -z "$1" ]] || { [[ "$1" =~ ^[0-9]+$ ]] && (( $1 >= 1 && $1 <= 4094 )); }; }
+ipv4() { [[ "$1" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]] \
+  && (( BASH_REMATCH[1] <= 255 && BASH_REMATCH[2] <= 255 && BASH_REMATCH[3] <= 255 && BASH_REMATCH[4] <= 255 )); }
+ip_ok() { [[ "$1" == dhcp ]] || { [[ "$1" == */* ]] && ipv4 "${1%/*}" && [[ "${1#*/}" =~ ^[0-9]+$ ]] && (( ${1#*/} >= 8 && ${1#*/} <= 32 )); }; }
+
+# Storages for container disks and bridges of this node, for the lists.
+mapfile -t storages < <(pvesm status --content rootdir 2>/dev/null | awk 'NR>1 && $3=="active" {print $1}')
+mapfile -t bridges < <(for b in /sys/class/net/*/bridge; do [[ -e "$b" ]] && basename "$(dirname "$b")"; done | grep '^vmbr' || true)
+(( ${#bridges[@]} )) || bridges=(vmbr0)
+default_storage="${STORAGE:-}"
+if [[ -z "$default_storage" ]]; then
+  for s in local-lvm local-zfs; do printf '%s\n' "${storages[@]}" | grep -qx "$s" && default_storage="$s" && break; done
+  default_storage="${default_storage:-${storages[0]:-}}"
 fi
 
 echo
-echo "PK95 Core wird installiert:"
-echo "  CT-ID ${CTID} · Hostname ${CT_HOSTNAME} · ${CORES} Kerne · ${MEMORY} MB RAM · ${DISK} GB auf ${STORAGE}"
-echo "  Netz ${BRIDGE}${VLAN:+ (VLAN ${VLAN})} · IP ${IP}${GW:+ · Gateway ${GW}}"
-# Ask once when a terminal is there (bash -c "$(curl …)" keeps it); without one just go on.
-if { exec 3</dev/tty; } 2>/dev/null; then
-  read -r -u 3 -p "Fortfahren? [J/n] " answer || answer=j
-  exec 3<&-
-  [[ "${answer:-j}" =~ ^[JjYy]?$ ]] || fail "Abgebrochen."
+bold "PK95 Core – Installation auf Proxmox VE"
+(( TTY )) && echo "  Enter übernimmt den Vorschlag in Klammern."
+echo
+bold "1. Container"
+ask CTID "CT-ID" "${CTID:-$(pvesh get /cluster/nextid)}" id_free "Eine freie ID ab 100 (diese ist vergeben oder ungültig)."
+ask CT_HOSTNAME "Hostname" "${CT_HOSTNAME:-pk95core}" hostname_ok "Kleinbuchstaben, Ziffern und Bindestriche."
+echo
+bold "2. Ressourcen"
+ask CORES "CPU-Kerne" "${CORES:-2}" cores_ok "Eine Zahl von 1 bis 64."
+ask MEMORY "RAM in MB" "${MEMORY:-2048}" memory_ok "Mindestens 1024 MB."
+ask DISK "Disk in GB" "${DISK:-16}" disk_ok "Mindestens 8 GB."
+(( TTY )) && echo "  Speicher für die Disk:"
+choose STORAGE "Speicher" "$default_storage" "${storages[@]}"
+echo
+bold "3. Netzwerk"
+(( TTY )) && echo "  Bridge:"
+choose BRIDGE "Bridge" "${BRIDGE:-${bridges[0]}}" "${bridges[@]}"
+ask VLAN "VLAN-Tag (leer = keins)" "${VLAN:-}" vlan_ok "Leer lassen oder eine Zahl von 1 bis 4094."
+ask IP "IP-Adresse mit Präfix oder dhcp" "${IP:-dhcp}" ip_ok "dhcp oder eine Adresse wie 10.10.250.50/24."
+GW="${GW:-}"
+if [[ "$IP" != dhcp ]]; then
+  ask GW "Gateway" "${GW:-${IP%.*}.1}" ipv4 "Eine Adresse wie 10.10.250.1."
+else
+  GW=""
 fi
 
+echo
+bold "Zusammenfassung"
+echo "  CT-ID ${CTID} · Hostname ${CT_HOSTNAME}"
+echo "  ${CORES} Kerne · ${MEMORY} MB RAM · ${DISK} GB auf ${STORAGE}"
+echo "  Netz ${BRIDGE}${VLAN:+ · VLAN ${VLAN}} · IP ${IP}${GW:+ · Gateway ${GW}}"
+if (( TTY )); then
+  read -r -u 3 -p "Jetzt installieren? [J/n] " answer || answer=j
+  [[ "${answer:-j}" =~ ^[JjYy]$|^$ ]] || fail "Abgebrochen, es wurde nichts verändert."
+  exec 3<&-
+fi
+echo
 # --- Debian template -----------------------------------------------------------------------
 blue "Debian-13-Vorlage prüfen"
 template="$(pveam list "$TEMPLATE_STORAGE" 2>/dev/null | awk '{print $1}' | grep -o 'debian-13-standard_[^ ]*' | sort -V | tail -n1 || true)"
