@@ -71,6 +71,17 @@ Mit ihm sind die Service-Tokens der Apps verschlüsselt.
 
 ## Updates von Core
 
+Unter **Apps** steht Core als erste Karte, mit Build, Datum und dem Knopf **Aktualisieren**, sobald die
+Registry ein neueres Image hat. Core prüft das alle 6 Stunden, „Nach Updates suchen“ sofort.
+
+Beim Aktualisieren startet Core einen kurzlebigen Hilfscontainer `pk95core-updater` (`docker:28-cli`). Er führt
+für das Compose-Projekt, aus dem Core gestartet wurde, `docker compose pull` und `up -d` aus. Danach wartet er
+bis zu 3 Minuten auf `/up` der neuen Version und startet sonst wieder das vorige Image. Das Ergebnis erscheint
+unter Ereignisse und auf der Karte. Voraussetzung: Core wurde mit `docker compose` gestartet, wie bei der
+Installation.
+
+Von Hand im LXC:
+
 ```bash
 cd /opt/pk95 && docker compose pull && docker compose up -d
 ```

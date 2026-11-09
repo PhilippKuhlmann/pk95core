@@ -7,12 +7,14 @@ use App\Services\Apps\AppManager;
 use App\Services\Catalog\Catalog;
 use App\Services\Catalog\CatalogException;
 use App\Services\Docker\DockerClient;
+use App\Services\Updates\CoreUpdater;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 use Throwable;
 
 /**
- * The catalog with the state of every app: activate, start, stop, restart, remove.
+ * The catalog with the state of every app: activate, start, stop, restart, remove. On top
+ * Core itself: its build, newer builds in the registry and the self update.
  */
 #[Title('Apps')]
 class Index extends Component
@@ -42,11 +44,36 @@ class Index extends Component
         $this->run(fn () => $manager->remove($this->installed($id), $keepData), $keepData ? 'Entfernt. Die Daten bleiben erhalten.' : 'Entfernt samt Daten.');
     }
 
+    public function checkCore(CoreUpdater $core): void
+    {
+        try {
+            $found = $core->check();
+            $this->dispatch('notice', kind: 'success', text: $found ? 'Neue Version gefunden: '.CoreUpdater::describe($found).'.' : 'PK95 Core ist aktuell.');
+        } catch (Throwable $e) {
+            $this->dispatch('notice', kind: 'error', text: $e->getMessage());
+        }
+    }
+
+    /**
+     * Starts the helper; the page waits in the browser until the new Core answers and reloads.
+     */
+    public function updateCore(CoreUpdater $core): void
+    {
+        try {
+            $core->start();
+            $this->dispatch('core-restarting');
+        } catch (Throwable $e) {
+            report($e);
+            $this->dispatch('notice', kind: 'error', text: $e->getMessage());
+        }
+    }
+
     /**
      * Called by wire:poll while something is in motion.
      */
-    public function poll(AppManager $manager): void
+    public function poll(AppManager $manager, CoreUpdater $core): void
     {
+        $core->finish();
         foreach (InstalledApp::query()->where('status', InstalledApp::STARTING)->get() as $app) {
             try {
                 $manager->refresh($app);
@@ -58,8 +85,10 @@ class Index extends Component
         $this->dispatch('apps-changed');
     }
 
-    public function render(Catalog $catalog, DockerClient $docker)
+    public function render(Catalog $catalog, DockerClient $docker, CoreUpdater $core)
     {
+        $core->finish();
+        $coreStatus = $core->status();
         $error = null;
         try {
             $definitions = $catalog->all();
@@ -74,7 +103,8 @@ class Index extends Component
             'installed' => $installed,
             'catalogError' => $error,
             'dockerOk' => $docker->available(),
-            'polling' => $installed->contains(fn (InstalledApp $a) => $a->isTransitional()),
+            'core' => $coreStatus,
+            'polling' => $coreStatus['running'] !== null || $installed->contains(fn (InstalledApp $a) => $a->isTransitional()),
         ]);
     }
 

@@ -39,6 +39,16 @@ async function copyToClipboard(value) {
     }
 }
 
+// While Core restarts (self update) the poll requests fail with 502 from a reverse proxy:
+// no error dialog for those, the page reloads itself once Core is back.
+document.addEventListener('livewire:init', () => {
+    window.Livewire.interceptRequest(({ onError }) => {
+        onError(({ preventDefault }) => {
+            if (window.pk95Restarting) preventDefault();
+        });
+    });
+});
+
 document.addEventListener('alpine:init', () => {
     registerProxyMap(window.Alpine);
     const Alpine = window.Alpine;
@@ -126,6 +136,43 @@ document.addEventListener('alpine:init', () => {
             this.show = true;
             clearTimeout(this.timer);
             if (this.kind === 'success') this.timer = setTimeout(() => { this.show = false; }, 4000);
+        },
+    }));
+
+    // ---- Core restarting after a self update ---------------------------------------------
+    // Waits until /up has been unreachable once and answers again, then reloads the page. The
+    // card carries data-running while the server knows of a running update; when it vanishes
+    // before Core ever went down (it was current), waiting ends without a reload.
+    Alpine.data('coreRestart', (running) => ({
+        waiting: false,
+        init() {
+            if (running) this.start();
+        },
+        start() {
+            if (this.waiting) return;
+            this.waiting = true;
+            this.wait();
+        },
+        async wait() {
+            window.pk95Restarting = true;
+            let down = false;
+            const until = Date.now() + 10 * 60 * 1000;
+            while (Date.now() < until) {
+                await new Promise((resolve) => setTimeout(resolve, 3000));
+                if (!down && this.$root.dataset.running === undefined) {
+                    window.pk95Restarting = false;
+                    this.waiting = false;
+                    return;
+                }
+                try {
+                    const response = await fetch('/up', { cache: 'no-store' });
+                    if (!response.ok) down = true;
+                    else if (down) break;
+                } catch (e) {
+                    down = true;
+                }
+            }
+            window.location.reload();
         },
     }));
 

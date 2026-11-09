@@ -50,6 +50,15 @@ return [
     'host_core_url' => env('PK95_HOST_CORE_URL', 'http://127.0.0.1:8080'),
 
     /*
+    | Core updating itself: Core cannot replace its own container, so a short-lived helper
+    | container with the docker CLI runs "docker compose pull/up" for the compose project Core
+    | was started from, checks /up of the new Core and goes back to the old image otherwise.
+    | core_container is the fallback name when the hostname does not identify the container.
+    */
+    'core_container' => env('PK95_CORE_CONTAINER', 'pk95core'),
+    'updater_image' => env('PK95_UPDATER_IMAGE', 'docker:28-cli'),
+
+    /*
     | Container and volume names: <prefix><app id>.
     */
     'container_prefix' => 'pk95-',

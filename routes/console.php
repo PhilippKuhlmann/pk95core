@@ -7,6 +7,7 @@ use App\Models\InstalledApp;
 use App\Services\Apps\AppManager;
 use App\Services\Automation\Linker;
 use App\Services\Docker\DockerClient;
+use App\Services\Updates\CoreUpdater;
 use App\Services\Updates\UpdateService;
 use App\Support\Settings;
 use Illuminate\Support\Facades\Artisan;
@@ -20,7 +21,13 @@ Schedule::command('pk95:maintenance')->everyMinute()->withoutOverlapping();
 // Proxy hosts waiting for DNS are switched on once the domain points here.
 Schedule::command('pk95:links')->everyTenMinutes()->withoutOverlapping();
 
-Artisan::command('pk95:check-updates', function (UpdateService $updates) {
+Artisan::command('pk95:check-updates', function (UpdateService $updates, CoreUpdater $core) {
+    try {
+        $found = $core->container() !== null ? $core->check() : null;
+        $this->line('core: '.($found ? 'Update verfügbar ('.CoreUpdater::describe($found).')' : 'aktuell'));
+    } catch (Throwable $e) {
+        $this->warn("core: {$e->getMessage()}");
+    }
     foreach (InstalledApp::query()->get() as $app) {
         try {
             $found = $updates->check($app);
@@ -82,11 +89,15 @@ Artisan::command('pk95:recover', function () {
     $this->line("==> {$stuck->count()} unterbrochene Vorgänge zurückgesetzt");
 })->purpose('Unterbrochene App-Vorgänge als fehlgeschlagen markieren');
 
-Artisan::command('pk95:sync', function (AppManager $manager, DockerClient $docker) {
+Artisan::command('pk95:sync', function (AppManager $manager, DockerClient $docker, CoreUpdater $core) {
     if (! $docker->available()) {
         $this->warn('Docker ist nicht erreichbar.');
 
         return 1;
+    }
+    // A self update of Core that has ended: record its outcome (runs in the new Core).
+    if ($result = $core->finish()) {
+        $this->line("core: Update {$result}");
     }
     foreach (InstalledApp::query()->get() as $app) {
         try {

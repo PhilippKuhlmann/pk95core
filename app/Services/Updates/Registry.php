@@ -67,6 +67,33 @@ class Registry
     }
 
     /**
+     * Labels of image:tag in the registry (org.opencontainers.image.revision, ….created): manifest
+     * (for an index the linux/amd64 entry) → config blob. Empty when the image has none.
+     *
+     * @return array<string, string>
+     */
+    public function labels(string $image, string $tag): array
+    {
+        ['registry' => $registry, 'repo' => $repo] = self::parse($image);
+        $accept = ['Accept' => implode(', ', self::MANIFEST_TYPES)];
+        $manifest = $this->request('GET', "https://{$registry}/v2/{$repo}/manifests/".rawurlencode($tag), [], $accept)->json();
+
+        if (isset($manifest['manifests'])) {
+            $entry = collect($manifest['manifests'])->first(fn ($m) => ($m['platform']['os'] ?? '') === 'linux' && ($m['platform']['architecture'] ?? '') === 'amd64');
+            if ($entry === null) {
+                return [];
+            }
+            $manifest = $this->request('GET', "https://{$registry}/v2/{$repo}/manifests/{$entry['digest']}", [], $accept)->json();
+        }
+        $config = $manifest['config']['digest'] ?? null;
+        if (! is_string($config)) {
+            return [];
+        }
+
+        return array_map('strval', (array) ($this->request('GET', "https://{$registry}/v2/{$repo}/blobs/{$config}")->json('config.Labels') ?? []));
+    }
+
+    /**
      * @param  array<string, mixed>  $query
      * @param  array<string, string>  $headers
      */
