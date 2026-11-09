@@ -114,7 +114,7 @@
                                         </x-input.button>
                                         <x-input.button type="button" size="sm" color="gray" wire:click="edit({{ $l['id'] }})">Bearbeiten</x-input.button>
                                         <x-input.button type="button" size="sm" color="gray" aria-label="{{ $l['name'] }} entfernen"
-                                            x-on:click="$store.confirm.ask({ title: 'Liste entfernen?', text: @js($l['name'].' wird entfernt. Ihre Regeln gelten danach nicht mehr.'), button: 'Entfernen', ok: () => $wire.delete({{ $l['id'] }}) })">
+                                            x-on:click="$store.confirm.ask({ title: 'Liste entfernen?', text: {{ Js::from($l['name'].' wird entfernt. Ihre Regeln gelten danach nicht mehr.') }}, button: 'Entfernen', ok: () => $wire.delete({{ $l['id'] }}) })">
                                             <x-icon name="trash" class="h-4 w-4" />
                                         </x-input.button>
                                     </div>

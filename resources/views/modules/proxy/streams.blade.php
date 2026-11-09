@@ -126,7 +126,7 @@
                                 <div class="flex justify-end gap-1">
                                     <x-input.button type="button" size="sm" color="gray" wire:click="edit({{ $x['id'] }})">Bearbeiten</x-input.button>
                                     <x-input.button type="button" size="sm" color="gray" aria-label="{{ $x['name'] }} löschen"
-                                        x-on:click="$store.confirm.ask({ title: 'Stream löschen?', text: @js($x['name'].' auf Port '.$x['listen_port'].' wird geschlossen, laufende Verbindungen werden getrennt.'), button: 'Löschen', ok: () => $wire.delete({{ $x['id'] }}) })">
+                                        x-on:click="$store.confirm.ask({ title: 'Stream löschen?', text: {{ Js::from($x['name'].' auf Port '.$x['listen_port'].' wird geschlossen, laufende Verbindungen werden getrennt.') }}, button: 'Löschen', ok: () => $wire.delete({{ $x['id'] }}) })">
                                         <x-icon name="trash" class="h-4 w-4" />
                                     </x-input.button>
                                 </div>

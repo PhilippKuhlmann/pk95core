@@ -122,7 +122,7 @@
                                     <x-input.button type="button" size="sm" color="gray" wire:click="edit({{ $l['id'] }})">Bearbeiten</x-input.button>
                                     @unless ($l['is_internal'])
                                         <x-input.button type="button" size="sm" color="gray" aria-label="{{ $l['name'] }} löschen"
-                                            x-on:click="$store.confirm.ask({ title: 'Liste löschen?', text: @js($l['name'].' wird gelöscht.'), button: 'Löschen', ok: () => $wire.delete({{ $l['id'] }}) })">
+                                            x-on:click="$store.confirm.ask({ title: 'Liste löschen?', text: {{ Js::from($l['name'].' wird gelöscht.') }}, button: 'Löschen', ok: () => $wire.delete({{ $l['id'] }}) })">
                                             <x-icon name="trash" class="h-4 w-4" />
                                         </x-input.button>
                                     @endunless

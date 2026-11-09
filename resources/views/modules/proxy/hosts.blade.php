@@ -297,7 +297,7 @@
                                     @endif
                                     <x-input.button type="button" size="sm" color="gray" wire:click="edit({{ $x['id'] }})">Bearbeiten</x-input.button>
                                     <x-input.button type="button" size="sm" color="gray" aria-label="{{ $x['domains'][0] }} löschen"
-                                        x-on:click="$store.confirm.ask({ title: @js($x['domains'][0].' löschen?'), text: 'Die Domain ist danach sofort nicht mehr erreichbar. Bisherige Zugriffsdaten bleiben erhalten.', button: 'Löschen', ok: () => $wire.delete({{ $x['id'] }}) })">
+                                        x-on:click="$store.confirm.ask({ title: {{ Js::from($x['domains'][0].' löschen?') }}, text: 'Die Domain ist danach sofort nicht mehr erreichbar. Bisherige Zugriffsdaten bleiben erhalten.', button: 'Löschen', ok: () => $wire.delete({{ $x['id'] }}) })">
                                         <x-icon name="trash" class="h-4 w-4" />
                                     </x-input.button>
                                 </div>

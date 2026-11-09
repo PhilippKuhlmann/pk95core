@@ -88,11 +88,11 @@
                                         <x-input.button type="button" size="sm" color="gray" wire:click="download({{ $c['id'] }}, 'fullchain.pem')">Zertifikat</x-input.button>
                                         <x-input.button type="button" size="sm" color="gray"
                                             x-on:click="$store.confirm.ask({ title: 'Privaten Schlüssel herunterladen?', tone: 'blue', button: 'Herunterladen',
-                                                text: @js('Wer den Schlüssel hat, kann sich als '.$c['domain'].' ausgeben. Speichere ihn nur dort, wo er gebraucht wird.'.($secure ? '' : ' PK95 Core läuft über HTTP: Der Schlüssel geht unverschlüsselt durch dein Netz. Lade ihn nur aus einem Netz herunter, dem du vertraust, nicht über öffentliches WLAN.')),
+                                                text: {{ Js::from('Wer den Schlüssel hat, kann sich als '.$c['domain'].' ausgeben. Speichere ihn nur dort, wo er gebraucht wird.'.($secure ? '' : ' PK95 Core läuft über HTTP: Der Schlüssel geht unverschlüsselt durch dein Netz. Lade ihn nur aus einem Netz herunter, dem du vertraust, nicht über öffentliches WLAN.')) }},
                                                 ok: () => $wire.download({{ $c['id'] }}, 'privkey.pem') })">Schlüssel</x-input.button>
                                     @endif
                                     <x-input.button type="button" size="sm" color="gray" aria-label="{{ $c['domain'] }} löschen"
-                                        x-on:click="$store.confirm.ask({ title: 'Eintrag löschen?', button: 'Löschen', text: @js('Die Dateien für '.$c['domain'].' verschwinden hier, und Caddy erneuert das Zertifikat nicht mehr, außer ein Host nutzt dieselbe Domain. Anwendungen, die es schon nutzen, laufen damit bis zum Ablauf weiter.'), ok: () => $wire.deleteAcme({{ $c['id'] }}) })">
+                                        x-on:click="$store.confirm.ask({ title: 'Eintrag löschen?', button: 'Löschen', text: {{ Js::from('Die Dateien für '.$c['domain'].' verschwinden hier, und Caddy erneuert das Zertifikat nicht mehr, außer ein Host nutzt dieselbe Domain. Anwendungen, die es schon nutzen, laufen damit bis zum Ablauf weiter.') }}, ok: () => $wire.deleteAcme({{ $c['id'] }}) })">
                                         <x-icon name="trash" class="h-4 w-4" />
                                     </x-input.button>
                                 </div>
@@ -138,7 +138,7 @@
                             <td class="whitespace-nowrap py-2 pr-3"><span class="flex items-center gap-2"><span class="h-2 w-2 rounded-full {{ Fmt::dot($tone) }}"></span>{{ $text }}</span></td>
                             <td class="py-2 text-right">
                                 <x-input.button type="button" size="sm" color="gray" aria-label="{{ $c['name'] }} löschen"
-                                    x-on:click="$store.confirm.ask({ title: 'Zertifikat löschen?', button: 'Löschen', text: @js($c['name'].' wird entfernt. Für öffentliche Domains holt Caddy dann automatisch ein Zertifikat, das dauert einen Moment.'), ok: () => $wire.deleteCert({{ $c['id'] }}) })">
+                                    x-on:click="$store.confirm.ask({ title: 'Zertifikat löschen?', button: 'Löschen', text: {{ Js::from($c['name'].' wird entfernt. Für öffentliche Domains holt Caddy dann automatisch ein Zertifikat, das dauert einen Moment.') }}, ok: () => $wire.deleteCert({{ $c['id'] }}) })">
                                     <x-icon name="trash" class="h-4 w-4" />
                                 </x-input.button>
                             </td>
