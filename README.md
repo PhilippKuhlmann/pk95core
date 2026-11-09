@@ -10,7 +10,8 @@ Proxmox-Host
    ├─ pk95core        ← diese App (Port 8080), steuert Docker über den Socket
    ├─ pk95-uptime     ← PK95 Uptime
    ├─ pk95-proxapps   ← ProxApps
-   └─ pk95-proxy      ← PK95 Proxy (host network, 80/443)
+   ├─ pk95-proxy      ← PK95 Proxy (host network, 80/443)
+   └─ pk95-dns        ← PK95 DNS (host network, 53)
 ```
 
 ## Installation auf Proxmox (ein Befehl)
@@ -38,8 +39,8 @@ und neu abgefragt. Danach erledigt das Skript alles allein:
 3. installiert darin Docker und startet PK95 Core,
 4. zeigt die Adresse und den **Einrichtungscode** an.
 
-Danach `http://<IP>:8080` öffnen, den Code eingeben, das Admin-Konto anlegen und unter **Apps** PK95 Proxy, Uptime
-und ProxApps aktivieren.
+Danach `http://<IP>:8080` öffnen, den Code eingeben, das Admin-Konto anlegen und unter **Apps** PK95 Proxy, Uptime,
+DNS und ProxApps aktivieren.
 
 **Vorschläge vorbelegen** lassen sich mit Variablen vor dem Befehl. Ohne Terminal (z. B. aus einem anderen Skript)
 läuft die Installation mit ihnen ganz ohne Fragen:
@@ -89,5 +90,7 @@ Ohne Docker-Socket läuft die Oberfläche trotzdem. Sie meldet dann „Docker is
 - [x] Phase 5: PK95 Proxy containerisieren und anbinden (Modul `Proxy`, Core-Modus im Panel)
 - [x] Automatik: Mit ProxApps ausgerollte Apps bekommen einen Proxy-Host (aktiv, sobald DNS passt) und
   Monitore in PK95 Uptime; beim Entfernen räumt Core beides wieder ab
+- [ ] Phase 6: PK95 DNS anbinden (DNS-Filter wie AdGuard Home / Pi-hole, Modul `Dns`; Seiten fertig, die App
+  selbst entsteht im Repo pk95dns)
 - [x] Core aktualisiert sich selbst: unter Apps → PK95 Core, mit Rückkehr zur vorigen Version, wenn die neue
   nicht startet

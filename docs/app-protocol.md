@@ -1,6 +1,6 @@
 # PK95 App-Protokoll v1
 
-Vertrag zwischen PK95 Core und den Apps (PK95 Uptime, ProxApps, PK95 Proxy, …).
+Vertrag zwischen PK95 Core und den Apps (PK95 Uptime, ProxApps, PK95 Proxy, PK95 DNS, …).
 Eine App, die ihn erfüllt, kann Core als Container starten und in seiner Oberfläche verwalten.
 
 ## 1. Core-Modus
@@ -121,7 +121,7 @@ port: 3001
 icon: signal
 module: uptime          # Core-Modul (config/pk95.php → modules)
 health: /core/health    # Standard
-network_mode: bridge    # oder host (PK95 Proxy)
+network_mode: bridge    # oder host (PK95 Proxy, PK95 DNS)
 cap_add: []             # z. B. [NET_ADMIN, NET_RAW]
 ports: []               # veröffentlichte Ports "host:container[/udp]" (nur bridge)
 sysctls:                # nur net.*, nur bridge – z. B. Ping ohne NET_RAW:

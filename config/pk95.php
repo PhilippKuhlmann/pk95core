@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Dns\DnsModule;
 use App\Modules\ProxApps\ProxAppsModule;
 use App\Modules\Proxy\ProxyModule;
 use App\Modules\Uptime\UptimeModule;
@@ -82,6 +83,7 @@ return [
         'uptime' => UptimeModule::class,
         'proxapps' => ProxAppsModule::class,
         'proxy' => ProxyModule::class,
+        'dns' => DnsModule::class,
     ],
 
     /*
