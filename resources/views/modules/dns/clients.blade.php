@@ -100,7 +100,7 @@
                                 <div class="flex justify-end gap-1">
                                     <x-input.button type="button" size="sm" color="gray" wire:click="edit({{ $c['id'] }})">Bearbeiten</x-input.button>
                                     <x-input.button type="button" size="sm" color="gray" aria-label="{{ $c['name'] }} löschen"
-                                        x-on:click="$store.confirm.ask({ title: 'Client löschen?', text: @js($c['name'].' wird gelöscht. Für seine Adressen gelten danach die globalen Einstellungen.'), button: 'Löschen', ok: () => $wire.delete({{ $c['id'] }}) })">
+                                        x-on:click="$store.confirm.ask({ title: 'Client löschen?', text: {{ Js::from($c['name'].' wird gelöscht. Für seine Adressen gelten danach die globalen Einstellungen.') }}, button: 'Löschen', ok: () => $wire.delete({{ $c['id'] }}) })">
                                         <x-icon name="trash" class="h-4 w-4" />
                                     </x-input.button>
                                 </div>

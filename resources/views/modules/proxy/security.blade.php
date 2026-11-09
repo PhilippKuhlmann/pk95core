@@ -73,7 +73,7 @@
             <div class="grid max-h-80 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-x-1 overflow-y-auto p-1.5" role="group" aria-label="Länder">
                 @foreach ($codes as $c)
                     <label wire:key="cty-{{ $c }}" title="{{ $names[$c] }}"
-                        x-show="!q || @js(mb_strtolower($names[$c])).includes(q.toLowerCase()) || q.toUpperCase() === '{{ $c }}'"
+                        x-show="!q || {{ Js::from(mb_strtolower($names[$c])) }}.includes(q.toLowerCase()) || q.toUpperCase() === '{{ $c }}'"
                         class="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm text-gray-700 hover:bg-gray-100 has-checked:bg-cerulean-50 has-checked:text-cerulean-900 dark:text-gray-300 dark:hover:bg-gray-700/60 dark:has-checked:bg-cerulean-950/60 dark:has-checked:text-cerulean-100">
                         <input type="checkbox" value="{{ $c }}" wire:model.live="{{ $listProp }}"
                             class="rounded border-gray-300 text-cerulean-600 focus:ring-cerulean-500 dark:border-gray-600 dark:bg-gray-700">
@@ -89,7 +89,7 @@
 
         <div class="mt-4 flex items-center gap-3">
             <x-input.button type="button" :disabled="$same || $busy || ($mode === 'allow' && ! $current)"
-                x-on:click="$store.confirm.ask({ title: @js($mode === 'allow' ? 'Freigabe übernehmen?' : 'Ländersperre übernehmen?'), tone: 'blue', button: 'Übernehmen', text: @js($confirmText), ok: () => $wire.saveCountries() })">Übernehmen</x-input.button>
+                x-on:click="$store.confirm.ask({ title: {{ Js::from($mode === 'allow' ? 'Freigabe übernehmen?' : 'Ländersperre übernehmen?') }}, tone: 'blue', button: 'Übernehmen', text: {{ Js::from($confirmText) }}, ok: () => $wire.saveCountries() })">Übernehmen</x-input.button>
             @unless ($same)<span class="text-xs text-gray-500">Noch nicht übernommen</span>@endunless
         </div>
     </x-panel>
@@ -140,7 +140,7 @@
                     <div class="flex shrink-0 items-center gap-2">
                         @if (! empty($l['custom']))
                             <x-input.button type="button" size="sm" color="gray" aria-label="{{ $l['name'] }} löschen"
-                                x-on:click="$store.confirm.ask({ title: 'Liste löschen?', button: 'Löschen', text: @js($l['name'].' wird entfernt, die Adressen daraus sind danach nicht mehr gesperrt.'), ok: () => $wire.deleteBlocklist(@js($l['id'])) })">
+                                x-on:click="$store.confirm.ask({ title: 'Liste löschen?', button: 'Löschen', text: {{ Js::from($l['name'].' wird entfernt, die Adressen daraus sind danach nicht mehr gesperrt.') }}, ok: () => $wire.deleteBlocklist({{ Js::from($l['id']) }}) })">
                                 <x-icon name="trash" class="h-4 w-4" />
                             </x-input.button>
                         @endif
@@ -148,7 +148,7 @@
                             <x-proxy.switch :on="true" :label="$l['name']" disabled class="opacity-50" />
                         @elseif (! $on && ($l['warning'] ?? ''))
                             <x-proxy.switch :on="false" :label="$l['name']"
-                                x-on:click="$store.confirm.ask({ title: @js($l['name'].' einschalten?'), tone: 'blue', button: 'Einschalten', text: @js($l['warning']), ok: () => $wire.setBlocklist(@js($l['id']), true) })" />
+                                x-on:click="$store.confirm.ask({ title: {{ Js::from($l['name'].' einschalten?') }}, tone: 'blue', button: 'Einschalten', text: {{ Js::from($l['warning']) }}, ok: () => $wire.setBlocklist({{ Js::from($l['id']) }}, true) })" />
                         @else
                             <x-proxy.switch :on="$on" :label="$l['name']" wire:click="setBlocklist({{ Js::from($l['id']) }}, {{ $on ? 'false' : 'true' }})" />
                         @endif
@@ -193,9 +193,9 @@
                                 <td class="whitespace-nowrap py-1.5 pr-3">{{ ($b['expires_at'] ?? 0) ? Fmt::stamp($b['expires_at']) : 'Dauerhaft' }}</td>
                                 <td class="whitespace-nowrap py-1.5 text-right">
                                     <x-input.button type="button" size="sm" color="gray"
-                                        x-on:click="$store.confirm.ask({ title: 'Sperre aufheben?', tone: 'blue', button: 'Aufheben', text: @js($b['ip'].' wird entsperrt. Macht die Adresse weiter, wird sie erneut gesperrt.'), ok: () => $wire.removeBan(@js($b['ip']), false) })">Aufheben</x-input.button>
+                                        x-on:click="$store.confirm.ask({ title: 'Sperre aufheben?', tone: 'blue', button: 'Aufheben', text: {{ Js::from($b['ip'].' wird entsperrt. Macht die Adresse weiter, wird sie erneut gesperrt.') }}, ok: () => $wire.removeBan({{ Js::from($b['ip']) }}, false) })">Aufheben</x-input.button>
                                     <x-input.button type="button" size="sm" color="gray"
-                                        x-on:click="$store.confirm.ask({ title: 'Nie mehr sperren?', tone: 'blue', button: 'Nie mehr sperren', text: @js($b['ip'].' wird entsperrt und kommt auf die Liste „Nie sperren“.'), ok: () => $wire.removeBan(@js($b['ip']), true) })">Nie sperren</x-input.button>
+                                        x-on:click="$store.confirm.ask({ title: 'Nie mehr sperren?', tone: 'blue', button: 'Nie mehr sperren', text: {{ Js::from($b['ip'].' wird entsperrt und kommt auf die Liste „Nie sperren“.') }}, ok: () => $wire.removeBan({{ Js::from($b['ip']) }}, true) })">Nie sperren</x-input.button>
                                 </td>
                             </tr>
                         @endforeach

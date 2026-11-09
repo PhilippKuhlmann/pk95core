@@ -167,6 +167,8 @@ class ProxyModuleTest extends FeatureTestCase
             foreach ($texts as $text) {
                 $response->assertSee($text, false);
             }
+            // @js() inside <x-…> attributes is not compiled and would end up as broken JS
+            $response->assertDontSee('@js(', false);
         }
     }
 
