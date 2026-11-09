@@ -89,3 +89,5 @@ Ohne Docker-Socket läuft die Oberfläche trotzdem. Sie meldet dann „Docker is
 - [x] Phase 5: PK95 Proxy containerisieren und anbinden (Modul `Proxy`, Core-Modus im Panel)
 - [x] Automatik: Mit ProxApps ausgerollte Apps bekommen einen Proxy-Host (aktiv, sobald DNS passt) und
   Monitore in PK95 Uptime; beim Entfernen räumt Core beides wieder ab
+- [x] Core aktualisiert sich selbst: unter Apps → PK95 Core, mit Rückkehr zur vorigen Version, wenn die neue
+  nicht startet
