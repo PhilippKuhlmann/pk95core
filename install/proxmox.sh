@@ -28,7 +28,8 @@ command -v pct >/dev/null && command -v pveam >/dev/null && command -v pvesh >/d
 # The container needs the Core image without a login (ghcr.io, public package). Check before
 # anything is created, otherwise the installation would stop half way.
 IMAGE_REPO="${PK95_IMAGE_REPO:-philippkuhlmann/pk95core}"
-ghcr_token="$(curl -fsS "https://ghcr.io/token?scope=repository:${IMAGE_REPO}:pull" 2>/dev/null | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')"
+# No -f: for a private image the token endpoint itself answers with an error.
+ghcr_token="$(curl -s "https://ghcr.io/token?scope=repository:${IMAGE_REPO}:pull" 2>/dev/null | sed -n 's/.*"token":"\([^"]*\)".*/\1/p' || true)"
 ghcr_code="$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${ghcr_token}" \
   -H 'Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.v2+json' \
   "https://ghcr.io/v2/${IMAGE_REPO}/manifests/latest" || true)"
