@@ -13,7 +13,47 @@ Proxmox-Host
    └─ pk95-proxy      ← PK95 Proxy (host network, 80/443)
 ```
 
-- **Einrichtung im LXC:** [docs/lxc-setup.md](docs/lxc-setup.md)
+## Installation auf Proxmox (ein Befehl)
+
+Auf dem **Proxmox-Host** als `root` in der Shell (Weboberfläche → Node → „Shell“) einfügen:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/PhilippKuhlmann/pk95core/main/install/proxmox.sh)"
+```
+
+Das Skript fragt einmal nach und erledigt dann alles allein:
+
+1. lädt bei Bedarf die Debian-13-Vorlage,
+2. legt einen unprivilegierten LXC an (2 Kerne, 2 GB RAM, 16 GB, DHCP auf `vmbr0`, Nesting und Keyctl für Docker,
+   startet mit dem Host),
+3. installiert darin Docker und startet PK95 Core,
+4. zeigt die Adresse und den **Einrichtungscode** an.
+
+Danach `http://<IP>:8080` öffnen, den Code eingeben, das Admin-Konto anlegen und unter **Apps** PK95 Proxy, Uptime
+und ProxApps aktivieren.
+
+**Eigene Werte** stehen als Variablen vor dem Befehl, zum Beispiel eine feste Adresse:
+
+```bash
+CTID=250 IP=10.10.250.50/24 GW=10.10.250.1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/PhilippKuhlmann/pk95core/main/install/proxmox.sh)"
+```
+
+| Variable | Standard | Bedeutung |
+|---|---|---|
+| `CTID` | nächste freie ID | ID des Containers |
+| `CT_HOSTNAME` | `pk95core` | Hostname |
+| `CORES` / `MEMORY` / `DISK` | `2` / `2048` / `16` | Kerne, RAM in MB, Disk in GB |
+| `STORAGE` | `local-lvm`, sonst `local-zfs`, sonst der erste passende | Speicher für die Disk |
+| `TEMPLATE_STORAGE` | `local` | Speicher der Vorlagen |
+| `BRIDGE` / `VLAN` | `vmbr0` / – | Netzwerk |
+| `IP` / `GW` | `dhcp` / – | feste Adresse mit Präfix (`10.10.250.50/24`) und Gateway |
+
+Läuft Core später unter einer Domain hinter einem Reverse Proxy, siehe
+[docs/lxc-setup.md → Hinter einem Reverse Proxy](docs/lxc-setup.md#hinter-einem-reverse-proxy-https).
+
+## Dokumentation
+
+- **Einrichtung von Hand:** [docs/lxc-setup.md](docs/lxc-setup.md)
 - **Vertrag für Apps:** [docs/app-protocol.md](docs/app-protocol.md)
 - **Katalog:** `catalog/<id>.yaml`
 - **Module (Seiten einer App in Core):** `app/Modules/<App>/`, eingetragen in `config/pk95.php`
@@ -35,5 +75,7 @@ Ohne Docker-Socket läuft die Oberfläche trotzdem. Sie meldet dann „Docker is
 - [x] Phase 2: PK95 Uptime anbinden (Core-Modus in der App, Modul `Uptime`)
 - [x] Phase 3: Ereignisse und zentrale Benachrichtigungen (Telegram, E-Mail, ntfy, Webhook), Update-Prüfung
   gegen die Registry mit Regeln und Rückkehr bei Fehlern, Sicherungen der App-Volumes mit Wiederherstellung
-- [ ] Phase 4: ProxApps anbinden
-- [ ] Phase 5: PK95 Proxy containerisieren und anbinden
+- [x] Phase 4: ProxApps anbinden (alle Seiten über eine Komponenten-Brücke)
+- [x] Phase 5: PK95 Proxy containerisieren und anbinden (Modul `Proxy`, Core-Modus im Panel)
+- [x] Automatik: Mit ProxApps ausgerollte Apps bekommen einen Proxy-Host (aktiv, sobald DNS passt) und
+  Monitore in PK95 Uptime; beim Entfernen räumt Core beides wieder ab
