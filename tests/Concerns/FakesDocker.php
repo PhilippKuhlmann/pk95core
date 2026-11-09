@@ -14,13 +14,14 @@ trait FakesDocker
 {
     /**
      * images: ref → true or extra inspect fields (RepoDigests); helperRuns: commands of helper
-     * containers; brokenImage: image whose app never gets healthy (rollback tests).
+     * containers; brokenImage: image whose app never gets healthy (rollback tests);
+     * helperOutput: what helper containers print (null = the demo log lines).
      *
      * @var array<string, mixed>
      */
     protected array $docker = [
         'containers' => [], 'volumes' => [], 'networks' => [], 'images' => [], 'pullError' => null, 'reachable' => true,
-        'helperExit' => 0, 'helperRuns' => [], 'brokenImage' => null,
+        'helperExit' => 0, 'helperRuns' => [], 'brokenImage' => null, 'helperOutput' => null,
     ];
 
     protected bool $appHealthy = true;
@@ -150,6 +151,7 @@ trait FakesDocker
                     'State' => ['Running' => $this->docker['containers'][$id]['running'], 'ExitCode' => 0],
                 ]),
                 $action === 'wait' => Http::response(['StatusCode' => $this->runHelper($this->docker['containers'][$id]['spec'])]),
+                $action === 'logs' && $this->docker['helperOutput'] !== null && isset($this->docker['containers'][$id]['spec']['Labels']['pk95.helper']) => Http::response(self::frame(1, '2026-11-08T10:00:00Z '.$this->docker['helperOutput']."\n")),
                 $action === 'logs' => Http::response(self::frame(1, "2026-11-08T10:00:00Z server listening on :8080\n").self::frame(2, "2026-11-08T10:00:01Z warn: demo mode\n")),
                 default => Http::response(['message' => 'unhandled'], 500),
             };
@@ -193,7 +195,7 @@ trait FakesDocker
     {
         $cmd = (array) ($spec['Cmd'] ?? []);
         $mounts = (array) ($spec['HostConfig']['Mounts'] ?? []);
-        $this->docker['helperRuns'][] = ['cmd' => $cmd, 'mounts' => $mounts];
+        $this->docker['helperRuns'][] = ['cmd' => $cmd, 'mounts' => $mounts, 'network' => $spec['HostConfig']['NetworkMode'] ?? null];
         if ($this->docker['helperExit'] === 0 && ($cmd[1] ?? null) === 'czf') {
             $bind = collect($mounts)->firstWhere('Type', 'bind');
             file_put_contents($bind['Source'].'/'.basename((string) $cmd[2]), str_repeat('x', 2048));

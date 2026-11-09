@@ -112,9 +112,10 @@ class DockerClient
      *
      * @param  list<string>  $cmd
      * @param  list<array<string, mixed>>  $mounts  Docker "Mounts" entries
+     * @param  string  $network  "none", or "host" to look at the network of the Docker host
      * @return array{exit: int, output: string}
      */
-    public function run(string $image, array $cmd, array $mounts, int $timeout = 3600): array
+    public function run(string $image, array $cmd, array $mounts, int $timeout = 3600, string $network = 'none'): array
     {
         if ($this->inspectImage($image) === null) {
             [$name, $tag] = str_contains($image, ':') ? explode(':', $image, 2) : [$image, 'latest'];
@@ -124,7 +125,7 @@ class DockerClient
             'Image' => $image,
             'Cmd' => $cmd,
             'Labels' => ['pk95.managed' => '1', 'pk95.helper' => '1'],
-            'HostConfig' => ['Mounts' => $mounts, 'NetworkMode' => 'none'],
+            'HostConfig' => ['Mounts' => $mounts, 'NetworkMode' => $network],
         ]);
         try {
             $this->startContainer($id);

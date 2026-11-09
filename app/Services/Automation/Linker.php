@@ -8,18 +8,22 @@ use App\Models\InstalledApp;
 use App\Modules\Proxy\Hosts;
 use App\Services\Apps\AppException;
 use App\Support\Settings;
+use Illuminate\Http\Client\Response;
 use Throwable;
 
 /**
  * Links a deployed app with the other apps: a public proxy host in PK95 Proxy (enabled
- * once the domain points to the public IP) and two monitors in PK95 Uptime (the internal
- * target and the domain). Removing the deployment removes both again.
+ * once the domain points to the public IP), a local DNS record in PK95 DNS (same domain →
+ * LAN IP of the proxy, so the LAN reaches the app without a detour over the router) and
+ * two monitors in PK95 Uptime (the internal target and the domain). Removing the
+ * deployment removes all of it again. Each part fails on its own: a missing or unreachable
+ * app only leaves a note, and the DNS record can be caught up later (syncDns).
  */
 class Linker
 {
     public const GROUP = 'Apps';
 
-    public function __construct(private readonly Dns $dns) {}
+    public function __construct(private readonly Dns $dns, private readonly LanIp $lanIp) {}
 
     /**
      * deployment.succeeded of ProxApps.
@@ -64,6 +68,8 @@ class Linker
             $notes[] = 'Keine Domain angegeben: kein Proxy-Host.';
         }
 
+        $this->ensureRecord($link);
+
         $uptime = $this->app('uptime', 'automation_uptime');
         if ($uptime && ! $link->monitor_ids) {
             try {
@@ -82,13 +88,14 @@ class Linker
         $link->message = $notes ? implode(' ', $notes) : null;
         $link->save();
 
+        $details = trim(implode(' ', array_filter([$link->message, $link->dns_message])));
         $title = match ($link->state) {
             AppLink::ACTIVE => "{$link->name} ist unter {$this->where($link)} eingerichtet",
             AppLink::PENDING_DNS => "{$link->name}: {$link->domain} wartet auf DNS",
             default => "{$link->name} konnte nicht automatisch eingerichtet werden",
         };
-        AppEvent::record(AppEvent::CORE, 'core.link.'.$link->state, $link->state === AppLink::FAILED ? 'warning' : ($link->state === AppLink::PENDING_DNS ? 'warning' : 'info'),
-            $title, $link->message, ['link' => $link->id, 'domain' => $link->domain]);
+        AppEvent::record(AppEvent::CORE, 'core.link.'.$link->state, $link->state === AppLink::ACTIVE && $link->dns_message === null ? 'info' : 'warning',
+            $title, $details !== '' ? $details : null, ['link' => $link->id, 'domain' => $link->domain]);
 
         return $link;
     }
@@ -160,14 +167,118 @@ class Linker
                 $notes[] = $this->delete($uptime, '/api/monitors/'.rawurlencode($monitor), 'Monitor');
             }
         }
+        if ($link->dns_record_id) {
+            $dnsApp = $this->app('dns');
+            $notes[] = $dnsApp ? $this->delete($dnsApp, '/api/rewrites/'.$link->dns_record_id, 'DNS-Eintrag')
+                : "DNS-Eintrag {$link->domain} nicht gelöscht: PK95 DNS läuft nicht. Lösche ihn dort von Hand.";
+        }
         $link->update(['state' => AppLink::REMOVED, 'proxy_host_id' => null, 'monitor_ids' => [],
+            'dns_record_id' => null, 'dns_answer' => '', 'dns_message' => null,
             'message' => implode(' ', array_filter($notes)) ?: null]);
-        AppEvent::record(AppEvent::CORE, 'core.link.removed', 'info', "{$link->name}: Proxy-Host und Monitore entfernt", $link->message, ['link' => $link->id]);
+        AppEvent::record(AppEvent::CORE, 'core.link.removed', $link->message ? 'warning' : 'info',
+            "{$link->name}: Proxy-Host, DNS-Eintrag und Monitore entfernt", $link->message, ['link' => $link->id]);
 
         return $link;
     }
 
+    /**
+     * Catch up the local DNS records of deployed apps: create missing ones (DNS was missing,
+     * unreachable or installed later) and point Core's records to a changed LAN IP. Only
+     * links with a proxy host count; records Core did not create are never touched.
+     *
+     * @return array{changed: int, open: list<string>} open = domains still without a record
+     */
+    public function syncDns(): array
+    {
+        $out = ['changed' => 0, 'open' => []];
+        $links = AppLink::query()->where('state', '!=', AppLink::REMOVED)->whereNotNull('proxy_host_id')->where('domain', '!=', '')->get();
+        foreach ($links as $link) {
+            $changed = $this->ensureRecord($link);
+            $link->save();
+            if ($changed) {
+                $out['changed']++;
+                AppEvent::record(AppEvent::CORE, 'core.link.dns', 'info', "{$link->name}: lokaler DNS-Eintrag {$link->domain} → {$link->dns_answer}",
+                    null, ['link' => $link->id, 'domain' => $link->domain]);
+            }
+            if ($link->dns_message !== null) {
+                $out['open'][] = $link->domain;
+            }
+        }
+
+        return $out;
+    }
+
     // ------------------------------------------------------------------------------------
+
+    /**
+     * The local DNS record of a link: created when missing, moved to the current LAN IP when
+     * that changed. Problems end up in dns_message, never as an exception. The caller saves.
+     *
+     * @return bool something changed in PK95 DNS
+     */
+    private function ensureRecord(AppLink $link): bool
+    {
+        if ($link->domain === '' || ! $link->proxy_host_id || ! Settings::get('automation_dns')) {
+            return false;
+        }
+        $dnsApp = $this->app('dns');
+        if ($dnsApp === null) {
+            $link->dns_message = InstalledApp::query()->where('app_id', 'dns')->exists()
+                ? 'PK95 DNS läuft gerade nicht: noch kein lokaler DNS-Eintrag. Core legt ihn an, sobald DNS wieder läuft.'
+                : 'PK95 DNS ist nicht installiert: kein lokaler DNS-Eintrag. Installierst du DNS später, legt Core ihn an.';
+
+            return false;
+        }
+        $ip = $this->lanIp->current();
+        if ($ip === null) {
+            $link->dns_message = 'Die LAN-IP des Proxy ist nicht bekannt: kein lokaler DNS-Eintrag. Trag sie unter Automatik ein.';
+
+            return false;
+        }
+        $body = ['domain' => $link->domain, 'answer' => $ip, 'enabled' => true];
+        try {
+            $client = $dnsApp->client();
+            if ($link->dns_record_id) {
+                if ($link->dns_answer === $ip) {
+                    $link->dns_message = null;
+
+                    return false;
+                }
+                $response = $client->put('/api/rewrites/'.$link->dns_record_id, $body);
+                if ($response->status() !== 404) {
+                    self::ensureOk($response);
+                    $link->fill(['dns_answer' => $ip, 'dns_message' => null]);
+
+                    return true;
+                }
+                $link->dns_record_id = null; // deleted in PK95 DNS in the meantime: create it again
+            }
+            $existing = collect((array) $client->get('/api/rewrites')->json())
+                ->first(fn ($r) => strtolower((string) ($r['domain'] ?? '')) === $link->domain);
+            if ($existing !== null) {
+                $link->fill(['dns_answer' => '', 'dns_message' => "Für {$link->domain} gibt es in PK95 DNS schon einen lokalen Eintrag (→ "
+                    .($existing['answer'] ?? '?').'). Core lässt ihn unverändert.']);
+
+                return false;
+            }
+            $response = $client->post('/api/rewrites', $body);
+            self::ensureOk($response);
+            $link->fill(['dns_record_id' => (int) $response->json('id'), 'dns_answer' => $ip, 'dns_message' => null]);
+
+            return true;
+        } catch (Throwable $e) {
+            $link->dns_message = 'Lokaler DNS-Eintrag nicht angelegt: '.$e->getMessage().' Core versucht es erneut.';
+
+            return false;
+        }
+    }
+
+    private static function ensureOk(Response $response): void
+    {
+        if (! $response->successful()) {
+            throw new AppException((string) ($response->json('error') ?? 'HTTP '.$response->status()));
+        }
+    }
 
     /** The app if it runs (and the automation for it is switched on). */
     private function app(string $appId, ?string $setting = null): ?InstalledApp
