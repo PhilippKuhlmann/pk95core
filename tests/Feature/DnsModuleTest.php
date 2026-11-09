@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\InstalledApp;
 use App\Modules\Dns\Clients;
 use App\Modules\Dns\DnsModule;
+use App\Modules\Dns\Fmt;
 use App\Modules\Dns\Lists;
 use App\Modules\Dns\Overview;
 use App\Modules\Dns\QueryLog;
@@ -399,6 +400,16 @@ class DnsModuleTest extends FeatureTestCase
             ->assertSeeInOrder(['bg-gray-400', 'quic://dns.adguard-dns.com'], false);
     }
 
+    public function test_host_names_wrap_only_at_dots(): void
+    {
+        $this->assertSame('_ldap.<wbr>_tcp.<wbr>home.<wbr>lan', (string) Fmt::breakable('_ldap._tcp.home.lan'));
+        $this->assertSame('fd00:<wbr>:<wbr>5', (string) Fmt::breakable('fd00::5'));
+        $this->assertSame('a&lt;b.<wbr>lan', (string) Fmt::breakable('a<b.lan'));
+
+        $html = $this->get(route('apps.page', [$this->installed, 'records']))->assertOk()->getContent();
+        $this->assertStringNotContainsString('break-all', $html);
+    }
+
     public function test_every_page_renders_with_app_data(): void
     {
         $expect = [
@@ -407,7 +418,7 @@ class DnsModuleTest extends FeatureTestCase
             'log' => ['ads.example.net', 'Blockiert', 'AdGuard DNS filter', 'aus dem Cache', 'Mehr laden', 'Erlauben', 'Blockieren'],
             'lists' => ['AdGuard DNS filter', '61.234', 'HTTP 503', 'Erlaubnislisten'],
             'rules' => ['||ads.example.com^', 'Domain prüfen', 'Schreibweise', '2 Regeln aktiv'],
-            'records' => ['home.lan', '2026110901', 'nas.home.lan', '192.168.1.10', '+PTR', 'mail.home.lan', '_ldap._tcp.home.lan', '10 5 389',
+            'records' => ['home.lan', '2026110901', 'nas.home.lan', '192.168.1.10', '+PTR', 'mail.home.lan', '_ldap._tcp.home.lan', 'Priorität 10', 'Gewicht 5', 'Port 389',
                 'printer.example.org', 'Einzeleintrag', 'von Core', 'Einzeleinträge'],
             'services' => ['Soziale Netzwerke', 'TikTok', 'Spiele', '1 Dienst ausgewählt'],
             'clients' => ['Kinder-Tablet', '192.168.1.40', 'laptop.fritz.box', 'Als Client anlegen', 'TikTok'],
