@@ -89,9 +89,12 @@ Ohne Docker-Socket läuft die Oberfläche trotzdem. Sie meldet dann „Docker is
 - [x] Phase 4: ProxApps anbinden (alle Seiten über eine Komponenten-Brücke)
 - [x] Phase 5: PK95 Proxy containerisieren und anbinden (Modul `Proxy`, Core-Modus im Panel)
 - [x] Automatik: Mit ProxApps ausgerollte Apps bekommen einen Proxy-Host (aktiv, sobald DNS passt), einen
-  lokalen Eintrag in PK95 DNS (gleiche Domain → LAN-IP des Proxy) und Monitore in PK95 Uptime; beim Entfernen
+  DNS-Eintrag in PK95 DNS (A/AAAA: gleiche Domain → LAN-IP des Proxy, dort als „von Core“ markiert) und
+  Monitore in PK95 Uptime; beim Entfernen
   räumt Core alles wieder ab
 - [x] Phase 6: PK95 DNS anbinden (DNS-Filter wie AdGuard Home / Pi-hole, Repo pk95dns, Modul `Dns`;
   verschlüsselte Upstreams über DoH, DoH3, DoQ und DoT)
+- [x] PK95 DNS als vollwertiger DNS-Server: eigene Zonen und Einträge (A, AAAA, CNAME, MX, TXT, SRV, PTR) unter
+  „DNS-Einträge“; das Modul braucht PK95 DNS ab 1.1.0
 - [x] Core aktualisiert sich selbst: unter Apps → PK95 Core, mit Rückkehr zur vorigen Version, wenn die neue
   nicht startet

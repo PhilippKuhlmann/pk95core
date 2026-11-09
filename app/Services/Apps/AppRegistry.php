@@ -60,6 +60,15 @@ class AppRegistry
             return 'Für diese App ist in dieser Core-Version noch kein Modul enthalten.';
         }
         if (! $module->supports($manifest)) {
+            $version = ltrim($manifest->version, 'v');
+            $min = $module->minVersion();
+            $protocolOk = in_array($manifest->protocol, (array) config('pk95.protocols', [1]), true);
+            if ($protocolOk && $min !== null && version_compare($version, $min, '<')) {
+                $name = $app->displayName();
+
+                return "Das Core-Modul braucht {$name} ab Version {$min}, installiert ist {$manifest->version}. {$name} aktualisieren.";
+            }
+
             return "Das Core-Modul unterstützt Version {$manifest->version} (Protokoll {$manifest->protocol}) dieser App nicht. Core oder App aktualisieren.";
         }
 

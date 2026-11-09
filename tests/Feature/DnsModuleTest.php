@@ -8,7 +8,7 @@ use App\Modules\Dns\DnsModule;
 use App\Modules\Dns\Lists;
 use App\Modules\Dns\Overview;
 use App\Modules\Dns\QueryLog;
-use App\Modules\Dns\Rewrites;
+use App\Modules\Dns\Records;
 use App\Modules\Dns\Rules;
 use App\Modules\Dns\Services;
 use App\Modules\Dns\Settings;
@@ -40,8 +40,8 @@ class DnsModuleTest extends FeatureTestCase
         $this->signIn();
         $menu = array_map(fn ($k) => ['key' => $k, 'label' => $k, 'icon' => 'shield'], array_keys((new DnsModule)->pages()));
         $this->installed = InstalledApp::factory()->create([
-            'app_id' => 'dns', 'version' => '1.0.0',
-            'manifest' => ['id' => 'dns', 'name' => 'PK95 DNS', 'version' => '1.0.0', 'protocol' => 1, 'icon' => 'shield',
+            'app_id' => 'dns', 'version' => '1.1.0',
+            'manifest' => ['id' => 'dns', 'name' => 'PK95 DNS', 'version' => '1.1.0', 'protocol' => 1, 'icon' => 'shield',
                 'menu' => $menu, 'capabilities' => ['events', 'backup'], 'events' => ['upstream.down']],
         ]);
         $now = (int) (microtime(true) * 1000);
@@ -54,7 +54,14 @@ class DnsModuleTest extends FeatureTestCase
                     'enabled' => false, 'rule_count' => 0, 'updated_at' => 0, 'last_error' => 'HTTP 503', 'updating' => false],
             ],
             'rules' => "||ads.example.com^\n@@||good.example.com^",
-            'rewrites' => [3 => ['id' => 3, 'domain' => 'nas.home.lan', 'answer' => '192.168.1.10', 'enabled' => true, 'created_at' => $now]],
+            'zones' => [1 => ['id' => 1, 'name' => 'home.lan', 'ttl' => 300, 'primary_ns' => 'ns.home.lan', 'enabled' => true, 'serial' => 2026110901, 'created_at' => $now]],
+            'records' => [
+                3 => $this->record(3, 'nas.home.lan', 'A', '192.168.1.10', ['ptr' => true]),
+                4 => $this->record(4, 'home.lan', 'MX', 'mail.home.lan', ['priority' => 10]),
+                5 => $this->record(5, '_ldap._tcp.home.lan', 'SRV', 'ldap.home.lan', ['priority' => 10, 'weight' => 5, 'port' => 389]),
+                6 => $this->record(6, 'printer.example.org', 'AAAA', 'fd00::20'),
+                8 => $this->record(8, 'cloud.example.de', 'A', '10.10.250.50', ['managed_by' => 'core']),
+            ],
             'blocked' => ['tiktok'],
             'clients' => [2 => $this->client(2, 'Kinder-Tablet', ['192.168.1.40'])],
             'settings' => [
@@ -78,6 +85,54 @@ class DnsModuleTest extends FeatureTestCase
             ], range(0, 79)),
         ];
         Http::fake(['host.docker.internal:8053/*' => fn (Request $r) => $this->dns($r)]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $extra
+     * @return array<string, mixed>
+     */
+    private function record(int $id, string $name, string $type, string $value, array $extra = []): array
+    {
+        return array_merge(['id' => $id, 'zone_id' => 0, 'name' => $name, 'type' => $type, 'value' => $value, 'ttl' => 300,
+            'priority' => 0, 'weight' => 0, 'port' => 0, 'ptr' => false, 'enabled' => true, 'managed_by' => '', 'created_at' => 1], $extra);
+    }
+
+    /** Longest enabled-or-not zone containing the name, like the app (0 = single record). */
+    private function zoneOf(string $name): int
+    {
+        $best = 0;
+        $len = -1;
+        foreach ($this->state['zones'] as $z) {
+            if (($name === $z['name'] || str_ends_with($name, '.'.$z['name'])) && strlen($z['name']) > $len) {
+                [$best, $len] = [$z['id'], strlen($z['name'])];
+            }
+        }
+
+        return $best;
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function zoneList(): array
+    {
+        return array_values(array_map(fn ($z) => $z + ['record_count' => count(array_filter($this->state['records'], fn ($r) => $this->zoneOf($r['name']) === $z['id']))],
+            $this->state['zones']));
+    }
+
+    /**
+     * Validation of the fake, a few rules of docs/api.md → Records.
+     *
+     * @param  array<string, mixed>  $b
+     */
+    private function recordError(array $b): ?array
+    {
+        return match (true) {
+            ! str_contains((string) $b['name'], '.') => ['name', 'Ungültiger Name'],
+            $b['value'] === '' => ['value', 'Bitte einen Wert angeben.'],
+            in_array($b['type'], ['CNAME', 'MX', 'SRV', 'PTR'], true) && filter_var($b['value'], FILTER_VALIDATE_IP) !== false => ['value', 'Hier gehört ein Hostname hin, keine IP-Adresse.'],
+            $b['type'] === 'SRV' && $b['port'] < 1 => ['port', 'Port 1 bis 65535.'],
+            $b['type'] === 'PTR' && ! str_ends_with($b['name'], '.arpa') => ['name', 'Ein PTR-Eintrag braucht einen Rückwärts-Namen.'],
+            default => null,
+        };
     }
 
     /**
@@ -112,8 +167,39 @@ class DnsModuleTest extends FeatureTestCase
             return ['text' => $this->state['rules'], 'rule_count' => count(array_filter($lines)) - count($invalid), 'invalid' => $invalid];
         };
 
+        if (preg_match('#^/api/(zones|records)/(\d+)$#', $path, $m)) {
+            $store = $m[1];
+            $id = (int) $m[2];
+            if (! isset($this->state[$store][$id])) {
+                return Http::response(['error' => 'Nicht gefunden.'], 404);
+            }
+            if ($r->method() === 'DELETE') {
+                if ($store === 'zones') {
+                    $this->state['records'] = array_filter($this->state['records'], fn ($rec) => $this->zoneOf($rec['name']) !== $id);
+                }
+                unset($this->state[$store][$id]);
+
+                return Http::response(null, 204);
+            }
+            if ($store === 'zones') {
+                $count = collect($this->zoneList())->firstWhere('id', $id)['record_count'];
+                if ($body['name'] !== $this->state['zones'][$id]['name'] && $count > 0) {
+                    return $invalid('name', 'Eine Zone mit Einträgen kann nicht umbenannt werden.');
+                }
+                $this->state['zones'][$id] = ['id' => $id] + $body + ['serial' => $this->state['zones'][$id]['serial'] + 1, 'created_at' => 1];
+
+                return Http::response(collect($this->zoneList())->firstWhere('id', $id));
+            }
+            if ($e = $this->recordError($body)) {
+                return $invalid(...$e);
+            }
+            $this->state['records'][$id] = ['id' => $id, 'zone_id' => $this->zoneOf($body['name'])] + $body + ['created_at' => 1];
+
+            return Http::response($this->state['records'][$id]);
+        }
+
         // writing routes with ids
-        if (preg_match('#^/api/(lists|rewrites|clients)/(\d+)(/refresh)?$#', $path, $m)) {
+        if (preg_match('#^/api/(lists|clients)/(\d+)(/refresh)?$#', $path, $m)) {
             $store = $m[1];
             $id = (int) $m[2];
             if (! isset($this->state[$store][$id])) {
@@ -160,13 +246,36 @@ class DnsModuleTest extends FeatureTestCase
                 $this->state['rules'] = implode("\n", $lines);
 
                 return Http::response($rules());
-            case 'POST /api/rewrites':
-                if (($body['answer'] ?? '') === '') {
-                    return $invalid('answer', 'Bitte eine Adresse oder einen Namen angeben.');
+            case 'POST /api/records':
+                if ($e = $this->recordError($body)) {
+                    return $invalid(...$e);
                 }
-                $this->state['rewrites'][9] = ['id' => 9] + $body + ['created_at' => $now];
+                $id = max(array_keys($this->state['records']) ?: [0]) + 1;
+                $this->state['records'][$id] = ['id' => $id, 'zone_id' => $this->zoneOf($body['name'])] + $body + ['created_at' => $now];
 
-                return Http::response($this->state['rewrites'][9], 201);
+                return Http::response($this->state['records'][$id], 201);
+            case 'GET /api/records':
+                $rows = array_map(fn ($rec) => ['zone_id' => $this->zoneOf($rec['name'])] + $rec, $this->state['records']);
+                $rows = array_filter($rows, fn ($rec) => (! isset($query['zone_id']) || $rec['zone_id'] === (int) $query['zone_id'])
+                    && (! isset($query['type']) || $rec['type'] === $query['type'])
+                    && (! isset($query['name']) || $rec['name'] === $query['name'])
+                    && (! isset($query['q']) || str_contains($rec['name'], $query['q']) || str_contains($rec['value'], $query['q'])));
+                usort($rows, fn ($a, $b) => [$a['name'], $a['type'], $a['priority'], $a['value']] <=> [$b['name'], $b['type'], $b['priority'], $b['value']]);
+
+                return Http::response(array_values($rows));
+            case 'POST /api/zones':
+                if (! str_contains((string) $body['name'], '.') && $body['name'] !== 'lan') {
+                    return $invalid('name', 'Ungültiger Zonenname');
+                }
+                $id = max(array_keys($this->state['zones']) ?: [0]) + 1;
+                $this->state['zones'][$id] = ['id' => $id] + $body + ['serial' => 2026110901, 'created_at' => $now];
+                if ($this->state['zones'][$id]['primary_ns'] === '') {
+                    $this->state['zones'][$id]['primary_ns'] = 'ns.'.$body['name'];
+                }
+
+                return Http::response(collect($this->zoneList())->firstWhere('id', $id), 201);
+            case 'GET /api/zones':
+                return Http::response(collect($this->zoneList())->sortBy('name')->values()->all());
             case 'PUT /api/services':
                 if (array_diff($body['blocked'], ['tiktok', 'steam', 'youtube'])) {
                     return $invalid('blocked', 'Unbekannter Dienst');
@@ -226,7 +335,7 @@ class DnsModuleTest extends FeatureTestCase
             'GET /api/status' => Http::response(['version' => '1.0.0', 'core_mode' => true, 'started_at' => $now - 86400000,
                 'dns' => ['listen' => '0.0.0.0:53', 'udp' => false, 'tcp' => false, 'error' => 'Port 53 ist belegt: address already in use'],
                 'protection' => $this->state['protection'],
-                'rules' => ['lists' => 1, 'list_rules' => 61234, 'custom_rules' => 2, 'rewrites' => 1, 'services' => 1],
+                'rules' => ['lists' => 1, 'list_rules' => 61234, 'custom_rules' => 2, 'rewrites' => 3, 'zones' => 1, 'records' => 5, 'services' => 1],
                 'cache' => ['enabled' => true, 'entries' => 1840, 'hits' => 9120, 'misses' => 4410],
                 'upstreams' => [
                     ['address' => 'https://dns.quad9.net/dns-query', 'ok' => true, 'avg_ms' => 18.4, 'queries' => 3010, 'failures' => 2, 'last_error' => ''],
@@ -252,7 +361,6 @@ class DnsModuleTest extends FeatureTestCase
                 ? $invalid('name', 'Ungültige Domain')
                 : Http::response(['name' => $query['name'], 'type' => $query['type'] ?? 'A', 'client_ip' => '', 'client_name' => '', 'status' => 'blocked',
                     'reason' => 'custom', 'rule' => '||ads.example.com^', 'list_id' => 0, 'list_name' => '', 'service' => '', 'answer' => '0.0.0.0']),
-            'GET /api/rewrites' => Http::response(array_values($this->state['rewrites'])),
             'GET /api/clients' => Http::response(['clients' => array_values($this->state['clients']), 'recent' => [
                 ['ip' => '192.168.1.20', 'hostname' => 'laptop.fritz.box', 'client_id' => 0, 'name' => '', 'queries' => 4210, 'blocked' => 600, 'last_seen' => $now],
                 ['ip' => '192.168.1.40', 'hostname' => '', 'client_id' => 2, 'name' => 'Kinder-Tablet', 'queries' => 300, 'blocked' => 90, 'last_seen' => $now],
@@ -299,7 +407,8 @@ class DnsModuleTest extends FeatureTestCase
             'log' => ['ads.example.net', 'Blockiert', 'AdGuard DNS filter', 'aus dem Cache', 'Mehr laden', 'Erlauben', 'Blockieren'],
             'lists' => ['AdGuard DNS filter', '61.234', 'HTTP 503', 'Erlaubnislisten'],
             'rules' => ['||ads.example.com^', 'Domain prüfen', 'Schreibweise', '2 Regeln aktiv'],
-            'rewrites' => ['nas.home.lan', '192.168.1.10'],
+            'records' => ['home.lan', '2026110901', 'nas.home.lan', '192.168.1.10', '+PTR', 'mail.home.lan', '_ldap._tcp.home.lan', '10 5 389',
+                'printer.example.org', 'Einzeleintrag', 'von Core', 'Einzeleinträge'],
             'services' => ['Soziale Netzwerke', 'TikTok', 'Spiele', '1 Dienst ausgewählt'],
             'clients' => ['Kinder-Tablet', '192.168.1.40', 'laptop.fritz.box', 'Als Client anlegen', 'TikTok'],
             'settings' => ['https://dns.quad9.net/dns-query', 'fritz.box', 'Antwort bei Blockierung', '1.840 Einträge', 'SafeSearch'],
@@ -309,6 +418,8 @@ class DnsModuleTest extends FeatureTestCase
             foreach ($texts as $text) {
                 $response->assertSee($text, false);
             }
+            // @js() inside <x-…> attributes is not compiled and would end up as broken JS
+            $response->assertDontSee('@js(', false);
         }
         // a 30 day range asks for daily buckets
         $this->get(route('apps.page', [$this->installed, 'overview']).'?hours=720')->assertOk();
@@ -445,22 +556,159 @@ class DnsModuleTest extends FeatureTestCase
         $this->assertSame(['name' => 'ads.example.com', 'type' => 'A'], $this->sent('GET', '/api/check')[0]['query']);
     }
 
-    public function test_rewrite_crud(): void
+    public function test_zone_crud_with_public_domain_warning(): void
     {
-        $page = Livewire::test(Rewrites::class, ['installedApp' => $this->installed])
-            ->call('create')->set('form.domain', ' *.home.lan ')->call('save')
-            ->assertHasErrors('form.answer')
-            ->set('form.answer', 'nas.home.lan')->call('save')->assertSet('editing', null);
-        $this->assertSame(['domain' => '*.home.lan', 'answer' => 'nas.home.lan', 'enabled' => true], last($this->sent('POST', '/api/rewrites'))['body']);
+        $page = Livewire::test(Records::class, ['installedApp' => $this->installed])
+            ->assertSeeHtml('Die Zone home.lan und ihre 3 Eintr')
+            ->assertDontSee('Öffentliche Domain')
+            ->call('createZone')->assertSet('zoneForm.ttl', '300')
+            ->set('zoneForm.name', 'kaputt')->call('saveZone')
+            ->assertHasErrors('zoneForm.name')->assertDispatched('notice', kind: 'error', text: 'Bitte Eingaben prüfen.')
+            ->set('zoneForm.name', 'Example.org.')->assertSee('Öffentliche Domain')
+            ->call('saveZone')->assertSet('zoneEditing', null)
+            ->assertDispatched('notice', kind: 'success', text: 'Zone angelegt. 1 vorhandener Eintrag gehört jetzt zu ihr.')
+            ->assertSee('Öffentliche Domain: Namen, die hier fehlen');
+        $this->assertSame(['name' => 'example.org', 'ttl' => 300, 'primary_ns' => '', 'enabled' => true], last($this->sent('POST', '/api/zones'))['body']);
+        $this->assertSame('ns.example.org', $this->state['zones'][2]['primary_ns']);
 
-        $page->call('edit', 3)->assertSet('form.domain', 'nas.home.lan')->set('form.answer', '192.168.1.11')->call('save');
-        $this->assertSame('192.168.1.11', $this->state['rewrites'][3]['answer']);
+        // TTL is checked before anything is sent; renaming a zone with records is refused by the app
+        $page->call('editZone', 1)->assertSet('zoneForm.name', 'home.lan')->assertSet('zoneForm.primary_ns', 'ns.home.lan')
+            ->set('zoneForm.ttl', 'eine Stunde')->call('saveZone')->assertHasErrors('zoneForm.ttl')
+            ->set('zoneForm.ttl', '3600')->set('zoneForm.name', 'haus.lan')->call('saveZone')->assertHasErrors('zoneForm.name')
+            ->set('zoneForm.name', 'home.lan')->call('saveZone')->assertHasNoErrors()->assertSet('zoneEditing', null);
+        $this->assertCount(2, $this->sent('PUT', '/api/zones/1'), 'the refused rename and the save');
+        $this->assertSame(3600, $this->state['zones'][1]['ttl']);
+        $this->assertFalse(Records::isPublicZone('home.lan'));
+
+        $page->call('toggleZone', 1);
+        $this->assertFalse($this->state['zones'][1]['enabled']);
+        $this->assertSame(['name' => 'home.lan', 'ttl' => 3600, 'primary_ns' => 'ns.home.lan', 'enabled' => false], last($this->sent('PUT', '/api/zones/1'))['body']);
+
+        $page->call('showZone', '2')->assertSet('zone', '2')
+            ->call('deleteZone', 2)->assertDispatched('notice', kind: 'success', text: 'Zone entfernt.')->assertSet('zone', '');
+        $this->assertArrayNotHasKey(2, $this->state['zones']);
+        $this->assertArrayNotHasKey(6, $this->state['records'], 'the records of a zone go with it');
+    }
+
+    public function test_public_zone_rule(): void
+    {
+        foreach (['home.lan', 'lan', 'fritz.home', 'nas.internal', 'x.local', 'localdomain', 'a.home.arpa', 'test', 'b.example',
+            'x.invalid', 'intranet', 'firma.corp', 'my.private', '1.168.192.in-addr.arpa', '8.b.d.0.1.0.0.2.ip6.arpa', ''] as $name) {
+            $this->assertFalse(Records::isPublicZone($name), $name);
+        }
+        foreach (['example.org', 'meine-firma.de', 'home.lan.de', 'arpa', 'other.arpa', 'lan.example.com'] as $name) {
+            $this->assertTrue(Records::isPublicZone($name), $name);
+        }
+    }
+
+    public function test_record_crud_per_type(): void
+    {
+        $page = Livewire::test(Records::class, ['installedApp' => $this->installed])
+            ->call('create')->assertSet('form.type', 'A')->assertSet('form.ttl', '300')->assertSee('Rückwärtsauflösung (PTR)')
+            ->set('form.name', ' NAS2.home.lan ')->set('form.value', '192.168.1.11')->set('form.ptr', true)->call('save')
+            ->assertSet('editing', null)->assertDispatched('notice', kind: 'success', text: 'Gespeichert.');
+        $this->assertSame(['name' => 'nas2.home.lan', 'type' => 'A', 'value' => '192.168.1.11', 'ttl' => 300, 'priority' => 0, 'weight' => 0, 'port' => 0,
+            'ptr' => true, 'enabled' => true, 'managed_by' => ''], last($this->sent('POST', '/api/records'))['body']);
+
+        // MX: host name only (422 from the app on the field), priority sent, ptr never
+        $page->call('create')->set('form.type', 'MX')->assertSee('Priorität')->assertDontSee('Rückwärtsauflösung (PTR)')
+            ->set('form.name', 'home.lan')->set('form.value', '192.168.1.1')->set('form.ptr', true)->call('save')
+            ->assertHasErrors('form.value')->assertNotSet('editing', null)
+            ->set('form.value', 'mail2.home.lan')->set('form.priority', '20')->call('save')->assertSet('editing', null);
+        $this->assertSame(['name' => 'home.lan', 'type' => 'MX', 'value' => 'mail2.home.lan', 'ttl' => 300, 'priority' => 20, 'weight' => 0, 'port' => 0,
+            'ptr' => false, 'enabled' => true, 'managed_by' => ''], last($this->sent('POST', '/api/records'))['body']);
+
+        // SRV: weight and port; an empty port is caught here, port 0 by the app
+        $posts = count($this->sent('POST', '/api/records'));
+        $page->call('create')->set('form.type', 'SRV')->assertSee('Gewicht')->assertSee('Port')
+            ->set('form.name', '_sip._udp.home.lan')->set('form.value', 'pbx.home.lan')->call('save')
+            ->assertHasErrors('form.port');
+        $this->assertCount($posts, $this->sent('POST', '/api/records'), 'nothing sent with a field that is not a number');
+        $page->set('form.port', '0')->call('save')->assertHasErrors('form.port')
+            ->set('form.port', '5060')->set('form.weight', '5')->call('save')->assertHasNoErrors()->assertSet('editing', null);
+        $this->assertSame(['priority' => 10, 'weight' => 5, 'port' => 5060],
+            array_intersect_key(last($this->sent('POST', '/api/records'))['body'], ['priority' => 0, 'weight' => 0, 'port' => 0]));
+
+        // TXT: textarea, surrounding line breaks dropped; MX priority from the default form is not sent
+        $page->call('create')->set('form.type', 'TXT')->assertSeeHtml('<textarea')
+            ->set('form.name', 'home.lan')->set('form.value', "v=spf1 mx -all\n")->call('save')->assertSet('editing', null);
+        $this->assertSame(['type' => 'TXT', 'value' => 'v=spf1 mx -all', 'priority' => 0],
+            array_intersect_key(last($this->sent('POST', '/api/records'))['body'], ['type' => 0, 'value' => 0, 'priority' => 0]));
+
+        // CNAME with an invalid TTL, PTR with a forward name
+        $page->call('create')->set('form.type', 'CNAME')->set('form.name', 'files.home.lan')->set('form.value', 'nas.home.lan')
+            ->set('form.ttl', '5 min')->call('save')->assertHasErrors('form.ttl')
+            ->set('form.ttl', '')->call('save')->assertSet('editing', null);
+        $this->assertSame(300, last($this->sent('POST', '/api/records'))['body']['ttl'], 'empty TTL = 300');
+        $page->call('create')->set('form.type', 'PTR')->set('form.name', 'nas.home.lan')->set('form.value', 'nas.home.lan')->call('save')
+            ->assertHasErrors('form.name')
+            ->set('form.name', '10.1.168.192.in-addr.arpa')->call('save')->assertSet('editing', null);
+
+        // edit, toggle and delete keep the type fields
+        $page->call('edit', 4)->assertSet('form.type', 'MX')->assertSet('form.priority', '10')
+            ->set('form.value', 'mx.home.lan')->call('save')->assertSet('editing', null);
+        $this->assertSame('mx.home.lan', $this->state['records'][4]['value']);
+        $this->assertSame(10, $this->state['records'][4]['priority']);
 
         $page->call('toggle', 3);
-        $this->assertFalse($this->state['rewrites'][3]['enabled']);
+        $this->assertSame(['name' => 'nas.home.lan', 'type' => 'A', 'value' => '192.168.1.10', 'ttl' => 300, 'priority' => 0, 'weight' => 0, 'port' => 0,
+            'ptr' => true, 'enabled' => false, 'managed_by' => ''], last($this->sent('PUT', '/api/records/3'))['body']);
 
-        $page->call('delete', 9);
-        $this->assertArrayNotHasKey(9, $this->state['rewrites']);
+        $page->call('delete', 6)->assertDispatched('notice', kind: 'success', text: 'Eintrag gelöscht.');
+        $this->assertArrayNotHasKey(6, $this->state['records']);
+        $page->call('edit', 6)->assertDispatched('notice', kind: 'error', text: 'Den Eintrag gibt es nicht mehr.')->assertSet('editing', null);
+    }
+
+    public function test_record_filters(): void
+    {
+        $page = Livewire::test(Records::class, ['installedApp' => $this->installed])
+            ->assertSee('printer.example.org')->assertSee('nas.home.lan');
+        $this->assertSame([], last($this->sent('GET', '/api/records'))['query']);
+
+        $page->set('zone', '1')->assertSee('nas.home.lan')->assertDontSee('printer.example.org');
+        $this->assertSame(['zone_id' => '1'], last($this->sent('GET', '/api/records'))['query']);
+
+        $page->set('zone', '0')->assertSee('printer.example.org')->assertDontSee('nas.home.lan');
+        $this->assertSame(['zone_id' => '0'], last($this->sent('GET', '/api/records'))['query']);
+
+        $page->set('zone', '')->set('type', 'AAAA')->set('q', ' printer ')->assertSee('printer.example.org')->assertDontSee('cloud.example.de');
+        $this->assertSame(['type' => 'AAAA', 'q' => 'printer'], last($this->sent('GET', '/api/records'))['query']);
+
+        // a new record starts with the filtered type; edit finds records outside the filter too
+        $page->call('create')->assertSet('form.type', 'AAAA')->call('cancel')
+            ->call('edit', 3)->assertSet('form.name', 'nas.home.lan')->assertSet('form.ptr', true)->call('cancel');
+
+        $page->set('q', 'nichts')->assertSee('Keine passenden Einträge')
+            ->call('resetFilters')->assertSet('type', '')->assertSee('nas.home.lan');
+        $this->assertSame([], last($this->sent('GET', '/api/records'))['query']);
+
+        // unknown filter values from the address bar are dropped
+        Livewire::withQueryParams(['type' => 'NS', 'zone' => 'x'])->test(Records::class, ['installedApp' => $this->installed])
+            ->assertSet('type', '')->assertSet('zone', '');
+    }
+
+    public function test_records_of_core_are_marked_and_keep_their_owner(): void
+    {
+        $page = Livewire::test(Records::class, ['installedApp' => $this->installed])
+            ->assertSee('von Core')
+            ->assertSeeHtml('Eintrag von Core l')
+            ->assertSeeHtml('Core kann ihn wieder anlegen');
+        $page->call('edit', 8)->assertSet('form.managed_by', 'core')->assertSee('für eine ausgerollte App angelegt')
+            ->set('form.ttl', '60')->call('save');
+        $this->assertSame(['ttl' => 60, 'managed_by' => 'core'], array_intersect_key(last($this->sent('PUT', '/api/records/8'))['body'], ['ttl' => 0, 'managed_by' => 0]));
+        $page->call('toggle', 8);
+        $this->assertSame('core', $this->state['records'][8]['managed_by']);
+    }
+
+    public function test_pages_are_locked_for_pk95_dns_before_records(): void
+    {
+        $this->installed->update(['version' => '1.0.3', 'manifest' => ['version' => '1.0.3'] + $this->installed->manifest]);
+
+        $this->get(route('apps.page', [$this->installed, 'records']))->assertNotFound();
+        $this->get(route('apps.page', [$this->installed, 'overview']))->assertNotFound();
+        $this->get(route('apps.show', $this->installed))->assertOk()
+            ->assertSee('Seiten der App nicht verfügbar')
+            ->assertSee('Das Core-Modul braucht PK95 DNS ab Version 1.1.0, installiert ist 1.0.3. PK95 DNS aktualisieren.');
     }
 
     public function test_services_save(): void
@@ -607,7 +855,7 @@ class DnsModuleTest extends FeatureTestCase
     public function test_unreachable_app(): void
     {
         $this->appDown();
-        foreach (['lists', 'overview', 'rules', 'services', 'settings'] as $page) {
+        foreach (['lists', 'overview', 'rules', 'records', 'services', 'settings'] as $page) {
             $this->get(route('apps.page', [$this->installed, $page]))->assertOk()->assertSee('PK95 DNS antwortet nicht');
         }
     }
