@@ -137,7 +137,7 @@
 
     {{-- zones --}}
     @if (! $loadError || $zones)
-        <x-panel class="m-3 overflow-x-auto" polster="keins">
+        <x-panel class="relative m-3 overflow-x-auto" polster="keins">
             <div class="flex flex-wrap items-start justify-between gap-3 p-4">
                 <div>
                     <div class="font-DINPro-bold text-gray-900 dark:text-gray-100">Zonen</div>
@@ -162,14 +162,14 @@
                             <tr wire:key="zone-{{ $z['id'] }}">
                                 <td class="px-4 py-3 align-top"><x-proxy.switch :on="$z['enabled']" :label="$z['name'].' aktiv'" wire:click="toggleZone({{ $z['id'] }})" /></td>
                                 <td class="px-4 py-3 align-top">
-                                    <button type="button" wire:click="showZone('{{ $z['id'] }}')" class="break-all text-left font-mono text-cerulean-700 hover:underline dark:text-cerulean-300" title="Einträge dieser Zone zeigen">{{ $z['name'] }}</button>
+                                    <button type="button" wire:click="showZone('{{ $z['id'] }}')" class="text-left font-mono text-cerulean-700 hover:underline dark:text-cerulean-300" title="Einträge dieser Zone zeigen">{{ Fmt::breakable($z['name']) }}</button>
                                     @if (Records::isPublicZone($z['name']))
                                         <div class="mt-1 max-w-md text-xs text-amber-800 dark:text-amber-200">Öffentliche Domain: Namen, die hier fehlen, sind im Netz nicht erreichbar, auch wenn es sie im Internet gibt.</div>
                                     @endif
                                 </td>
                                 <td class="px-4 py-3 text-right align-top tabular-nums">{{ Fmt::num($count) }}</td>
                                 <td class="hidden px-4 py-3 align-top font-mono text-xs md:table-cell">{{ $z['serial'] }}</td>
-                                <td class="hidden break-all px-4 py-3 align-top font-mono text-xs lg:table-cell">{{ $z['primary_ns'] }}</td>
+                                <td class="hidden px-4 py-3 align-top font-mono text-xs lg:table-cell">{{ Fmt::breakable($z['primary_ns']) }}</td>
                                 <td class="hidden px-4 py-3 text-right align-top tabular-nums lg:table-cell">{{ $z['ttl'] }}</td>
                                 <td class="px-4 py-3 align-top">
                                     <div class="flex justify-end gap-1">
@@ -215,20 +215,20 @@
             </div>
         </x-panel>
     @elseif ($rows)
-        <x-panel class="m-3 overflow-x-auto" polster="keins">
+        <x-panel class="relative m-3 overflow-x-auto" polster="keins">
             <table class="w-full text-left text-sm text-gray-900 dark:text-gray-100">
                 <thead class="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400">
                     <tr><th class="px-4 py-3">Aktiv</th><th class="px-4 py-3">Name</th><th class="px-4 py-3">Typ</th><th class="px-4 py-3">Wert</th>
-                        <th class="hidden px-4 py-3 text-right md:table-cell">TTL</th><th class="hidden px-4 py-3 lg:table-cell">Zone</th><th class="px-4 py-3"><span class="sr-only">Aktionen</span></th></tr>
+                        <th class="hidden px-4 py-3 text-right md:table-cell">TTL</th><th class="hidden px-4 py-3 xl:table-cell">Zone</th><th class="px-4 py-3"><span class="sr-only">Aktionen</span></th></tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                     @foreach ($rows as $r)
                         @php
                             $core = ($r['managed_by'] ?? '') === 'core';
-                            $extra = match ($r['type']) {
-                                'MX' => (string) $r['priority'],
-                                'SRV' => $r['priority'].' '.$r['weight'].' '.$r['port'],
-                                default => '',
+                            $chips = match ($r['type']) {
+                                'MX' => ['Priorität '.$r['priority']],
+                                'SRV' => ['Priorität '.$r['priority'], 'Gewicht '.$r['weight'], 'Port '.$r['port']],
+                                default => [],
                             };
                             $confirm = $core
                                 ? ['title' => 'Eintrag von Core löschen?', 'text' => $r['name'].' ('.$r['type'].') hat PK95 Core für eine ausgerollte App angelegt. Core kann ihn wieder anlegen, etwa beim DNS-Abgleich nach einer neuen LAN-IP. Dauerhaft abschalten lässt sich das unter Automatik.']
@@ -236,8 +236,9 @@
                         @endphp
                         <tr wire:key="rec-{{ $r['id'] }}">
                             <td class="px-4 py-3 align-top"><x-proxy.switch :on="$r['enabled']" :label="$r['name'].' '.$r['type'].' aktiv'" wire:click="toggle({{ $r['id'] }})" /></td>
-                            <td class="px-4 py-3 align-top">
-                                <span class="break-all font-mono">{{ $r['name'] }}</span>
+                            <td class="min-w-36 px-4 py-3 align-top">
+                                <span class="font-mono">{{ Fmt::breakable($r['name']) }}</span>
+                                <span class="block text-xs text-gray-500 dark:text-gray-400 xl:hidden">{{ (int) ($r['zone_id'] ?? 0) === 0 ? 'Einzeleintrag' : 'Zone '.$zoneLabel((int) $r['zone_id']) }}</span>
                                 @if ($core)
                                     <span class="{{ $badge }} ml-1 bg-violet-100 text-violet-800 dark:bg-violet-900/70 dark:text-violet-100" title="Von PK95 Core für eine ausgerollte App angelegt">von Core</span>
                                 @endif
@@ -248,12 +249,22 @@
                                     <span class="{{ $badge }} bg-cerulean-100 text-cerulean-800 dark:bg-cerulean-900 dark:text-cerulean-100" title="Rückwärtsauflösung eingeschaltet">+PTR</span>
                                 @endif
                             </td>
-                            <td class="max-w-md px-4 py-3 align-top font-mono">
-                                @if ($extra !== '')<span class="text-gray-500 dark:text-gray-400">{{ $extra }}</span>@endif
-                                <span @class(['break-all', 'line-clamp-3 whitespace-pre-wrap text-xs' => $r['type'] === 'TXT']) @if ($r['type'] === 'TXT') title="{{ $r['value'] }}" @endif>{{ $r['value'] }}</span>
+                            <td class="min-w-48 max-w-md px-4 py-3 align-top font-mono">
+                                @if ($r['type'] === 'TXT')
+                                    <span class="line-clamp-3 whitespace-pre-wrap break-words text-xs" title="{{ $r['value'] }}">{{ $r['value'] }}</span>
+                                @else
+                                    <span>{{ Fmt::breakable($r['value']) }}</span>
+                                @endif
+                                @if ($chips)
+                                    <span class="mt-1 flex flex-wrap gap-1 font-sans">
+                                        @foreach ($chips as $chip)
+                                            <span class="whitespace-nowrap rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200">{{ $chip }}</span>
+                                        @endforeach
+                                    </span>
+                                @endif
                             </td>
                             <td class="hidden px-4 py-3 text-right align-top tabular-nums md:table-cell">{{ $r['ttl'] }}</td>
-                            <td class="hidden break-all px-4 py-3 align-top text-xs text-gray-600 dark:text-gray-300 lg:table-cell">{{ $zoneLabel((int) ($r['zone_id'] ?? 0)) }}</td>
+                            <td class="hidden px-4 py-3 align-top text-xs text-gray-600 dark:text-gray-300 xl:table-cell">{{ Fmt::breakable($zoneLabel((int) ($r['zone_id'] ?? 0))) }}</td>
                             <td class="px-4 py-3 align-top">
                                 <div class="flex justify-end gap-1">
                                     <x-input.button type="button" size="sm" color="gray" wire:click="edit({{ $r['id'] }})">Bearbeiten</x-input.button>

@@ -3,6 +3,7 @@
 namespace App\Modules\Dns;
 
 use Illuminate\Support\Carbon;
+use Illuminate\Support\HtmlString;
 
 /**
  * Formats and German names of the PK95 DNS pages. Timestamps of the app are milliseconds.
@@ -53,6 +54,17 @@ final class Fmt
         'yandex' => 'Yandex',
         'pixabay' => 'Pixabay',
     ];
+
+    /**
+     * A host name or address that may only wrap after a dot (or a colon in IPv6), never
+     * inside a label: break-all would let a table squeeze its column to a few pixels.
+     */
+    public static function breakable(string $text): HtmlString
+    {
+        $parts = preg_split('/(?<=[.:])/', $text) ?: [$text];
+
+        return new HtmlString(implode('<wbr>', array_map('e', $parts)));
+    }
 
     public static function num(int|float $n, int $decimals = 0): string
     {
