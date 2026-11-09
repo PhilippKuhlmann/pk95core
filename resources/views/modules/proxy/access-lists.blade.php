@@ -33,8 +33,8 @@
 
                     <x-form-section title="Bedingung" />
                     <div class="mt-2 flex flex-col gap-1 text-sm text-gray-700 dark:text-gray-300">
-                        <label class="inline-flex items-center gap-2"><input type="radio" value="all" wire:model="form.mode" class="border-gray-300 text-cerulean-600 focus:ring-cerulean-500">Beides nötig: erlaubte IP-Adresse und Anmeldung</label>
-                        <label class="inline-flex items-center gap-2"><input type="radio" value="any" wire:model="form.mode" class="border-gray-300 text-cerulean-600 focus:ring-cerulean-500">Eine Bedingung genügt: erlaubte IP-Adresse oder Anmeldung</label>
+                        <label class="inline-flex items-center gap-2"><input type="radio" value="all" wire:model="form.mode" class="border-gray-300 text-cerulean-600 focus:ring-cerulean-500 dark:border-gray-600 dark:bg-gray-700">Beides nötig: erlaubte IP-Adresse und Anmeldung</label>
+                        <label class="inline-flex items-center gap-2"><input type="radio" value="any" wire:model="form.mode" class="border-gray-300 text-cerulean-600 focus:ring-cerulean-500 dark:border-gray-600 dark:bg-gray-700">Eine Bedingung genügt: erlaubte IP-Adresse oder Anmeldung</label>
                         <x-input.hilfe>Gesperrte Adressen kommen nie durch. Steht bei „Beides nötig“ keine erlaubte Adresse in der Liste, reicht die Anmeldung von überall.</x-input.hilfe>
                     </div>
 

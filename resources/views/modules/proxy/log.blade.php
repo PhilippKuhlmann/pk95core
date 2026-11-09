@@ -6,14 +6,14 @@
 <div @if ($live) wire:poll.2s @endif>
     <x-page-header title="Zugriffe">
         <button type="button" wire:click="toggleLive" aria-pressed="{{ $live ? 'true' : 'false' }}"
-            class="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800">
+            class="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">
             <span @class(['h-2 w-2 rounded-full', Fmt::dot($live ? 'good' : 'none'), 'animate-pulse' => $live])></span>{{ $live ? 'Live' : 'Angehalten' }}
         </button>
     </x-page-header>
 
     <div class="mx-3 mt-2 flex flex-wrap items-center gap-2">
         @if ($country)
-            <button type="button" wire:click="clearCountry" title="Filter entfernen" class="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs dark:border-gray-700 dark:bg-gray-900">
+            <button type="button" wire:click="clearCountry" title="Filter entfernen" class="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-700 hover:border-rose-300 hover:bg-rose-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-rose-800 dark:hover:bg-rose-950">
                 {{ Fmt::flag($country) }} Land: {{ Fmt::country($country) }} ×
             </button>
         @endif

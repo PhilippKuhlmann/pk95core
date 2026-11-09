@@ -19,8 +19,8 @@
     <x-panel class="m-3">
         <div class="{{ $card }}">Länder</div>
         <div class="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-700 dark:text-gray-300" role="radiogroup" aria-label="Art der Regel">
-            <label class="inline-flex items-center gap-2"><input type="radio" value="block" wire:model.live="mode" class="border-gray-300 text-cerulean-600 focus:ring-cerulean-500">Gewählte Länder sperren</label>
-            <label class="inline-flex items-center gap-2"><input type="radio" value="allow" wire:model.live="mode" class="border-gray-300 text-cerulean-600 focus:ring-cerulean-500">Nur gewählte Länder freigeben</label>
+            <label class="inline-flex items-center gap-2"><input type="radio" value="block" wire:model.live="mode" class="border-gray-300 text-cerulean-600 focus:ring-cerulean-500 dark:border-gray-600 dark:bg-gray-700">Gewählte Länder sperren</label>
+            <label class="inline-flex items-center gap-2"><input type="radio" value="allow" wire:model.live="mode" class="border-gray-300 text-cerulean-600 focus:ring-cerulean-500 dark:border-gray-600 dark:bg-gray-700">Nur gewählte Länder freigeben</label>
         </div>
         <p class="{{ $intro }}">
             @if ($mode === 'allow')
@@ -51,24 +51,37 @@
         <div class="mt-2 flex flex-wrap gap-1.5">
             @forelse ($sorted as $c)
                 <button type="button" wire:click="unselect('{{ $c }}')" title="{{ $mode === 'allow' ? 'Nicht mehr freigeben' : 'Entsperren' }}"
-                    class="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs hover:border-rose-300 hover:bg-rose-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-rose-950">
-                    {{ Fmt::flag($c) }} {{ $names[$c] ?? $c }} ×
+                    class="group inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 py-1 pl-2.5 pr-2 text-xs text-gray-700 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-rose-800 dark:hover:bg-rose-950 dark:hover:text-rose-200">
+                    <span aria-hidden="true">{{ Fmt::flag($c) }}</span>{{ $names[$c] ?? $c }}
+                    <span class="text-gray-400 group-hover:text-rose-600 dark:text-gray-500 dark:group-hover:text-rose-300" aria-hidden="true">×</span>
                 </button>
             @empty
                 <span class="text-sm text-gray-500">{{ $mode === 'allow' ? 'Noch keine. Wähle mindestens ein Land aus.' : 'Keine. Alle Länder dürfen zugreifen.' }}</span>
             @endforelse
         </div>
 
-        <div x-data="{ q: '' }" class="mt-4">
-            <input type="search" x-model="q" placeholder="Land suchen …" aria-label="Land suchen"
-                class="w-full max-w-xs rounded-lg border-gray-300 bg-white py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
-            <div class="mt-2 grid max-h-72 grid-cols-1 gap-x-4 overflow-y-auto rounded-lg border border-gray-200 p-2 sm:grid-cols-2 lg:grid-cols-3 dark:border-gray-700" role="group" aria-label="Länder">
+        {{-- Picker: search bar on top, then narrow columns as many as fit (auto-fill), so the names
+             do not drift apart on wide screens. Chosen countries are tinted. --}}
+        <div x-data="{ q: '' }" class="mt-4 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+            <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900/40">
+                <input type="search" x-model="q" placeholder="Land suchen …" aria-label="Land suchen"
+                    class="w-full rounded-lg border-gray-300 bg-white py-1.5 text-sm sm:w-72 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500">
+                <span class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ count($codes) }} Länder{{ $traffic ? ' · Zahl rechts: Zugriffe in 7 Tagen' : '' }}
+                </span>
+            </div>
+            <div class="grid max-h-80 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-x-1 overflow-y-auto p-1.5" role="group" aria-label="Länder">
                 @foreach ($codes as $c)
-                    <label class="flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700" wire:key="cty-{{ $c }}"
-                        x-show="!q || @js(mb_strtolower($names[$c])).includes(q.toLowerCase()) || q.toUpperCase() === '{{ $c }}'">
-                        <input type="checkbox" value="{{ $c }}" wire:model.live="{{ $listProp }}" class="rounded border-gray-300 text-cerulean-600 focus:ring-cerulean-500">
-                        <span>{{ Fmt::flag($c) }}</span><span class="flex-1">{{ $names[$c] }}</span>
-                        @if ($traffic[$c] ?? 0)<span class="text-xs text-gray-400">{{ Fmt::num($traffic[$c]) }} in 7 Tagen</span>@endif
+                    <label wire:key="cty-{{ $c }}" title="{{ $names[$c] }}"
+                        x-show="!q || @js(mb_strtolower($names[$c])).includes(q.toLowerCase()) || q.toUpperCase() === '{{ $c }}'"
+                        class="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm text-gray-700 hover:bg-gray-100 has-checked:bg-cerulean-50 has-checked:text-cerulean-900 dark:text-gray-300 dark:hover:bg-gray-700/60 dark:has-checked:bg-cerulean-950/60 dark:has-checked:text-cerulean-100">
+                        <input type="checkbox" value="{{ $c }}" wire:model.live="{{ $listProp }}"
+                            class="rounded border-gray-300 text-cerulean-600 focus:ring-cerulean-500 dark:border-gray-600 dark:bg-gray-700">
+                        <span class="shrink-0" aria-hidden="true">{{ Fmt::flag($c) }}</span>
+                        <span class="min-w-0 flex-1 truncate">{{ $names[$c] }}</span>
+                        @if ($traffic[$c] ?? 0)
+                            <span class="shrink-0 text-xs tabular-nums text-gray-400 dark:text-gray-500" title="{{ Fmt::num($traffic[$c]) }} Zugriffe in 7 Tagen">{{ Fmt::num($traffic[$c]) }}</span>
+                        @endif
                     </label>
                 @endforeach
             </div>
