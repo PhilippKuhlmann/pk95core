@@ -38,6 +38,20 @@ docker logs pk95core | grep Einrichtungscode
 
 Danach `http://<LXC-IP>:8080` öffnen, den Einrichtungscode eingeben und das Admin-Konto anlegen.
 
+### Hinter einem Reverse Proxy (HTTPS)
+
+Läuft Core unter einer Domain hinter einem Proxy, kommen Adresse und Proxy in eine `.env` neben
+`docker-compose.yml`, danach `docker compose up -d`:
+
+```bash
+APP_URL=https://core.example.de
+TRUSTED_PROXIES=10.10.250.95        # IP des Proxys, kommagetrennt auch mehrere
+# SESSION_SECURE_COOKIE=true        # Login dann nur noch über HTTPS, nicht mehr über die LXC-IP
+```
+
+Ohne `TRUSTED_PROXIES` ignoriert Core `X-Forwarded-Proto` und erzeugt `http://`-Links: Der Browser
+blockiert dann Stylesheet und Skripte als gemischte Inhalte.
+
 ## Datenablage
 
 | Pfad im LXC | Inhalt |

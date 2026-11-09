@@ -29,9 +29,11 @@ services:
     environment:
       APP_URL: "${APP_URL:-http://localhost:8080}"
       TZ: Europe/Berlin
-      # Only set when a TLS reverse proxy is in front:
-      # SESSION_SECURE_COOKIE: "true"
-      # TRUSTED_PROXIES: "172.16.0.0/12"
+      # Behind a TLS reverse proxy (set in .env next to this file): its address, so Core
+      # trusts X-Forwarded-Proto/-Host and builds https:// links, e.g. TRUSTED_PROXIES=10.10.250.95.
+      TRUSTED_PROXIES: "${TRUSTED_PROXIES:-}"
+      # true: session cookie only over HTTPS (login via http://<LXC>:8080 then no longer works).
+      SESSION_SECURE_COOKIE: "${SESSION_SECURE_COOKIE:-false}"
 
 networks:
   # Shared bridge network: Core and every bridge-mode app (pk95-<id>).
