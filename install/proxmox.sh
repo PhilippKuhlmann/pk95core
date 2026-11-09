@@ -25,6 +25,16 @@ fail() { printf '\033[1;31mFehler: %s\033[0m\n' "$*" >&2; exit 1; }
 command -v pct >/dev/null && command -v pveam >/dev/null && command -v pvesh >/dev/null \
   || fail "pct/pveam/pvesh fehlen – das Skript läuft nur auf einem Proxmox-VE-Host."
 
+# The container needs the Core image without a login (ghcr.io, public package). Check before
+# anything is created, otherwise the installation would stop half way.
+IMAGE_REPO="${PK95_IMAGE_REPO:-philippkuhlmann/pk95core}"
+ghcr_token="$(curl -fsS "https://ghcr.io/token?scope=repository:${IMAGE_REPO}:pull" 2>/dev/null | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')"
+ghcr_code="$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${ghcr_token}" \
+  -H 'Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.v2+json' \
+  "https://ghcr.io/v2/${IMAGE_REPO}/manifests/latest" || true)"
+[[ "$ghcr_code" == 200 ]] || fail "Das Image ghcr.io/${IMAGE_REPO} lässt sich nicht ohne Anmeldung laden (HTTP ${ghcr_code}).
+Auf GitHub unter Packages → ${IMAGE_REPO#*/} → Package settings → Change visibility auf „Public“ stellen. Es wurde nichts verändert."
+
 # --- questions -----------------------------------------------------------------------------
 # Questions go to the terminal (bash -c "$(curl …)" keeps it). Without one the defaults and the
 # environment variables apply, so the script also runs unattended.
