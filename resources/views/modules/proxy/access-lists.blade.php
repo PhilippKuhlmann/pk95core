@@ -110,13 +110,13 @@
                                 @if ($l['is_internal'])<div class="text-xs text-gray-500">Legt deine internen Netze fest</div>@endif
                             </td>
                             <td class="px-4 py-3 align-top">{{ $l['is_internal'] ? 'Nur IP-Regeln' : (AccessLists::MODES[$l['mode']] ?? $l['mode']) }}</td>
-                            <td class="px-4 py-3 align-top">{!! $l['users'] ? e(implode(', ', array_column($l['users'], 'username'))) : '<span class="text-gray-400">Keine</span>' !!}</td>
+                            <td class="px-4 py-3 align-top">{!! $l['users'] ? e(implode(', ', array_column($l['users'], 'username'))) : '<span class="text-gray-500 dark:text-gray-400">Keine</span>' !!}</td>
                             <td class="px-4 py-3 align-top text-xs">
                                 @if ($l['allow'])<div>Erlaubt: {{ implode(', ', $l['allow']) }}</div>@endif
                                 @if ($l['deny'])<div>Gesperrt: {{ implode(', ', $l['deny']) }}</div>@endif
-                                @if (! $l['allow'] && ! $l['deny'])<span class="text-gray-400">Keine</span>@endif
+                                @if (! $l['allow'] && ! $l['deny'])<span class="text-gray-500 dark:text-gray-400">Keine</span>@endif
                             </td>
-                            <td class="px-4 py-3 align-top text-xs">{!! $l['used_by'] ? e(implode(', ', $l['used_by'])) : '<span class="text-gray-400">Noch kein Host</span>' !!}</td>
+                            <td class="px-4 py-3 align-top text-xs">{!! $l['used_by'] ? e(implode(', ', $l['used_by'])) : '<span class="text-gray-500 dark:text-gray-400">Noch kein Host</span>' !!}</td>
                             <td class="px-4 py-3 align-top">
                                 <div class="flex justify-end gap-1">
                                     <x-input.button type="button" size="sm" color="gray" wire:click="edit({{ $l['id'] }})">Bearbeiten</x-input.button>

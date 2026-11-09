@@ -120,15 +120,15 @@
                                 </td>
                                 <td class="py-2.5 px-4 font-mono text-sm text-gray-900 dark:text-gray-100">{{ $p->cidr }}</td>
                                 <td class="py-2.5 px-4 font-mono text-sm text-gray-900 dark:text-gray-100">{{ $p->bridge }}{{ $p->vlan ? ' · '.$p->vlan : '' }}</td>
-                                <td class="py-2.5 px-4 font-mono text-sm text-gray-900 dark:text-gray-100">{!! $p->gateway ? e($p->gateway) : '<span class="text-gray-400 dark:text-gray-500">—</span>' !!}</td>
+                                <td class="py-2.5 px-4 font-mono text-sm text-gray-900 dark:text-gray-100">{!! $p->gateway ? e($p->gateway) : '<span class="text-gray-500 dark:text-gray-400">—</span>' !!}</td>
                                 <td class="py-2.5 px-4 font-mono text-sm text-gray-900 dark:text-gray-100">
                                     @if ($p->pool_start || $p->pool_end)
                                         {{ $p->pool_start ?: '…' }} – {{ $p->pool_end ?: '…' }}
                                     @else
-                                        <span class="text-gray-400 dark:text-gray-500">ganzes Netz</span>
+                                        <span class="text-gray-500 dark:text-gray-400">ganzes Netz</span>
                                     @endif
                                 </td>
-                                <td class="py-2.5 px-4 font-mono text-sm text-gray-900 dark:text-gray-100">{!! $p->vmid_pattern ? e($p->vmid_pattern) : '<span class="text-gray-400 dark:text-gray-500">—</span>' !!}</td>
+                                <td class="py-2.5 px-4 font-mono text-sm text-gray-900 dark:text-gray-100">{!! $p->vmid_pattern ? e($p->vmid_pattern) : '<span class="text-gray-500 dark:text-gray-400">—</span>' !!}</td>
                                 <td class="py-2.5 px-4"><x-statusicon :value="(bool) $p->firewall" /></td>
                                 <td class="py-2.5 px-4">
                                     <div class="flex items-center justify-end gap-2">

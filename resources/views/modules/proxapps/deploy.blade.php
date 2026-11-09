@@ -201,7 +201,7 @@
                             <x-input.text :id="'f-'.$k" :feld="$k" type="number" :min="$min" wire:model.live.debounce.300ms="v.{{ $k }}"
                                 @class(['w-full font-mono', 'pr-11' => $unit, $amber => $changed($k) && ! $errors->has($k)]) />
                             @if ($unit)
-                                <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-gray-400">{{ $unit }}</span>
+                                <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-gray-500 dark:text-gray-400">{{ $unit }}</span>
                             @endif
                         </div>
                         <x-slot:unten>
@@ -265,7 +265,7 @@
                     </x-field>
                     <x-field label="Präfix" for="f-prefix" feld="prefix" required>
                         <div class="relative mt-1">
-                            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center font-mono text-gray-400">/</span>
+                            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center font-mono text-gray-500 dark:text-gray-400">/</span>
                             <x-input.text id="f-prefix" feld="prefix" type="number" min="1" max="32" wire:model="v.prefix" class="w-full pl-6 font-mono" />
                         </div>
                     </x-field>
@@ -349,7 +349,7 @@
             {{-- ============ Erweitert ============ --}}
             <div x-data="{ open: $wire.entangle('showAdvanced') }" class="mt-6 border-t border-gray-100 pt-4 dark:border-gray-700">
                 <button type="button" x-on:click="open = ! open" :aria-expanded="open.toString()"
-                    class="group flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wide text-gray-400 hover:text-cerulean-600 dark:text-gray-500">
+                    class="group flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-cerulean-600 dark:text-gray-400">
                     <span>Erweitert</span>
                     <x-icon name="chevron-down" class="h-4 w-4 transition-transform" ::class="open && 'rotate-180'" />
                 </button>
@@ -408,7 +408,7 @@
                     <table class="w-full text-sm">
                         @foreach ($ports as $port)
                             <tr class="border-b border-gray-100 last:border-0 dark:border-gray-700/50">
-                                <td class="py-1 pr-4 font-mono text-gray-900 dark:text-gray-100">{{ $port['port'] }}<span class="text-gray-400">/{{ $port['proto'] }}</span></td>
+                                <td class="py-1 pr-4 font-mono text-gray-900 dark:text-gray-100">{{ $port['port'] }}<span class="text-gray-500 dark:text-gray-400">/{{ $port['proto'] }}</span></td>
                                 <td class="py-1 text-gray-500 dark:text-gray-400">{{ $port['label'] }}</td>
                             </tr>
                         @endforeach

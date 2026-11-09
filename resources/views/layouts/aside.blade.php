@@ -29,14 +29,14 @@
             </ul>
 
             <div class="pt-3 mt-2 border-t border-gray-200 dark:border-gray-700">
-                <span class="px-2 text-[10.5px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Apps</span>
+                <span class="px-2 text-[10.5px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Apps</span>
             </div>
             {{-- grows and shrinks with the running apps (Livewire event "apps-changed") --}}
             <livewire:app-menu />
 
             <ul class="space-y-1">
                 <li class="pt-3 mt-2 border-t border-gray-200 dark:border-gray-700">
-                    <span class="px-2 text-[10.5px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Verwaltung</span>
+                    <span class="px-2 text-[10.5px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Verwaltung</span>
                 </li>
                 <x-aside.toplink label="Apps" icon="apps" :href="route('apps.index')" :aktiv="request()->routeIs('apps.index')" />
                 <x-aside.toplink label="Ereignisse" icon="list" :href="route('events.index')" :aktiv="request()->routeIs('events.*')" />
@@ -47,7 +47,7 @@
         </div>
 
         <a href="{{ route('apps.index') }}"
-            class="mt-10 pt-3 text-center text-xs text-gray-400 border-t border-gray-200 hover:text-cerulean-600 dark:border-gray-700 dark:text-gray-500">
+            class="mt-10 pt-3 text-center text-xs text-gray-500 border-t border-gray-200 hover:text-cerulean-600 dark:border-gray-700 dark:text-gray-400">
             PK95 Core v{{ config('pk95.version') }}
         </a>
     </div>

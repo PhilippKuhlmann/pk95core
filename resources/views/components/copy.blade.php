@@ -4,7 +4,7 @@
 @php($val = trim((string) $value))
 
 @if ($val === '')
-    <span class="text-gray-400 dark:text-gray-500">—</span>
+    <span class="text-gray-500 dark:text-gray-400">—</span>
 @else
     <span x-data="{ copied: false }" {{ $attributes->merge(['class' => 'inline-flex items-center gap-1.5 min-w-0']) }}>
         @if ($show)

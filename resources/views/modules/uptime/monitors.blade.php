@@ -208,7 +208,7 @@
                                             <span class="shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">{{ \Illuminate\Support\Carbon::createFromTimestampMs($incident['startedAt'])->format('d.m. H:i') }}</span>
                                             <span class="text-gray-700 dark:text-gray-200">
                                                 {{ $incident['cause'] }}
-                                                <span class="text-gray-400">
+                                                <span class="text-gray-500 dark:text-gray-400">
                                                     – {{ $incident['resolvedAt'] ? 'behoben nach '.\Illuminate\Support\Carbon::createFromTimestampMs($incident['resolvedAt'])->diffForHumans(\Illuminate\Support\Carbon::createFromTimestampMs($incident['startedAt']), true) : 'läuft noch' }}
                                                 </span>
                                             </span>

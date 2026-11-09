@@ -7,7 +7,7 @@
 @endphp
 
 <div class="flex min-w-0 items-center gap-2 text-xs">
-    <span class="w-8 shrink-0 text-[10.5px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ $label }}</span>
+    <span class="w-8 shrink-0 text-[10.5px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ $label }}</span>
     <span class="relative h-1.5 w-full min-w-16 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
         <span class="absolute inset-y-0 left-0 rounded-full {{ $farbe }}" style="width: {{ (int) ($p ?? 0) }}%"></span>
     </span>

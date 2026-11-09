@@ -7,7 +7,7 @@
         @if (trim((string) $slot) !== '')
             {{ $slot }}
         @elseif ($value === null || $value === '')
-            <span class="text-gray-400 dark:text-gray-500">—</span>
+            <span class="text-gray-500 dark:text-gray-400">—</span>
         @else
             {{ $value }}
         @endif

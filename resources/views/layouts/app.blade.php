@@ -26,7 +26,7 @@
     @livewireStyles
 </head>
 
-<body class="antialiased font-DINPro bg-gray-100 dark:bg-gray-900" x-data="seitenlayout"
+<body class="antialiased font-DINPro bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100" x-data="seitenlayout"
     x-on:keydown.escape.window="mobilOffen && mobilUmschalten(false)">
 
     @include('layouts.navigation')

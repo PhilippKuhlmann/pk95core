@@ -35,7 +35,7 @@
                     <span class="ml-1 rounded bg-cerulean-100 px-1.5 py-0.5 text-[11px] font-semibold text-cerulean-800 dark:bg-cerulean-900 dark:text-cerulean-200">Update</span>
                 @endif
             @else
-                <span class="text-gray-400 dark:text-gray-500">—</span>
+                <span class="text-gray-500 dark:text-gray-400">—</span>
             @endif
         </x-kv>
         <x-kv label="Debian-Pakete" :value="$d->os_updates === null ? '—' : ($d->os_updates > 0 ? $d->os_updates.' ausstehend' : 'aktuell')" />
@@ -73,7 +73,7 @@
                     @endif
                     @if ($run->snapshot && $run->snapshot_exists && ! $run->is_active && ! $updateActive)
                         <div class="mt-1 flex items-center justify-between gap-2">
-                            <span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">{{ $run->snapshot }}</span>
+                            <span class="font-mono text-[11px] text-gray-500 dark:text-gray-400">{{ $run->snapshot }}</span>
                             <button type="button" class="text-xs text-cerulean-600 hover:text-cerulean-700 dark:text-cerulean-400"
                                 x-on:click="$store.confirm.ask({ title: {{ \Illuminate\Support\Js::from('Auf Stand vor Update #'.$run->id.' zurückrollen?') }}, text: {{ \Illuminate\Support\Js::from('Der Container wird auf den Snapshot '.$run->snapshot.' zurückgesetzt und neu gestartet. Alle Änderungen seitdem gehen verloren.') }}, button: 'Zurückrollen', ok: () => $wire.rollback({{ $run->id }}) })">
                                 Zurückrollen

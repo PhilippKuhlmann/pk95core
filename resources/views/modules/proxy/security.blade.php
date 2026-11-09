@@ -47,7 +47,7 @@
             </div>
         @endif
 
-        <div class="mt-4 text-xs font-semibold uppercase tracking-wide text-gray-400">{{ $mode === 'allow' ? 'Freigegebene Länder' : 'Gesperrte Länder' }}</div>
+        <div class="mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ $mode === 'allow' ? 'Freigegebene Länder' : 'Gesperrte Länder' }}</div>
         <div class="mt-2 flex flex-wrap gap-1.5">
             @forelse ($sorted as $c)
                 <button type="button" wire:click="unselect('{{ $c }}')" title="{{ $mode === 'allow' ? 'Nicht mehr freigeben' : 'Entsperren' }}"
@@ -80,7 +80,7 @@
                         <span class="shrink-0" aria-hidden="true">{{ Fmt::flag($c) }}</span>
                         <span class="min-w-0 flex-1 truncate">{{ $names[$c] }}</span>
                         @if ($traffic[$c] ?? 0)
-                            <span class="shrink-0 text-xs tabular-nums text-gray-400 dark:text-gray-500" title="{{ Fmt::num($traffic[$c]) }} Zugriffe in 7 Tagen">{{ Fmt::num($traffic[$c]) }}</span>
+                            <span class="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400" title="{{ Fmt::num($traffic[$c]) }} Zugriffe in 7 Tagen">{{ Fmt::num($traffic[$c]) }}</span>
                         @endif
                     </label>
                 @endforeach

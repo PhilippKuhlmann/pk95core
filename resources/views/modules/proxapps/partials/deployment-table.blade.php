@@ -31,7 +31,7 @@
                             @if ($d->ip)
                                 {{ $d->ip }}
                             @else
-                                <span class="text-gray-400 dark:text-gray-500">{{ ($d->spec['net']['mode'] ?? '') === 'dhcp' ? 'DHCP' : '—' }}</span>
+                                <span class="text-gray-500 dark:text-gray-400">{{ ($d->spec['net']['mode'] ?? '') === 'dhcp' ? 'DHCP' : '—' }}</span>
                             @endif
                             <x-proxapps.domain :deployment-id="$d->id" class="flex text-xs" />
                         </td>
@@ -40,7 +40,7 @@
                             @if ($d->connection)
                                 {{ $d->connection->name }}
                             @else
-                                <span class="text-gray-400 dark:text-gray-500">—</span>
+                                <span class="text-gray-500 dark:text-gray-400">—</span>
                             @endif
                         </td>
                         <td class="px-4 py-2.5 font-mono text-sm text-gray-900 dark:text-gray-100">{{ \App\Http\Support\Format::dt($d->created_at) }}</td>

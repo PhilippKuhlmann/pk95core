@@ -21,7 +21,7 @@
 
         <div class="border-b border-chathams-blue-100 px-4 py-3 dark:border-gray-700">
             <p class="truncate text-sm text-gray-900 dark:text-gray-100">Angemeldet als</p>
-            <p class="mt-0.5 truncate font-mono text-xs text-gray-400 dark:text-gray-500">{{ $nutzer?->username }}</p>
+            <p class="mt-0.5 truncate font-mono text-xs text-gray-500 dark:text-gray-400">{{ $nutzer?->username }}</p>
         </div>
 
         <ul class="py-1">

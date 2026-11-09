@@ -42,7 +42,7 @@
                             <div class="mb-1 flex items-center gap-2 text-sm">
                                 <span @class(['h-2 w-2 shrink-0 rounded-full', 'bg-emerald-500' => ($n['status'] ?? '') === 'online', 'bg-red-500' => ($n['status'] ?? '') !== 'online'])></span>
                                 <span class="font-medium text-gray-900 dark:text-gray-100">{{ $n['node'] }}</span>
-                                <span class="text-xs text-gray-400 dark:text-gray-500">
+                                <span class="text-xs text-gray-500 dark:text-gray-400">
                                     {{ ($n['status'] ?? '') === 'online' ? (($n['maxcpu'] ?? null) ? $n['maxcpu'].' CPU · '.\App\Http\Support\Format::bytes($n['maxmem'] ?? null) : 'online') : 'offline' }}
                                 </span>
                             </div>

@@ -44,7 +44,7 @@
                         @forelse ($definition?->volumes ?? [] as $v)
                             <div class="font-mono text-[13px]">{{ $definition->volumeName($v['name']) }} → {{ $v['target'] }}</div>
                         @empty
-                            <span class="text-gray-400 dark:text-gray-500">—</span>
+                            <span class="text-gray-500 dark:text-gray-400">—</span>
                         @endforelse
                     </x-kv>
                     <x-kv label="Zuletzt erreichbar" :value="$installedApp->last_seen_at?->diffForHumans()" />
@@ -69,7 +69,7 @@
                                     @endif
                                 </div>
                             @empty
-                                <span class="text-gray-400 dark:text-gray-500">—</span>
+                                <span class="text-gray-500 dark:text-gray-400">—</span>
                             @endforelse
                         </x-kv>
                         <x-kv label="Fähigkeiten" :value="implode(', ', $manifest->capabilities)" />
@@ -161,7 +161,7 @@
                 <ul class="divide-y divide-gray-100 text-sm dark:divide-gray-700">
                     @foreach ($history as $entry)
                         <li class="flex gap-3 py-1.5">
-                            <span class="shrink-0 font-mono text-xs text-gray-400 dark:text-gray-500">{{ $entry->created_at?->format('d.m. H:i:s') }}</span>
+                            <span class="shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">{{ $entry->created_at?->format('d.m. H:i:s') }}</span>
                             <span @class([
                                 'text-red-600 dark:text-red-400' => $entry->level === 'error',
                                 'text-green-700 dark:text-green-400' => $entry->level === 'success',

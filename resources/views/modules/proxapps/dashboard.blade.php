@@ -61,8 +61,8 @@
                             <a href="{{ $this->pageUrl('deployment', ['id' => $d->id]) }}"
                                 class="flex items-center justify-between gap-3 py-2.5 -mx-2 px-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                                 <span class="min-w-0">
-                                    <span class="block truncate text-gray-800 dark:text-gray-100">{{ $d->hostname }} <span class="text-gray-400 dark:text-gray-500">· {{ $d->app_name }}</span></span>
-                                    <span class="block truncate text-xs text-gray-400 dark:text-gray-500">
+                                    <span class="block truncate text-gray-800 dark:text-gray-100">{{ $d->hostname }} <span class="text-gray-500 dark:text-gray-400">· {{ $d->app_name }}</span></span>
+                                    <span class="block truncate text-xs text-gray-500 dark:text-gray-400">
                                         <span class="font-mono">CT {{ $d->vmid }}</span>{{ $d->ip ? ' · '.$d->ip : '' }}@if (\App\Models\AppLink::forProxApps((int) $d->id)?->shownDomain()) · <x-proxapps.domain :deployment-id="$d->id" compact />@endif · {{ $d->node }} · {{ \App\Http\Support\Format::dt($d->created_at) }}
                                     </span>
                                 </span>
@@ -87,7 +87,7 @@
                                 <x-app-icon :app="$app" :installed="$installedApp" class="h-9 w-9" />
                                 <span class="min-w-0 flex-1">
                                     <span class="block truncate text-gray-800 dark:text-gray-100">{{ $app->name }}</span>
-                                    <span class="block truncate text-xs text-gray-400 dark:text-gray-500">{{ $app->summary }}</span>
+                                    <span class="block truncate text-xs text-gray-500 dark:text-gray-400">{{ $app->summary }}</span>
                                 </span>
                                 <span class="shrink-0 text-sm font-medium text-cerulean-600 dark:text-cerulean-400">Ausrollen</span>
                             </a>

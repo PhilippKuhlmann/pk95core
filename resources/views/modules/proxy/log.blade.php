@@ -59,7 +59,7 @@
                             <td class="max-w-48 truncate px-3 py-1.5" title="{{ $r['host'] }}">{{ $r['host'] ?: '–' }}</td>
                             <td class="max-w-md truncate px-3 py-1.5 font-mono" title="{{ $r['path'] }}">{{ $r['path'] }}</td>
                             <td class="whitespace-nowrap px-3 py-1.5 font-mono"><span title="{{ $r['country'] ? Fmt::country($r['country']) : '' }}">{{ Fmt::flag($r['country']) }} {{ $r['ip'] }}
-                                @if ($r['country'] && $r['country'] !== 'LAN')<span class="text-gray-400">{{ $r['country'] }}</span>@endif</span></td>
+                                @if ($r['country'] && $r['country'] !== 'LAN')<span class="text-gray-500 dark:text-gray-400">{{ $r['country'] }}</span>@endif</span></td>
                             <td class="hidden max-w-56 truncate px-3 py-1.5 lg:table-cell" title="{{ $r['client'] }}">{{ $r['client'] }}
                                 @if ($r['is_bot'])<span class="ml-1 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-600 dark:bg-gray-700 dark:text-gray-300">Bot</span>@endif</td>
                             <td class="whitespace-nowrap px-3 py-1.5 text-right tabular-nums">{{ Fmt::bytes($r['bytes']) }}</td>

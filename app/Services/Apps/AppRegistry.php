@@ -87,8 +87,8 @@ class AppRegistry
     }
 
     /**
-     * Sidebar groups: one per running app, each with its overview and the manifest pages
-     * the matching Core module provides.
+     * Sidebar groups: one per running app, each with the manifest pages the matching Core
+     * module provides and Core's details page of the app.
      *
      * The current page is passed in (see currentPage()) because the menu is re-rendered by
      * Livewire update requests, where the request route is no longer the page route.
@@ -105,12 +105,7 @@ class AppRegistry
         $groups = [];
         foreach ($this->running() as $app) {
             $definition = $this->catalog->find($app->app_id);
-            $items = [[
-                'label' => 'Übersicht',
-                'icon' => 'info',
-                'url' => route('apps.show', $app),
-                'active' => $currentRoute === 'apps.show' && $currentApp === $app->app_id,
-            ]];
+            $items = [];
             foreach ($app->manifest()?->menu ?? [] as $entry) {
                 if ($this->page($app, $entry['key']) === null) {
                     continue;
@@ -122,6 +117,14 @@ class AppRegistry
                     'active' => $currentRoute === 'apps.page' && $currentApp === $app->app_id && $currentPage === $entry['key'],
                 ];
             }
+            // Core's own page of the app (container, log, backups, updates) last, so it does not
+            // compete with an overview page of the app itself.
+            $items[] = [
+                'label' => 'App-Details',
+                'icon' => 'info',
+                'url' => route('apps.show', $app),
+                'active' => $currentRoute === 'apps.show' && $currentApp === $app->app_id,
+            ];
             $groups[] = [
                 'id' => $app->app_id,
                 'label' => $app->displayName(),

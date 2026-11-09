@@ -30,7 +30,7 @@
                             </td>
                             <td class="py-2 pr-3">
                                 @if (! $x['enabled'])
-                                    <span class="text-gray-400">Host deaktiviert</span>
+                                    <span class="text-gray-500 dark:text-gray-400">Host deaktiviert</span>
                                 @elseif ($x['status'] !== 'ok')
                                     <span class="flex items-center gap-2"><span class="h-2 w-2 rounded-full {{ Fmt::dot('warn') }}"></span>Wird noch geholt</span>
                                 @else

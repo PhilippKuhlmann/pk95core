@@ -62,7 +62,7 @@
                                     </td>
                                     <td class="py-2.5 px-4">
                                         @if ($d->os_updates === null)
-                                            <span class="text-gray-400 dark:text-gray-500">—</span>
+                                            <span class="text-gray-500 dark:text-gray-400">—</span>
                                         @elseif ($d->os_updates > 0)
                                             <span class="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900 dark:bg-amber-900 dark:text-amber-100">{{ $d->os_updates }} Paket(e)</span>
                                         @else
@@ -83,7 +83,7 @@
                                                 @endif
                                             </div>
                                         @else
-                                            <span class="text-gray-400 dark:text-gray-500">—</span>
+                                            <span class="text-gray-500 dark:text-gray-400">—</span>
                                         @endif
                                     </td>
                                     <td class="py-2.5 px-4 text-xs">

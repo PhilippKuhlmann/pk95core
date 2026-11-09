@@ -38,7 +38,7 @@
                             <div class="mt-0.5 whitespace-pre-line text-sm text-gray-500 dark:text-gray-400">{{ $event->body }}</div>
                         @endif
                     </div>
-                    <span class="shrink-0 font-mono text-xs text-gray-400 dark:text-gray-500">{{ $event->type }}</span>
+                    <span class="shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">{{ $event->type }}</span>
                 </div>
             @endforeach
         </x-panel>

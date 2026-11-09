@@ -106,7 +106,7 @@
                             <td class="px-4 py-3 align-top text-xs">{{ match ($x['access_mode']) { 'internal' => 'Nur intern', 'custom' => implode(', ', $x['ip_allow']), default => 'Öffentlich' } }}</td>
                             <td class="px-4 py-3 align-top">
                                 @if (! $x['enabled'])
-                                    <span class="text-gray-400">Deaktiviert</span>
+                                    <span class="text-gray-500 dark:text-gray-400">Deaktiviert</span>
                                 @elseif (! isset($x['status']))
                                     <span class="flex items-center gap-2"><span class="h-2 w-2 animate-pulse rounded-full {{ Fmt::dot('warn') }}"></span>Wird gestartet</span>
                                 @elseif ($err)

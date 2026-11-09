@@ -265,9 +265,9 @@
                             </td>
                             <td class="px-4 py-3 align-top text-xs">
                                 @if (! $x['enabled'])
-                                    <span class="text-gray-400">Deaktiviert</span>
+                                    <span class="text-gray-500 dark:text-gray-400">Deaktiviert</span>
                                 @elseif (! $c)
-                                    <span class="text-gray-400">Wird geprüft …</span>
+                                    <span class="text-gray-500 dark:text-gray-400">Wird geprüft …</span>
                                 @else
                                     @foreach ($c['domains'] as $d)
                                         @php $prefix = count($c['domains']) > 1 ? $d['domain'].': ' : ''; @endphp
@@ -285,7 +285,7 @@
                                 @endif
                             </td>
                             <td class="hidden px-4 py-3 align-top text-xs lg:table-cell">
-                                {!! $protect ? e(implode(', ', $protect)) : '<span class="text-gray-400">Öffentlich</span>' !!}
+                                {!! $protect ? e(implode(', ', $protect)) : '<span class="text-gray-500 dark:text-gray-400">Öffentlich</span>' !!}
                             </td>
                             <td class="px-4 py-3 align-top">
                                 <div class="flex justify-end gap-1">
