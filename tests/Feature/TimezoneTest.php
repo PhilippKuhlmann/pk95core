@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Http\Support\Format;
 use App\Models\AppEvent;
 use App\Modules\Dns\Overview as DnsOverview;
+use App\Modules\Proxy\Certificates as ProxyCertificates;
 use App\Modules\Proxy\Overview as ProxyOverview;
 use App\Services\Catalog\AppDefinition;
 use App\Services\Docker\ContainerSpec;
@@ -108,6 +109,26 @@ class TimezoneTest extends FeatureTestCase
         $this->assertSame('10.11. 17:00 bis 18:00', ProxyOverview::bucketLabel(self::ms('2026-11-10 16:00'), 3600000));
         $this->assertSame('25.10. 02:00 bis 02:00', ProxyOverview::bucketLabel(self::ms('2026-10-25 00:00'), 3600000));
         $this->assertSame('18:50 bis 18:55', ProxyOverview::bucketLabel(self::ms('2026-11-10 17:50'), 300000));
+    }
+
+    public function test_certificate_days_left_do_not_depend_on_the_time_of_day(): void
+    {
+        $expires = Carbon::parse('2026-11-15 23:30:00', 'UTC')->getTimestamp(); // 16.11. 00:30 local
+
+        // just before local midnight (5 d 0:45 left), just after it while UTC is still on 10.11.
+        // (5 d 0:15) and just after UTC midnight (4 d 23:15): only the remaining time counts
+        foreach (['2026-11-10 22:45' => 5, '2026-11-10 23:15' => 5, '2026-11-11 00:15' => 4] as $now => $days) {
+            Carbon::setTestNow(Carbon::parse($now, 'UTC'));
+            $this->assertSame($days, ProxyCertificates::daysLeft($expires), $now);
+        }
+
+        // exactly 5 days, one second less, expired
+        Carbon::setTestNow(Carbon::parse('2026-11-10 23:30:00', 'UTC'));
+        $this->assertSame(['warn', '16.11.2026 (5 Tage)'], ProxyCertificates::validity($expires));
+        Carbon::setTestNow(Carbon::parse('2026-11-10 23:30:01', 'UTC'));
+        $this->assertSame(['warn', '16.11.2026 (4 Tage)'], ProxyCertificates::validity($expires));
+        Carbon::setTestNow(Carbon::parse('2026-11-15 23:30:01', 'UTC'));
+        $this->assertSame(['bad', '16.11.2026 (abgelaufen)'], ProxyCertificates::validity($expires));
     }
 
     public function test_apps_get_the_display_timezone_as_tz(): void

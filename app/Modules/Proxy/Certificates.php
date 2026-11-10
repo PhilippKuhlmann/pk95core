@@ -92,13 +92,22 @@ class Certificates extends Component
     }
 
     /**
+     * Whole days left until $notAfter (Unix seconds): the difference of two moments, so it
+     * does not depend on the timezone or the time of day; negative once expired.
+     */
+    public static function daysLeft(int $notAfter): int
+    {
+        return (int) floor(($notAfter - now()->getTimestamp()) / 86400);
+    }
+
+    /**
      * Validity with dot: red when expired, amber within $warnDays.
      *
      * @return array{0: string, 1: string}
      */
     public static function validity(int $notAfter, int $warnDays = 14): array
     {
-        $days = (int) floor(($notAfter - time()) / 86400);
+        $days = self::daysLeft($notAfter);
         $tone = $days < 0 ? 'bad' : ($days <= $warnDays ? 'warn' : 'good');
 
         return [$tone, Fmt::date($notAfter * 1000).' ('.($days < 0 ? 'abgelaufen' : Fmt::plural($days, 'Tag', 'Tage')).')'];
