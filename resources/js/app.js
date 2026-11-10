@@ -6,22 +6,36 @@ import { registerProxyMap } from './proxy-map';
  */
 
 // ---- theme toggle (same behaviour as DokuVault) ---------------------------------
+// The theme itself is set by window.pk95ApplyTheme (layouts/partials/theme.blade.php).
 function initThemeToggle() {
     const d = document.getElementById('theme-toggle-dark-icon');
     const l = document.getElementById('theme-toggle-light-icon');
     const btn = document.getElementById('theme-toggle');
     if (!btn || !d || !l || btn.dataset.ready) return;
     btn.dataset.ready = '1';
-    if (document.documentElement.classList.contains('dark')) l.classList.remove('hidden');
-    else d.classList.remove('hidden');
+    const showIcon = () => {
+        const isDark = document.documentElement.classList.contains('dark');
+        d.classList.toggle('hidden', isDark);
+        l.classList.toggle('hidden', !isDark);
+    };
+    showIcon();
     btn.addEventListener('click', () => {
-        d.classList.toggle('hidden');
-        l.classList.toggle('hidden');
         const isDark = document.documentElement.classList.toggle('dark');
         try { localStorage.setItem('color-theme', isDark ? 'dark' : 'light'); } catch (e) { /* ignore */ }
+        showIcon();
     });
 }
 document.addEventListener('DOMContentLoaded', initThemeToggle);
+
+// wire:navigate copies the <html> attributes of the new page, which drops "dark": apply the
+// theme again right when the page is swapped (no light flash), and wire up the new toggle.
+document.addEventListener('livewire:navigating', (e) => {
+    e.detail?.onSwap?.(() => window.pk95ApplyTheme?.());
+});
+document.addEventListener('livewire:navigated', () => {
+    window.pk95ApplyTheme?.();
+    initThemeToggle();
+});
 
 async function copyToClipboard(value) {
     try {
