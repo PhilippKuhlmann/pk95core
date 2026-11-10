@@ -226,7 +226,7 @@ class BackupUpdateTest extends FeatureTestCase
     {
         $app = $this->runningDemo();
         $app->update(['update_policy' => 'all', 'available_version' => '1.1.0']);
-        Settings::put('maintenance_time', now()->format('H:i'));
+        Settings::put('maintenance_time', now('Europe/Berlin')->format('H:i'));
 
         $this->artisan('pk95:maintenance')->expectsOutputToContain('demo: Update eingeplant')->assertSuccessful();
         $this->assertSame('1.1.0', $app->refresh()->tag);

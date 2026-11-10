@@ -28,7 +28,7 @@
             @foreach ($events as $event)
                 @php([$label, $classes] = $tone[$event->severity] ?? $tone['info'])
                 <div class="flex flex-wrap items-start gap-3 px-4 py-3" wire:key="ev-{{ $event->id }}">
-                    <span class="w-28 shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400" title="{{ $event->occurred_at->format('d.m.Y H:i:s') }}">{{ $event->occurred_at->format('d.m. H:i:s') }}</span>
+                    <span class="w-28 shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400" title="{{ \App\Http\Support\Format::dt($event->occurred_at, true) }}">{{ \App\Http\Support\Format::local($event->occurred_at)?->format('d.m. H:i:s') }}</span>
                     <span class="inline-flex shrink-0 rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide {{ $classes }}">{{ $label }}</span>
                     <div class="min-w-0 flex-1">
                         <div class="text-sm text-gray-900 dark:text-gray-100">

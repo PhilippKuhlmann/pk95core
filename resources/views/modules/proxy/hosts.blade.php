@@ -1,6 +1,6 @@
 @php
     use App\Modules\Proxy\Hosts;
-    $date = fn ($s) => \Illuminate\Support\Carbon::createFromTimestamp($s)->timezone(config('app.timezone'))->format('d.m.Y');
+    $date = fn ($s) => \App\Http\Support\Format::fromMs($s * 1000)->format('d.m.Y');
     $logUrl = fn ($d) => route('apps.page', [$installedApp, 'log']).'?host='.urlencode($d);
     $dot = fn ($tone) => match ($tone) {
         'good' => 'bg-green-500', 'warn' => 'bg-amber-500', 'bad' => 'bg-rose-500', default => 'bg-gray-300',

@@ -2,6 +2,7 @@
 
 namespace App\Services\Updates;
 
+use App\Http\Support\Format;
 use App\Models\AppEvent;
 use App\Services\Apps\AppException;
 use App\Services\Docker\DockerClient;
@@ -341,13 +342,6 @@ class CoreUpdater
 
     private static function time(mixed $value): ?Carbon
     {
-        if (! is_string($value) || $value === '') {
-            return null;
-        }
-        try {
-            return Carbon::parse($value)->setTimezone(config('app.timezone'));
-        } catch (Throwable) {
-            return null;
-        }
+        return is_string($value) ? Format::local($value) : null;
     }
 }

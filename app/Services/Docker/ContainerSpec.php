@@ -2,6 +2,7 @@
 
 namespace App\Services\Docker;
 
+use App\Http\Support\Format;
 use App\Services\Catalog\AppDefinition;
 
 /**
@@ -21,7 +22,8 @@ final class ContainerSpec
             // A host-network app cannot resolve "pk95core": it reaches Core's published port.
             'PK95_CORE_URL' => (string) config($app->networkMode === 'host' ? 'pk95.host_core_url' : 'pk95.core_url'),
             'PK95_CORE_TOKEN' => $token,
-            'TZ' => (string) config('app.timezone', 'Europe/Berlin'),
+            // the display timezone (Core itself keeps UTC for stored times)
+            'TZ' => Format::timezone(),
         ];
 
         $host = [

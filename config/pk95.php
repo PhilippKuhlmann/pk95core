@@ -11,6 +11,13 @@ return [
     'version' => env('PK95_VERSION', 'dev'),
 
     /*
+    | Timezone for everything shown to the user and handed to the apps as TZ. Times are
+    | stored in UTC (app.timezone) and only converted for display (App\Http\Support\Format).
+    | docker-compose.yml sets TZ; PK95_TIMEZONE overrides it.
+    */
+    'timezone' => env('PK95_TIMEZONE') ?: (env('TZ') ?: 'Europe/Berlin'),
+
+    /*
     | App protocol versions this Core speaks (see docs/app-protocol.md).
     */
     'protocols' => [1],
@@ -91,7 +98,6 @@ return [
     | Defaults for the settings stored in the "settings" table.
     */
     'defaults' => [
-        'timezone' => 'Europe/Berlin',
         // Daily maintenance window (HH:MM): scheduled backups and automatic updates.
         'maintenance_time' => '03:30',
         'maintenance_last_run' => '',

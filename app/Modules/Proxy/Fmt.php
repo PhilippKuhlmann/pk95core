@@ -2,6 +2,7 @@
 
 namespace App\Modules\Proxy;
 
+use App\Http\Support\Format;
 use Illuminate\Support\Carbon;
 
 /**
@@ -89,7 +90,7 @@ final class Fmt
 
     public static function at(int|float $ms): Carbon
     {
-        return Carbon::createFromTimestampMs($ms)->timezone(config('app.timezone'));
+        return Format::fromMs($ms);
     }
 
     /** 08.11. 14:03:12 */

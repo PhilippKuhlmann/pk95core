@@ -128,7 +128,8 @@ class Overview extends Component
             if ($blocked > 0) {
                 $segs[] = ['class' => 'fill-rose-500', 'x' => $bx, 'y' => round($y($queries), 1), 'h' => round(max(1, $y($queries - $blocked) - $y($queries)), 1)];
             }
-            $label = $daily ? $at->format('d.m.Y') : $at->format('d.m. H:i').' bis '.$at->copy()->addHour()->format('H:i');
+            // the end is one real hour later (on the night the clocks go back: 02:00 bis 02:00)
+            $label = $daily ? $at->format('d.m.Y') : $at->format('d.m. H:i').' bis '.Fmt::at($b['t'] + 3600000)->format('H:i');
             $bars[] = ['x' => round($x, 1), 'w' => round($slot, 1), 'bw' => round($barW, 1), 'segs' => $segs,
                 'title' => $label."\n".Fmt::num($queries).' Anfragen, davon '.Fmt::num($blocked).' blockiert'];
         }
