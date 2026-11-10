@@ -48,7 +48,7 @@
 
         <a href="{{ route('apps.index') }}"
             class="mt-10 pt-3 text-center text-xs text-gray-500 border-t border-gray-200 hover:text-cerulean-600 dark:border-gray-700 dark:text-gray-400">
-            PK95 Core v{{ config('pk95.version') }}
+            PK95 Core {{ \App\Services\Updates\CoreUpdater::versionLabel() }}
         </a>
     </div>
 </aside>

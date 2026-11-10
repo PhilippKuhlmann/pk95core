@@ -10,6 +10,8 @@ use App\Services\Catalog\Catalog;
 use App\Services\Docker\ContainerSpec;
 use App\Services\Docker\DockerClient;
 use App\Services\Docker\DockerException;
+use App\Services\Updates\Registry;
+use App\Services\Updates\UpdateService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
@@ -24,6 +26,7 @@ class AppManager
     public function __construct(
         private readonly DockerClient $docker,
         private readonly Catalog $catalog,
+        private readonly Registry $registry,
     ) {}
 
     /**
@@ -33,6 +36,12 @@ class AppManager
     public function activate(string $appId, ?string $tag = null): InstalledApp
     {
         $definition = $this->catalog->get($appId);
+        // A new installation gets the released version behind the catalog's moving tag
+        // (latest → 1.4.2), so updates follow version numbers and the update policy.
+        if ($tag === null && ! UpdateService::isVersion($definition->tag)
+            && ! InstalledApp::query()->where('app_id', $definition->id)->exists()) {
+            $tag = rescue(fn () => $this->registry->release($definition->image, $definition->tag), null, false);
+        }
 
         $app = DB::transaction(function () use ($definition, $tag) {
             $app = InstalledApp::query()->where('app_id', $definition->id)->lockForUpdate()->first();

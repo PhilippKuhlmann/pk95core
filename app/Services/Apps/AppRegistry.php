@@ -5,6 +5,7 @@ namespace App\Services\Apps;
 use App\Models\InstalledApp;
 use App\Modules\Module;
 use App\Services\Catalog\Catalog;
+use App\Services\Updates\UpdateService;
 use Illuminate\Support\Collection;
 use Livewire\Component;
 
@@ -70,6 +71,61 @@ class AppRegistry
             }
 
             return "Das Core-Modul unterstützt Version {$manifest->version} (Protokoll {$manifest->protocol}) dieser App nicht. Core oder App aktualisieren.";
+        }
+
+        return null;
+    }
+
+    /**
+     * Would this version of the app work with its Core module? Unknown (no module, a build
+     * without version) counts as yes.
+     */
+    public function fits(InstalledApp $app, ?string $version): bool
+    {
+        $module = $this->module($app);
+        if ($module === null || $version === null || ! UpdateService::isVersion($version)) {
+            return true;
+        }
+        $v = ltrim($version, 'v');
+
+        return ($module->minVersion() === null || version_compare($v, $module->minVersion(), '>='))
+            && ($module->maxVersion() === null || version_compare($v, $module->maxVersion(), '<'));
+    }
+
+    /**
+     * Does the installed or the offered version fit the Core module (minVersion/maxVersion)?
+     * For the update badge: whether the update unlocks the pages, or why it does not fit.
+     *
+     * @return array{tone: 'info'|'warn', text: string}|null null = nothing to say
+     */
+    public function updateHint(InstalledApp $app): ?array
+    {
+        $module = $this->module($app);
+        if ($module === null) {
+            return null;
+        }
+        $name = $app->displayName();
+        [$min, $max] = [$module->minVersion(), $module->maxVersion()];
+        $installed = ltrim((string) $app->version, 'v');
+        $available = $app->available_version !== null && UpdateService::isVersion($app->available_version) ? ltrim($app->available_version, 'v') : null;
+        $tooOld = fn (string $v) => $min !== null && version_compare($v, $min, '<');
+        $tooNew = fn (string $v) => $max !== null && version_compare($v, $max, '>=');
+
+        if ($available !== null && $tooNew($available)) {
+            return ['tone' => 'warn', 'text' => "Version {$available} braucht ein neueres PK95 Core. Aktualisiere zuerst PK95 Core, sonst bleiben die Seiten von {$name} gesperrt."];
+        }
+        if ($available !== null && $tooOld($available)) {
+            return ['tone' => 'warn', 'text' => "Das Core-Modul braucht {$name} ab Version {$min}. Auch {$available} ist älter, eine passende Version ist noch nicht veröffentlicht."];
+        }
+        if ($installed !== '' && UpdateService::isVersion($installed) && $tooOld($installed)) {
+            return match (true) {
+                $available !== null => ['tone' => 'info', 'text' => "Die Seiten von {$name} sind gesperrt: Das Core-Modul braucht Version {$min} oder neuer. Das Update auf {$available} behebt das."],
+                $app->available_version !== null => ['tone' => 'info', 'text' => "Die Seiten von {$name} sind gesperrt: Das Core-Modul braucht Version {$min} oder neuer. Ob dieser Build reicht, zeigt sich nach dem Aktualisieren."],
+                default => ['tone' => 'warn', 'text' => "Die Seiten von {$name} sind gesperrt: Das Core-Modul braucht Version {$min} oder neuer, installiert ist {$installed}. Eine passende Version ist noch nicht veröffentlicht."],
+            };
+        }
+        if ($installed !== '' && UpdateService::isVersion($installed) && $tooNew($installed)) {
+            return ['tone' => 'warn', 'text' => "{$name} {$installed} ist neuer, als dieses PK95 Core kennt. Aktualisiere PK95 Core."];
         }
 
         return null;

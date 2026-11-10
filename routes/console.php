@@ -5,6 +5,7 @@ use App\Jobs\AppOperation;
 use App\Models\AppLink;
 use App\Models\InstalledApp;
 use App\Services\Apps\AppManager;
+use App\Services\Apps\AppRegistry;
 use App\Services\Automation\Linker;
 use App\Services\Docker\DockerClient;
 use App\Services\Updates\CoreUpdater;
@@ -51,7 +52,9 @@ Artisan::command('pk95:maintenance {--force : Unabhängig von der Uhrzeit ausfü
     Settings::put('maintenance_last_run', $today);
 
     foreach (InstalledApp::query()->whereIn('status', [InstalledApp::RUNNING, InstalledApp::UNHEALTHY, InstalledApp::STOPPED])->get() as $app) {
-        if (in_array($app->update_policy, ['patch', 'minor', 'all'], true) && $app->available_version !== null) {
+        // automatic only when the new version fits the Core module (else it waits for a Core update)
+        if (in_array($app->update_policy, ['patch', 'minor', 'all'], true) && $app->available_version !== null
+            && app(AppRegistry::class)->fits($app, $app->available_version)) {
             AppOperation::update($app->app_id);
             $this->line("{$app->app_id}: Update eingeplant");
         } elseif ($app->auto_backup && $app->definition()?->volumes) {

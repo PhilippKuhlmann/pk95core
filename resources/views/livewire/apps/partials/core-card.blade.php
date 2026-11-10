@@ -56,7 +56,14 @@
                 Das neue Image wird geladen, danach startet PK95 Core neu. Die Seite ist kurz nicht erreichbar und lädt dann von selbst neu.
             </p>
         @elseif ($available)
-            <p class="text-gray-700 dark:text-gray-200">Neu: {{ CoreUpdater::describe($available) }}.</p>
+            <p class="text-gray-700 dark:text-gray-200">
+                @if ($available['version'] ?? null)
+                    installiert Version {{ $core['version'] }} → neu Version {{ $available['version'] }}
+                    <span class="text-gray-500 dark:text-gray-400">({{ CoreUpdater::describe(['revision' => $available['revision'], 'created' => $available['created']]) }})</span>
+                @else
+                    Neu: {{ CoreUpdater::describe($available) }}.
+                @endif
+            </p>
         @else
             <p class="text-gray-500 dark:text-gray-400">
                 Aktuell{{ $core['checked_at'] ? ', zuletzt geprüft '.$core['checked_at']->diffForHumans() : '' }}.

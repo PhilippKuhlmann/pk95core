@@ -5,6 +5,7 @@ namespace App\Livewire\Apps;
 use App\Jobs\AppOperation;
 use App\Models\InstalledApp;
 use App\Services\Apps\AppManager;
+use App\Services\Apps\AppRegistry;
 use App\Services\Catalog\Catalog;
 use App\Services\Catalog\CatalogException;
 use App\Services\Docker\DockerClient;
@@ -130,7 +131,7 @@ class Index extends Component
         $this->dispatch('apps-changed');
     }
 
-    public function render(Catalog $catalog, DockerClient $docker, CoreUpdater $core, UpdateAll $all)
+    public function render(Catalog $catalog, DockerClient $docker, CoreUpdater $core, UpdateAll $all, AppRegistry $registry)
     {
         $core->finish();
         $coreStatus = $core->status();
@@ -150,6 +151,7 @@ class Index extends Component
             'catalogError' => $error,
             'dockerOk' => $docker->available(),
             'core' => $coreStatus,
+            'hints' => $installed->map(fn (InstalledApp $a) => $registry->updateHint($a)),
             'updateCount' => $all->apps()->count() + (UpdateAll::coreReady($coreStatus) ? 1 : 0),
             'run' => $run,
             'progress' => $run ? $all->progress($run) : [],
