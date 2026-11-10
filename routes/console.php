@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\SetupController;
+use App\Http\Support\Format;
 use App\Jobs\AppOperation;
 use App\Models\AppLink;
 use App\Models\InstalledApp;
@@ -43,9 +44,14 @@ Artisan::command('pk95:check-updates', function (UpdateService $updates, CoreUpd
 
 // Once a day at the maintenance time: automatic updates (with their own backup) per the
 // app's policy, otherwise the scheduled backup.
+// The time is local (display timezone); due within the hour from it on, so a time the clocks
+// skip in spring still runs and a missed minute (Core restarting) does not cost the day.
 Artisan::command('pk95:maintenance {--force : Unabhängig von der Uhrzeit ausführen}', function () {
-    $today = now()->toDateString();
-    $due = now()->format('H:i') === Settings::get('maintenance_time') && Settings::get('maintenance_last_run') !== $today;
+    $local = now(Format::timezone());
+    $today = $local->toDateString();
+    [$hour, $minute] = array_map('intval', explode(':', (string) Settings::get('maintenance_time')) + [0, 0]);
+    $since = $local->hour * 60 + $local->minute - ($hour * 60 + $minute);
+    $due = $since >= 0 && $since < 60 && Settings::get('maintenance_last_run') !== $today;
     if (! $due && ! $this->option('force')) {
         return 0;
     }

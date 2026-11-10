@@ -10,7 +10,7 @@ class ContainerSpecTest extends TestCase
 {
     public function test_bridge_app_joins_the_core_network_with_volumes_and_core_env(): void
     {
-        config(['pk95.core_url' => 'http://pk95core:8080', 'app.timezone' => 'Europe/Berlin']);
+        config(['pk95.core_url' => 'http://pk95core:8080', 'pk95.timezone' => 'Europe/Berlin']);
         $app = AppDefinition::fromArray([
             'id' => 'uptime', 'name' => 'Uptime', 'image' => 'ghcr.io/x/uptime', 'port' => 3001,
             'volumes' => [['name' => 'data', 'target' => '/data']],

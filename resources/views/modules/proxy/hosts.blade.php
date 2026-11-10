@@ -1,6 +1,6 @@
 @php
     use App\Modules\Proxy\Hosts;
-    $date = fn ($s) => \Illuminate\Support\Carbon::createFromTimestamp($s)->timezone(config('app.timezone'))->format('d.m.Y');
+    $date = fn ($s) => \App\Http\Support\Format::fromMs($s * 1000)->format('d.m.Y');
     $logUrl = fn ($d) => route('apps.page', [$installedApp, 'log']).'?host='.urlencode($d);
     $dot = fn ($tone) => match ($tone) {
         'good' => 'bg-green-500', 'warn' => 'bg-amber-500', 'bad' => 'bg-rose-500', default => 'bg-gray-300',
@@ -272,7 +272,7 @@
                                     @foreach ($c['domains'] as $d)
                                         @php $prefix = count($c['domains']) > 1 ? $d['domain'].': ' : ''; @endphp
                                         @if ($d['status'] === 'ok')
-                                            @php $days = (int) round(($d['not_after'] - time()) / 86400); @endphp
+                                            @php $days = \App\Modules\Proxy\Certificates::daysLeft((int) $d['not_after']); @endphp
                                             <div class="flex items-center gap-2" title="Ausgestellt von {{ $d['issuer'] ?? '' }}">
                                                 <span class="h-2 w-2 shrink-0 rounded-full {{ $dot($days < 14 ? 'warn' : 'good') }}"></span>{{ $prefix }}gültig bis {{ $date($d['not_after']) }}
                                             </div>

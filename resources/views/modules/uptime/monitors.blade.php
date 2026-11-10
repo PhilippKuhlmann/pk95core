@@ -188,14 +188,14 @@
                         @if ($expanded === $m['id'] && $detail)
                             <div class="grid grid-cols-1 gap-4 bg-gray-50 px-4 py-4 text-sm md:grid-cols-2 dark:bg-gray-900/40">
                                 <table class="w-full">
-                                    <x-kv label="Status seit" :value="\Illuminate\Support\Carbon::createFromTimestampMs($detail['statusSince'])->format('d.m.Y H:i')" />
+                                    <x-kv label="Status seit" :value="\App\Http\Support\Format::fromMs($detail['statusSince'])->format('d.m.Y H:i')" />
                                     <x-kv label="Letzte Prüfung" :value="$ago($detail['lastCheckAt'])" />
                                     <x-kv label="Meldung" :value="$detail['lastMessage']" />
                                     <x-kv label="Verfügbarkeit" :value="'24 h '.$pct($detail['uptime24h']).' · 7 T '.$pct($detail['uptime7d']).' · 30 T '.$pct($detail['uptime30d'])" />
                                     <x-kv label="Ø Antwortzeit 24 h" :value="$ms($detail['avgLatency24hMs'])" />
                                     <x-kv label="Intervall" :value="$detail['intervalSeconds'].' s, Zeitlimit '.$detail['timeoutSeconds'].' s, '.$detail['retries'].' Wiederholungen'" />
                                     @if ($detail['certExpiresAt'])
-                                        <x-kv label="Zertifikat bis" :value="\Illuminate\Support\Carbon::createFromTimestampMs($detail['certExpiresAt'])->format('d.m.Y')" />
+                                        <x-kv label="Zertifikat bis" :value="\App\Http\Support\Format::fromMs($detail['certExpiresAt'])->format('d.m.Y')" />
                                     @endif
                                     @if ($detail['pushUrl'])
                                         <x-kv label="Push-URL" :value="$detail['pushUrl']" mono />
@@ -205,7 +205,7 @@
                                     <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Letzte Vorfälle</div>
                                     @forelse ($incidents as $incident)
                                         <div class="flex gap-3 py-1">
-                                            <span class="shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">{{ \Illuminate\Support\Carbon::createFromTimestampMs($incident['startedAt'])->format('d.m. H:i') }}</span>
+                                            <span class="shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">{{ \App\Http\Support\Format::fromMs($incident['startedAt'])->format('d.m. H:i') }}</span>
                                             <span class="text-gray-700 dark:text-gray-200">
                                                 {{ $incident['cause'] }}
                                                 <span class="text-gray-500 dark:text-gray-400">

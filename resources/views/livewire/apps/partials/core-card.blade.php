@@ -9,7 +9,7 @@
     $available = $core['available'];
     $last = $core['last'];
     $lastBad = $last && in_array($last['result'] ?? '', ['failed', 'rolled_back'], true);
-    $lastAt = ($last['at'] ?? null) ? \Illuminate\Support\Carbon::parse($last['at'])->setTimezone(config('app.timezone')) : null;
+    $lastAt = \App\Http\Support\Format::local($last['at'] ?? null);
     $chip = 'inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-gray-700 dark:bg-gray-700 dark:text-gray-200';
 @endphp
 

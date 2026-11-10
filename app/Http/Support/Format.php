@@ -2,38 +2,49 @@
 
 namespace App\Http\Support;
 
-use App\Support\Settings;
 use Carbon\CarbonInterface;
 use DateTimeZone;
 use Illuminate\Support\Carbon;
 use Throwable;
 
 /**
- * Display helpers shared by the Blade views (dates in the configured timezone, sizes).
+ * Display helpers shared by the Blade views (dates in the display timezone, sizes).
+ *
+ * Times are stored and compared in UTC (app.timezone); only what is shown to the user is
+ * converted to the display timezone, so summer/winter time never shifts stored data.
  */
 class Format
 {
-    private static ?string $tz = null;
+    /** @var array<string, string> configured value → usable timezone */
+    private static array $checked = [];
 
+    /** Display timezone: pk95.timezone (PK95_TIMEZONE, else TZ), Europe/Berlin if unusable. */
     public static function timezone(): string
     {
-        if (self::$tz !== null) {
-            return self::$tz;
-        }
-        try {
-            $tz = (string) (Settings::get('timezone') ?: 'Europe/Berlin');
-            new DateTimeZone($tz);
-        } catch (Throwable) {
-            $tz = 'UTC';
-        }
+        $tz = trim((string) config('pk95.timezone')) ?: 'Europe/Berlin';
 
-        return self::$tz = $tz;
+        return self::$checked[$tz] ??= rescue(fn () => (new DateTimeZone($tz))->getName(), 'Europe/Berlin', false);
     }
 
-    /** Forget the cached timezone (after the settings were saved). */
-    public static function flush(): void
+    /** The moment in the display timezone, null when it cannot be parsed. */
+    public static function local(CarbonInterface|string|null $value): ?Carbon
     {
-        self::$tz = null;
+        if ($value === null || $value === '') {
+            return null;
+        }
+        try {
+            $date = $value instanceof CarbonInterface ? Carbon::instance($value) : Carbon::parse($value);
+        } catch (Throwable) {
+            return null;
+        }
+
+        return $date->setTimezone(self::timezone());
+    }
+
+    /** A Unix timestamp in milliseconds (as the apps send it) in the display timezone. */
+    public static function fromMs(int|float $ms): Carbon
+    {
+        return Carbon::createFromTimestampMs($ms)->setTimezone(self::timezone());
     }
 
     public static function dt(CarbonInterface|string|null $value, bool $seconds = false): string
@@ -41,13 +52,8 @@ class Format
         if ($value === null || $value === '') {
             return '—';
         }
-        try {
-            $date = $value instanceof CarbonInterface ? $value->copy() : Carbon::parse($value);
-        } catch (Throwable) {
-            return (string) $value;
-        }
 
-        return $date->setTimezone(self::timezone())->format($seconds ? 'd.m.Y H:i:s' : 'd.m.Y H:i');
+        return self::local($value)?->format($seconds ? 'd.m.Y H:i:s' : 'd.m.Y H:i') ?? (string) $value;
     }
 
     public static function time(CarbonInterface|string|null $value): string
@@ -55,13 +61,8 @@ class Format
         if ($value === null || $value === '') {
             return '';
         }
-        try {
-            $date = $value instanceof CarbonInterface ? $value->copy() : Carbon::parse($value);
-        } catch (Throwable) {
-            return (string) $value;
-        }
 
-        return $date->setTimezone(self::timezone())->format('H:i:s');
+        return self::local($value)?->format('H:i:s') ?? (string) $value;
     }
 
     public static function bytes(mixed $value): string

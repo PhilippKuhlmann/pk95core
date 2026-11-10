@@ -123,7 +123,7 @@
                         <ul class="mt-3 divide-y divide-gray-100 text-sm dark:divide-gray-700">
                             @foreach ($backups as $backup)
                                 <li class="flex flex-wrap items-center gap-2 py-1.5" wire:key="bk-{{ $backup->id }}">
-                                    <span class="w-28 font-mono text-xs text-gray-500 dark:text-gray-400">{{ $backup->created_at?->format('d.m. H:i') }}</span>
+                                    <span class="w-28 font-mono text-xs text-gray-500 dark:text-gray-400">{{ \App\Http\Support\Format::local($backup->created_at)?->format('d.m. H:i') }}</span>
                                     <span class="flex-1 text-gray-700 dark:text-gray-200">
                                         {{ \App\Models\Backup::REASONS[$backup->reason] ?? $backup->reason }}
                                         @if ($backup->version) · {{ $backup->version }} @endif
@@ -137,7 +137,7 @@
                                     </span>
                                     @if ($backup->status === 'done' && ! $installedApp->step)
                                         <x-input.symbolknopf titel="Wiederherstellen"
-                                            x-on:click="$store.confirm.ask({ title: 'Sicherung wiederherstellen?', text: {{ \Illuminate\Support\Js::from('Die aktuellen Daten von '.$installedApp->displayName().' werden durch den Stand vom '.$backup->created_at?->format('d.m.Y H:i').' ersetzt.') }}, button: 'Wiederherstellen', ok: () => $wire.restore({{ $backup->id }}) })">
+                                            x-on:click="$store.confirm.ask({ title: 'Sicherung wiederherstellen?', text: {{ \Illuminate\Support\Js::from('Die aktuellen Daten von '.$installedApp->displayName().' werden durch den Stand vom '.\App\Http\Support\Format::dt($backup->created_at).' ersetzt.') }}, button: 'Wiederherstellen', ok: () => $wire.restore({{ $backup->id }}) })">
                                             <x-icon name="refresh" class="h-4 w-4" />
                                         </x-input.symbolknopf>
                                     @endif
@@ -161,7 +161,7 @@
                 <ul class="divide-y divide-gray-100 text-sm dark:divide-gray-700">
                     @foreach ($history as $entry)
                         <li class="flex gap-3 py-1.5">
-                            <span class="shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">{{ $entry->created_at?->format('d.m. H:i:s') }}</span>
+                            <span class="shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">{{ \App\Http\Support\Format::local($entry->created_at)?->format('d.m. H:i:s') }}</span>
                             <span @class([
                                 'text-red-600 dark:text-red-400' => $entry->level === 'error',
                                 'text-green-700 dark:text-green-400' => $entry->level === 'success',

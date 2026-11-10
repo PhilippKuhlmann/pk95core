@@ -38,7 +38,7 @@
                 $lanHelp = match (true) {
                     $detected === null => 'Leer lassen: Core ermittelt sie selbst, das läuft gerade.',
                     ($detected['ip'] ?? null) !== null => 'Leer lassen: Core nimmt die erkannte Adresse '.$detected['ip'].' (Route des LXC ins Internet, geprüft '
-                        .\Illuminate\Support\Carbon::parse($detected['at'])->timezone((string) \App\Support\Settings::get('timezone'))->format('d.m.Y H:i').'). Ein Eintrag hier hat immer Vorrang.',
+                        .\App\Http\Support\Format::dt($detected['at']).'). Ein Eintrag hier hat immer Vorrang.',
                     default => 'Nicht erkannt: '.($detected['error'] ?? 'unbekannter Fehler').' Trag die Adresse von Hand ein.',
                 };
             @endphp

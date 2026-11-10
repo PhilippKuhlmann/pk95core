@@ -2,6 +2,7 @@
 
 namespace App\Services\Backups;
 
+use App\Http\Support\Format;
 use App\Models\AppEvent;
 use App\Models\Backup;
 use App\Models\InstalledApp;
@@ -107,7 +108,7 @@ class BackupService
             }
         }
 
-        $app->log('Stelle Sicherung vom '.$backup->created_at?->format('d.m.Y H:i').' wieder her');
+        $app->log('Stelle Sicherung vom '.Format::dt($backup->created_at).' wieder her');
         $wasRunning = $this->manager->pause($app);
         try {
             foreach ($backup->files as $volume => $file) {

@@ -31,6 +31,8 @@ class ProxyModuleTest extends FeatureTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // certificate days are counted from now(): a second passing mid-test must not turn 5 into 4
+        $this->freezeSecond();
         config(['pk95.catalog_dir' => base_path('catalog'), 'pk95.modules' => ['proxy' => ProxyModule::class]]);
         $this->signIn();
         $menu = array_map(fn ($k) => ['key' => $k, 'label' => $k, 'icon' => 'globe'], array_keys((new ProxyModule)->pages()));
@@ -85,7 +87,7 @@ class ProxyModuleTest extends FeatureTestCase
         return match ($r->method().' '.$path) {
             'GET /api/hosts' => Http::response(array_values($this->hosts)),
             'GET /api/hosts/checks' => Http::response([['host_id' => 1, 'upstream_known' => true, 'upstream_up' => false, 'upstream_error' => 'Verbindung abgelehnt',
-                'domains' => [['domain' => 'app.example.de', 'status' => 'ok', 'not_after' => time() + 40 * 86400, 'issuer' => "Let's Encrypt"]]]]),
+                'domains' => [['domain' => 'app.example.de', 'status' => 'ok', 'not_after' => now()->getTimestamp() + 40 * 86400, 'issuer' => "Let's Encrypt"]]]]),
             'GET /api/access-lists' => Http::response([['id' => 1, 'name' => 'Intern', 'title' => '', 'mode' => 'any', 'allow' => ['10.0.0.0/8'], 'deny' => [],
                 'session_hours' => 12, 'users' => [], 'is_internal' => true, 'used_by' => []],
                 ['id' => 2, 'name' => 'Familie', 'title' => 'Anmeldung', 'mode' => 'all', 'allow' => [], 'deny' => ['203.0.113.7'],
@@ -102,9 +104,9 @@ class ProxyModuleTest extends FeatureTestCase
                 'recent' => [['ts' => $now, 'stream_id' => 4, 'name' => 'Minecraft', 'protocol' => 'tcp', 'ip' => '198.51.100.4', 'country' => 'DE',
                     'bytes_in' => 10, 'bytes_out' => 20, 'seconds' => 3]]]),
             'GET /api/certificates' => Http::response(['hosts' => [['host_id' => 1, 'domain' => 'app.example.de', 'kind' => 'proxy', 'enabled' => true,
-                'status' => 'ok', 'source' => 'auto', 'issuer' => "Let's Encrypt", 'not_after' => time() + 5 * 86400]], 'custom' => []]),
+                'status' => 'ok', 'source' => 'auto', 'issuer' => "Let's Encrypt", 'not_after' => now()->getTimestamp() + 5 * 86400]], 'custom' => []]),
             'GET /api/acme-certs' => Http::response([['id' => 7, 'domain' => 'mail.example.de', 'note' => 'Mailserver', 'created_at' => $now,
-                'path' => '/var/lib/proxypanel/acme-export/mail.example.de', 'status' => ['issuer' => "Let's Encrypt", 'not_after' => time() + 80 * 86400]]]),
+                'path' => '/var/lib/proxypanel/acme-export/mail.example.de', 'status' => ['issuer' => "Let's Encrypt", 'not_after' => now()->getTimestamp() + 80 * 86400]]]),
             'GET /api/acme-certs/7/fullchain.pem' => Http::response("-----BEGIN CERTIFICATE-----\n", 200,
                 ['Content-Type' => 'application/x-pem-file', 'Content-Disposition' => 'attachment; filename="mail.example.de.fullchain.pem"']),
             'GET /api/error-pages' => Http::response(['defaults' => array_fill_keys(array_keys(ErrorPages::GROUPS), ['title' => 'Standard', 'text' => 'Text']),

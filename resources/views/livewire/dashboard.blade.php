@@ -60,7 +60,7 @@
                 @foreach ($events as $event)
                     <li class="flex gap-3 py-2">
                         <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full {{ ['critical' => 'bg-rose-500', 'warning' => 'bg-amber-500'][$event->severity] ?? 'bg-cerulean-500' }}" aria-hidden="true"></span>
-                        <span class="w-24 shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">{{ $event->occurred_at->format('d.m. H:i') }}</span>
+                        <span class="w-24 shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">{{ \App\Http\Support\Format::local($event->occurred_at)?->format('d.m. H:i') }}</span>
                         <span class="min-w-0 text-gray-800 dark:text-gray-100"><span class="font-DINPro-bold">{{ $event->appName() }}:</span> {{ $event->title }}</span>
                     </li>
                 @endforeach

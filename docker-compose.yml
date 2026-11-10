@@ -28,6 +28,8 @@ services:
       - pk95
     environment:
       APP_URL: "${APP_URL:-http://localhost:8080}"
+      # Timezone of everything Core shows and the TZ it gives the apps (stored times stay
+      # UTC). PK95_TIMEZONE, if set, takes precedence.
       TZ: Europe/Berlin
       # Behind a TLS reverse proxy (set in .env next to this file): its address, so Core
       # trusts X-Forwarded-Proto/-Host and builds https:// links, e.g. TRUSTED_PROXIES=10.10.250.95.

@@ -2,6 +2,7 @@
 
 namespace App\Services\Updates;
 
+use App\Http\Support\Format;
 use App\Models\AppEvent;
 use App\Models\InstalledApp;
 use App\Services\Apps\AppException;
@@ -9,7 +10,6 @@ use App\Services\Apps\AppManager;
 use App\Services\Backups\BackupService;
 use App\Services\Catalog\Catalog;
 use App\Services\Docker\DockerClient;
-use Illuminate\Support\Carbon;
 use Throwable;
 
 /**
@@ -45,7 +45,7 @@ class UpdateService
     {
         $available = (string) $app->available_version;
         $build = (array) $app->available_build;
-        $created = ($build['created'] ?? null) ? rescue(fn () => Carbon::parse($build['created'])->setTimezone(config('app.timezone')), null, false) : null;
+        $created = is_string($build['created'] ?? null) ? Format::local($build['created']) : null;
 
         return [
             'from' => $app->version ? 'Version '.ltrim($app->version, 'v') : '„'.$app->tag.'“',
