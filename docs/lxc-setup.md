@@ -69,10 +69,20 @@ Mit ihm sind die Service-Tokens der Apps verschlüsselt.
   Sobald PK95 Proxy läuft, Core nur noch über HTTPS erreichbar machen (`SESSION_SECURE_COOKIE=true`).
 - Die Apps veröffentlichen keine Ports. Sie sind nur im Docker-Netz `pk95` erreichbar, außer ihr Katalog-Eintrag sagt etwas anderes.
 
-## Updates von Core
+## Updates von Core und den Apps
 
-Unter **Apps** steht Core als erste Karte, mit Build, Datum und dem Knopf **Aktualisieren**, sobald die
-Registry ein neueres Image hat. Core prüft das alle 6 Stunden, „Nach Updates suchen“ sofort.
+Unter **Apps** steht Core als erste Karte, darunter die Apps. Jede Karte zeigt bei einem Update
+„installiert 1.0.0 → neu 1.1.0“ und den Knopf **Aktualisieren**. Core prüft alle 6 Stunden, „Nach Updates
+suchen“ oben auf der Seite sofort. **Alle aktualisieren** installiert alle Updates nacheinander: ProxApps,
+Uptime, Proxy, DNS, zuletzt Core selbst, sobald kein App-Update mehr läuft. Am Ende steht eine Zusammenfassung
+unter Ereignisse und auf der Seite.
+
+Versionen: Die Images heißen `latest` nur für Releases (Git-Tag `v1.2.3`), Builds von `main` heißen `main`.
+Beim Installieren und Aktualisieren setzt Core `latest` auf die konkrete Version (z. B. `1.2.3`), danach gelten
+die Update-Regeln (nur Fehlerbehebungen, neue Funktionen, alle). Gibt es noch kein Release, bleibt die App auf
+`latest` und Core zeigt neue Builds als „Build abc1234 vom …“. Braucht das Core-Modul eine andere Version
+einer App, steht das als Hinweis auf ihrer Karte; automatische Updates auf eine unpassende Version
+unterbleiben.
 
 Beim Aktualisieren startet Core einen kurzlebigen Hilfscontainer `pk95core-updater` (`docker:28-cli`). Er führt
 für das Compose-Projekt, aus dem Core gestartet wurde, `docker compose pull` und `up -d` aus. Danach wartet er

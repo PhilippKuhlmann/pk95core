@@ -23,9 +23,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $token
  * @property array<string, mixed>|null $manifest
  * @property string|null $version
+ * @property array{revision: ?string, created: ?string}|null $available_build newer build of a moving tag without a release
  */
 #[Fillable(['app_id', 'status', 'tag', 'container_id', 'token', 'manifest', 'version', 'step', 'error', 'last_seen_at',
-    'update_policy', 'auto_backup', 'image_id', 'available_version', 'update_checked_at'])]
+    'update_policy', 'auto_backup', 'image_id', 'available_version', 'available_build', 'update_checked_at'])]
 #[Hidden(['token'])]
 class InstalledApp extends Model
 {
@@ -57,6 +58,7 @@ class InstalledApp extends Model
             'last_seen_at' => 'datetime',
             'auto_backup' => 'boolean',
             'update_checked_at' => 'datetime',
+            'available_build' => 'array',
         ];
     }
 

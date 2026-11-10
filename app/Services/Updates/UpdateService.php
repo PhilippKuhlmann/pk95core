@@ -9,6 +9,7 @@ use App\Services\Apps\AppManager;
 use App\Services\Backups\BackupService;
 use App\Services\Catalog\Catalog;
 use App\Services\Docker\DockerClient;
+use Illuminate\Support\Carbon;
 use Throwable;
 
 /**
@@ -16,7 +17,9 @@ use Throwable;
  *
  * Version tags (1.4.2) are compared as versions and limited by the app's policy (patch,
  * minor, all). A moving tag (latest) has an update when its digest in the registry differs
- * from the local image.
+ * from the local image; when it points to a released version, Core offers and installs that
+ * version tag, so the app leaves the moving tag and from then on follows version numbers.
+ * Builds without a release (main builds) stay on the moving tag and are shown by commit.
  */
 class UpdateService
 {
@@ -41,11 +44,22 @@ class UpdateService
     public static function change(InstalledApp $app): array
     {
         $available = (string) $app->available_version;
+        $build = (array) $app->available_build;
+        $created = ($build['created'] ?? null) ? rescue(fn () => Carbon::parse($build['created'])->setTimezone(config('app.timezone')), null, false) : null;
 
         return [
             'from' => $app->version ? 'Version '.ltrim($app->version, 'v') : '„'.$app->tag.'“',
-            'to' => self::isVersion($available) ? 'Version '.ltrim($available, 'v') : 'neuer Build von „'.$available.'“',
+            'to' => match (true) {
+                self::isVersion($available) => 'Version '.ltrim($available, 'v'),
+                ! empty($build['revision']) => 'Build '.$build['revision'].($created ? ' vom '.$created->format('d.m.Y') : ''),
+                default => 'neuer Build von „'.$available.'“',
+            },
         ];
+    }
+
+    private static function short(?string $revision): ?string
+    {
+        return $revision ? substr($revision, 0, 7) : null;
     }
 
     /**
@@ -88,20 +102,36 @@ class UpdateService
         }
         $definition = $this->catalog->get($app->app_id);
 
+        $build = null;
         if (self::isVersion($app->tag)) {
             $available = self::pick($this->registry->tags($definition->image), $app->tag, $app->update_policy);
         } else {
             $remote = $this->registry->digest($definition->image, $app->tag);
             $local = array_map(fn (string $d) => substr($d, (int) strrpos($d, '@') + 1),
                 (array) ($this->docker->inspectImage($definition->imageRef($app->tag))['RepoDigests'] ?? []));
-            $available = in_array($remote, $local, true) ? null : $app->tag;
+            $available = null;
+            if (! in_array($remote, $local, true)) {
+                $labels = rescue(fn () => $this->registry->labels($definition->image, $app->tag), [], false);
+                $release = rescue(fn () => $this->registry->release($definition->image, $app->tag, $labels), null, false);
+                $installed = (string) $app->version;
+                if ($release === null) {
+                    $available = $app->tag;
+                    $build = ['revision' => self::short($labels['org.opencontainers.image.revision'] ?? null), 'created' => $labels['org.opencontainers.image.created'] ?? null];
+                } elseif (! self::isVersion($installed)) {
+                    $available = $release;
+                } else {
+                    $cmp = version_compare(ltrim($release, 'v'), ltrim($installed, 'v'));
+                    // newer: within the policy; same version: move to the version tag; older: never
+                    $available = $cmp > 0 ? self::pick([$release], $installed, $app->update_policy) : ($cmp === 0 ? $release : null);
+                }
+            }
         }
 
-        if ($available !== null && $available !== $app->available_version) {
-            $what = $available === $app->tag ? "eine neue Version von „{$app->tag}“" : "Version {$available}";
+        if ($available !== null && ($available !== $app->available_version || $build !== $app->available_build)) {
+            $what = self::change(new InstalledApp(['tag' => $app->tag, 'available_version' => $available, 'available_build' => $build]))['to'];
             AppEvent::record($app->app_id, 'core.update.available', 'info', "Für {$app->displayName()} gibt es {$what}", null, ['version' => $available]);
         }
-        $app->update(['available_version' => $available, 'update_checked_at' => now()]);
+        $app->update(['available_version' => $available, 'available_build' => $build, 'update_checked_at' => now()]);
 
         return $available;
     }
@@ -117,6 +147,10 @@ class UpdateService
         $previousVersion = $app->version;
         $name = $app->displayName();
         $definition = $this->catalog->get($app->app_id);
+        if (! self::isVersion($target)) {
+            // the moving tag may point to a release by now: install that version tag
+            $target = rescue(fn () => $this->registry->release($definition->image, $target), null, false) ?? $target;
+        }
         $previousImage = $app->image_id ?? ($this->docker->inspectContainer($definition->containerName())['Image'] ?? null);
 
         try {
@@ -131,7 +165,7 @@ class UpdateService
         $app->update(['tag' => $target, 'status' => InstalledApp::INSTALLING, 'step' => 'Update']);
         try {
             $manifest = $this->manager->deploy($app);
-            $app->update(['available_version' => null]);
+            $app->update(['available_version' => null, 'available_build' => null]);
             AppEvent::record($app->app_id, 'core.update.done', 'info', "{$name} wurde aktualisiert", ($previousVersion ?? $previousTag).' → '.$manifest->version);
 
             return true;

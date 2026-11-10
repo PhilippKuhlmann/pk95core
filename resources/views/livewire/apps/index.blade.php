@@ -99,6 +99,12 @@
                         <div class="text-amber-800 dark:text-amber-200">installiert {{ $change['from'] }} → neu {{ $change['to'] }}</div>
                     </div>
                 @endif
+                @if ($app && ($hint = $hints[$def->id] ?? null))
+                    <p @class(['mt-2 flex items-start gap-1.5 text-xs', 'text-amber-800 dark:text-amber-200' => $hint['tone'] === 'warn',
+                        'text-cerulean-700 dark:text-cerulean-300' => $hint['tone'] === 'info']) data-update-hint>
+                        <x-icon :name="$hint['tone'] === 'warn' ? 'warn' : 'info'" class="mt-px h-3.5 w-3.5 shrink-0" sw="2" />{{ $hint['text'] }}
+                    </p>
+                @endif
                 @if ($app?->error)
                     <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">{{ $app->error }}</div>
                 @endif

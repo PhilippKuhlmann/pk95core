@@ -67,6 +67,30 @@ class Registry
     }
 
     /**
+     * The released version a moving tag (latest) points to: its version label
+     * (org.opencontainers.image.version, set by docker/metadata-action from the git tag), but
+     * only when the registry also has that version as a tag. Null for main builds, whose
+     * label is "latest" or "main".
+     *
+     * @param  array<string, string>|null  $labels  labels of $tag when already fetched
+     */
+    public function release(string $image, string $tag, ?array $labels = null): ?string
+    {
+        $version = ltrim((string) (($labels ?? $this->labels($image, $tag))['org.opencontainers.image.version'] ?? ''), 'v');
+        if (! preg_match('/^\d+\.\d+\.\d+$/', $version)) {
+            return null;
+        }
+        $tags = $this->tags($image);
+        foreach ([$version, 'v'.$version] as $candidate) {
+            if (in_array($candidate, $tags, true)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Labels of image:tag in the registry (org.opencontainers.image.revision, ….created): manifest
      * (for an index the linux/amd64 entry) → config blob. Empty when the image has none.
      *

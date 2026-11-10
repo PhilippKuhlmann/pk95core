@@ -46,7 +46,11 @@ RUN mkdir -p /run/nginx /var/lib/nginx/tmp && chown -R www-data:www-data /var/li
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint
 RUN chmod +x /usr/local/bin/entrypoint
 
+# Release version (1.2.3 from the git tag, "main" for main builds), see .github/workflows/docker.yml.
+ARG VERSION=dev
+
 ENV APP_NAME="PK95 Core" \
+    PK95_VERSION=${VERSION} \
     APP_ENV=production \
     APP_DEBUG=false \
     LOG_CHANNEL=stderr \

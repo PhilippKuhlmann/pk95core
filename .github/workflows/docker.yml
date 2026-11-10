@@ -40,8 +40,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/philippkuhlmann/pk95core
+          # "latest" (what the LXC runs and Core's self update pulls) only from a release tag
+          # v1.2.3; main builds are "main" and "sha-…", so a push to main updates nobody.
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=main,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short
@@ -50,6 +53,8 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
+          # The version Core shows (config pk95.version): the release from the tag, else "main".
+          build-args: VERSION=${{ startsWith(github.ref, 'refs/tags/v') && steps.meta.outputs.version || 'main' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

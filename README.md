@@ -80,6 +80,13 @@ php artisan test
 
 Ohne Docker-Socket läuft die Oberfläche trotzdem. Sie meldet dann „Docker ist nicht erreichbar“.
 
+**Release:** Ein Git-Tag `v1.2.3` baut das Image als `1.2.3`, `1.2` und `latest`, mit der Version im Image
+(`PK95_VERSION`). Pushes auf `main` bauen nur `main` und `sha-…`, laufende Installationen bekommen davon nichts.
+
+```bash
+git tag v1.2.3 && git push origin v1.2.3
+```
+
 ## Stand
 
 - [x] Phase 1: Grundgerüst: Setup/Login, Katalog, Container-Lebenszyklus über die Docker API, dynamische Seitenleiste, Modul-Schnittstelle

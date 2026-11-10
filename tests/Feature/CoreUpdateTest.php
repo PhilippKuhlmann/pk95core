@@ -43,6 +43,9 @@ class CoreUpdateTest extends FeatureTestCase
 
     private string $remoteDigest = 'sha256:new';
 
+    /** org.opencontainers.image.version of the remote image ("latest" for main builds before releases). */
+    private string $remoteVersion = 'latest';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -72,7 +75,8 @@ class CoreUpdateTest extends FeatureTestCase
         });
         $this->mock(Registry::class, function (MockInterface $m) {
             $m->shouldReceive('digest')->andReturnUsing(fn () => $this->remoteDigest);
-            $m->shouldReceive('labels')->andReturn(['org.opencontainers.image.revision' => '9876543210fed', 'org.opencontainers.image.created' => '2026-11-09T08:30:00Z']);
+            $m->shouldReceive('labels')->andReturnUsing(fn () => ['org.opencontainers.image.revision' => '9876543210fed',
+                'org.opencontainers.image.created' => '2026-11-09T08:30:00Z', 'org.opencontainers.image.version' => $this->remoteVersion]);
         });
     }
 
@@ -80,7 +84,7 @@ class CoreUpdateTest extends FeatureTestCase
     {
         $found = app(CoreUpdater::class)->check();
 
-        $this->assertSame(['digest' => 'sha256:new', 'revision' => '9876543', 'created' => '2026-11-09T08:30:00Z'], $found);
+        $this->assertSame(['digest' => 'sha256:new', 'version' => null, 'revision' => '9876543', 'created' => '2026-11-09T08:30:00Z'], $found);
         $this->assertSame($found, Settings::get('core_update'));
         app(CoreUpdater::class)->check();
         $this->assertSame(1, AppEvent::query()->where('type', 'core.update.available')->where('app_id', AppEvent::CORE)->count());
@@ -88,6 +92,24 @@ class CoreUpdateTest extends FeatureTestCase
         $this->remoteDigest = 'sha256:old';
         $this->assertNull(app(CoreUpdater::class)->check());
         $this->assertNull(Settings::get('core_update'));
+    }
+
+    public function test_a_release_shows_its_version(): void
+    {
+        config(['pk95.version' => '1.0.0']);
+        $this->remoteVersion = 'v1.0.1';
+        $found = app(CoreUpdater::class)->check();
+
+        $this->assertSame('1.0.1', $found['version']);
+        $this->assertSame('Für PK95 Core gibt es Version 1.0.1', AppEvent::query()->where('type', 'core.update.available')->sole()->title);
+        $this->assertStringStartsWith('Version 1.0.1 · Build 9876543 vom 09.11.2026', CoreUpdater::describe($found));
+        $this->assertSame('v1.0.0', CoreUpdater::versionLabel());
+        config(['pk95.version' => 'main']);
+        $this->assertSame('main', CoreUpdater::versionLabel());
+
+        $this->signIn();
+        config(['pk95.version' => '1.0.0']);
+        $this->get(route('apps.index'))->assertSee('installiert Version 1.0.0 → neu Version 1.0.1')->assertSee('PK95 Core v1.0.0');
     }
 
     public function test_start_runs_the_helper_for_the_compose_project(): void

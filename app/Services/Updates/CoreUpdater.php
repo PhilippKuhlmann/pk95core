@@ -94,7 +94,10 @@ class CoreUpdater
     /**
      * Ask the registry whether the tag Core runs on points to another image now.
      *
-     * @return array{digest: string, revision: ?string, created: ?string}|null the newer build
+     * Core runs on "latest", which moves only with a release tag (v1.2.3); the new image's
+     * version label says which release it is.
+     *
+     * @return array{digest: string, version: ?string, revision: ?string, created: ?string}|null the newer build
      */
     public function check(): ?array
     {
@@ -108,13 +111,16 @@ class CoreUpdater
         $found = null;
         if (! in_array($remote, $local, true)) {
             $labels = rescue(fn () => $this->registry->labels($image, $tag), [], false);
+            $version = ltrim((string) ($labels['org.opencontainers.image.version'] ?? ''), 'v');
             $found = [
                 'digest' => $remote,
+                'version' => UpdateService::isVersion($version) ? $version : null,
                 'revision' => self::short($labels['org.opencontainers.image.revision'] ?? null),
                 'created' => $labels['org.opencontainers.image.created'] ?? null,
             ];
             if ((Settings::get('core_update')['digest'] ?? null) !== $remote) {
-                AppEvent::record(AppEvent::CORE, 'core.update.available', 'info', 'Für PK95 Core gibt es eine neue Version', self::describe($found));
+                AppEvent::record(AppEvent::CORE, 'core.update.available', 'info',
+                    'Für PK95 Core gibt es '.($found['version'] ? 'Version '.$found['version'] : 'eine neue Version'), self::describe($found));
             }
         }
         Settings::put('core_update', $found);
@@ -306,12 +312,21 @@ class CoreUpdater
         return [$ref, 'latest'];
     }
 
+    /** The running version for headers and footers: "v1.2.3", or "main"/"dev" as it is. */
+    public static function versionLabel(): string
+    {
+        $version = (string) config('pk95.version');
+
+        return UpdateService::isVersion($version) ? 'v'.ltrim($version, 'v') : $version;
+    }
+
     /**
-     * @param  array{revision: ?string, created: ?string}  $build
+     * @param  array{version?: ?string, revision: ?string, created: ?string}  $build
      */
     public static function describe(array $build): string
     {
         $parts = array_filter([
+            ($build['version'] ?? null) ? "Version {$build['version']} ·" : null,
             $build['revision'] ? "Build {$build['revision']}" : null,
             ($t = self::time($build['created'])) ? 'vom '.$t->format('d.m.Y, H:i').' Uhr' : null,
         ]);

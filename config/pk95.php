@@ -7,7 +7,8 @@ use App\Modules\Uptime\UptimeModule;
 
 return [
 
-    'version' => '0.1.0',
+    // Release version baked into the image (Dockerfile ARG VERSION): 1.2.3, "main" or "dev".
+    'version' => env('PK95_VERSION', 'dev'),
 
     /*
     | App protocol versions this Core speaks (see docs/app-protocol.md).

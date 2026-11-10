@@ -23,7 +23,7 @@
                     font-mono text-[11px] uppercase tracking-[0.15em] text-gray-500
                     dark:border-gray-700 dark:text-gray-400">
             <span>{{ $kopf }}</span>
-            <span class="normal-case">v{{ config('pk95.version') }}</span>
+            <span class="normal-case">{{ \App\Services\Updates\CoreUpdater::versionLabel() }}</span>
         </div>
 
         <div class="px-6 py-8">
