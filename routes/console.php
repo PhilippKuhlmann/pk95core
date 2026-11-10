@@ -8,6 +8,7 @@ use App\Services\Apps\AppManager;
 use App\Services\Automation\Linker;
 use App\Services\Docker\DockerClient;
 use App\Services\Updates\CoreUpdater;
+use App\Services\Updates\UpdateAll;
 use App\Services\Updates\UpdateService;
 use App\Support\Settings;
 use Illuminate\Support\Facades\Artisan;
@@ -109,6 +110,10 @@ Artisan::command('pk95:sync', function (AppManager $manager, DockerClient $docke
         } catch (Throwable $e) {
             $this->warn("{$app->app_id}: {$e->getMessage()}");
         }
+    }
+    // "Alle aktualisieren": Core's own update once the app jobs are done, then the summary.
+    if ($step = app(UpdateAll::class)->tick()) {
+        $this->line('Alle aktualisieren: '.($step === 'core' ? 'Core-Update gestartet' : 'abgeschlossen'));
     }
 
     return 0;

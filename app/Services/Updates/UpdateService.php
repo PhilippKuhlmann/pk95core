@@ -34,6 +34,21 @@ class UpdateService
     }
 
     /**
+     * Installed and offered version in words, for the update badge.
+     *
+     * @return array{from: string, to: string}
+     */
+    public static function change(InstalledApp $app): array
+    {
+        $available = (string) $app->available_version;
+
+        return [
+            'from' => $app->version ? 'Version '.ltrim($app->version, 'v') : '„'.$app->tag.'“',
+            'to' => self::isVersion($available) ? 'Version '.ltrim($available, 'v') : 'neuer Build von „'.$available.'“',
+        ];
+    }
+
+    /**
      * Highest tag above $current the policy allows; "notify" reports the highest of all.
      *
      * @param  list<string>  $tags

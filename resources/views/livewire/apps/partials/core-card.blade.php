@@ -90,7 +90,7 @@
             <x-input.button type="button" color="gray" wire:click="checkCore" wire:loading.attr="disabled" wire:target="checkCore">
                 <x-icon name="refresh" class="h-4 w-4" sw="2" wire:loading.class="animate-spin" wire:target="checkCore" />Nach Updates suchen
             </x-input.button>
-            @if ($available && $core['compose'])
+            @if ($available && $core['compose'] && ! $run)
                 <x-input.button type="button"
                     x-on:click="$store.confirm.ask({ title: 'PK95 Core aktualisieren?', tone: 'blue', button: 'Aktualisieren', text: 'Core lädt das neue Image und startet neu. Die Oberfläche ist etwa eine Minute nicht erreichbar, die Apps laufen weiter. Startet die neue Version nicht, kehrt Core von selbst zur vorigen zurück.', ok: () => $wire.updateCore() })">
                     <x-icon name="rocket" class="h-4 w-4" sw="2" />Aktualisieren
