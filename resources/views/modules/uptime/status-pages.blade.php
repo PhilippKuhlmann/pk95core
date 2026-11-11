@@ -10,7 +10,7 @@
         <x-callout title="PK95 Uptime antwortet nicht" ton="gelb" class="m-3">{{ $loadError }}</x-callout>
     @endif
 
-    {{-- public address: Uptime's PUBLIC_URL, proxy host and local DNS record (Linker::linkStatusPages) --}}
+    {{-- public address (Core setting for the links), proxy host and local DNS record (Linker::linkStatusPages) --}}
     @if ($editing === null)
         @php
             $linkState = $statusLink && $statusLink->state !== \App\Models\AppLink::REMOVED && $publicBase !== '' ? $statusLink->state : null;

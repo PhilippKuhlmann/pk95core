@@ -145,9 +145,10 @@ class Linker
                 throw new AppException((string) ($response->json('error') ?? 'HTTP '.$response->status()));
             }
             $ids = $link->monitor_ids ?? [];
-            // the status pages' root path is not public: no domain monitor for them
-            if ($link->source_app !== self::STATUS_SOURCE && ($uptime = $this->app('uptime', 'automation_uptime')) && count($ids) < 2) {
-                $ids[] = $this->createMonitor($uptime, self::domainMonitor($link));
+            // deployments: internal + domain monitor; status pages: one on /api/public/status
+            $status = $link->source_app === self::STATUS_SOURCE;
+            if (($uptime = $this->app('uptime', 'automation_uptime')) && count($ids) < ($status ? 1 : 2)) {
+                $ids[] = $this->createMonitor($uptime, $status ? self::statusMonitor($link) : self::domainMonitor($link));
             }
             $link->update(['state' => AppLink::ACTIVE, 'monitor_ids' => $ids, 'message' => null]);
             AppEvent::record(AppEvent::CORE, 'core.link.active', 'info', "{$link->name} ist unter https://{$link->domain} erreichbar",
@@ -209,7 +210,7 @@ class Linker
         }
         $before = $link->exists ? [$link->state, $link->message] : null;
         $link->fill(['name' => 'Statusseiten', 'hostname' => 'PK95 Uptime', 'domain' => $domain,
-            'monitor_ids' => [], 'checked_at' => now()]);
+            'monitor_ids' => $link->monitor_ids ?? [], 'checked_at' => now()]);
         $notes = [];
         $ip = $this->lanIp->current();
         $port = self::statusPort();
@@ -264,6 +265,14 @@ class Linker
         if ($waiting) {
             $this->recheck($link); // switches the host on once the domain points here
             $link->refresh();
+        }
+        // reachable from outside: a monitor on the public API of the status pages (once)
+        if ($link->state === AppLink::ACTIVE && ! $link->monitor_ids && ($uptime = $this->app('uptime', 'automation_uptime'))) {
+            try {
+                $link->update(['monitor_ids' => [$this->createMonitor($uptime, self::statusMonitor($link))]]);
+            } catch (Throwable $e) {
+                $link->update(['message' => trim(($link->message ?? '').' Monitor nicht angelegt: '.$e->getMessage())]);
+            }
         }
 
         // an event only when something changed (this runs on every recreation of Uptime)
@@ -571,6 +580,21 @@ class Linker
         return self::monitor("{$link->name} intern ({$link->hostname})", [
             'type' => 'http', 'url' => $link->target, 'method' => 'GET', 'acceptedStatus' => '200-499', 'keyword' => '',
             'keywordInverted' => false, 'followRedirects' => false, 'ignoreTlsErrors' => true, 'certWarnDays' => 0, // 0 = off
+        ]);
+    }
+
+    /**
+     * The public status pages through the proxy, with certificate warning.
+     *
+     * @return array<string, mixed>
+     */
+    public static function statusMonitor(AppLink $link): array
+    {
+        // the public port only serves /status*, /api/public/status* and assets: the list of
+        // status pages answers 200 (the root and /api/health are 404 there)
+        return self::monitor("Statusseiten ({$link->domain})", [
+            'type' => 'http', 'url' => 'https://'.$link->domain.'/api/public/status', 'method' => 'GET', 'acceptedStatus' => '200-299', 'keyword' => '',
+            'keywordInverted' => false, 'followRedirects' => true, 'ignoreTlsErrors' => false, 'certWarnDays' => 14,
         ]);
     }
 

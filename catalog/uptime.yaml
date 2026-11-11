@@ -24,8 +24,6 @@ ports:
 env:
   DATA_DIR: /data
   RETENTION_DAYS: 90
+  # Uptime's second port, only for the status pages (empty = off). PUBLIC_URL is not set: it is
+  # Uptime's base for push URLs; the status pages' address is a Core setting for the links only.
   PUBLIC_PORT: 3002
-  # base address of the status pages (setting on the status pages page); left out when empty
-  PUBLIC_URL: "{setting:uptime_public_url}"
-  # requests to 3002 come through PK95 Proxy: its X-Forwarded-For entry is the client
-  TRUST_PROXY: 1

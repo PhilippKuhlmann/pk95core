@@ -62,8 +62,8 @@ class AppLifecycleTest extends FeatureTestCase
         $this->assertSame(InstalledApp::RUNNING, $app->status);
         $spec = $this->container('pk95-uptime')['spec'];
         $this->assertContains('PUBLIC_PORT=3002', $spec['Env']);
-        $this->assertContains('PUBLIC_URL=https://status.kuhlmannit.de', $spec['Env']);
-        $this->assertContains('TRUST_PROXY=1', $spec['Env']);
+        // PUBLIC_URL is Uptime's base for push URLs, not the status domain; 3002 needs no TRUST_PROXY
+        $this->assertEmpty(array_filter($spec['Env'], fn ($e) => str_starts_with($e, 'PUBLIC_URL=') || str_starts_with($e, 'TRUST_PROXY=')));
         $this->assertSame([['HostPort' => '3002']], $spec['HostConfig']['PortBindings']['3002/tcp']);
         $this->assertArrayNotHasKey('3001/tcp', $spec['HostConfig']['PortBindings'], 'the admin API stays internal');
     }

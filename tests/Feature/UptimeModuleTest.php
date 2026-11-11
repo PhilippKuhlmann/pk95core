@@ -9,8 +9,6 @@ use App\Modules\Uptime\Monitors;
 use App\Modules\Uptime\StatusPages;
 use App\Modules\Uptime\UptimeModule;
 use App\Services\Automation\Linker;
-use App\Services\Catalog\Catalog;
-use App\Services\Docker\ContainerSpec;
 use App\Support\Settings;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
@@ -264,14 +262,9 @@ class UptimeModuleTest extends FeatureTestCase
             ->assertHasNoErrors()
             ->assertSet('publicUrl', 'https://status.example.de')
             ->assertDispatched('notice', kind: 'success',
-                text: 'Proxy-Host angelegt, er wartet auf DNS für status.example.de. PK95 Uptime übernimmt die Adresse, wenn der Container neu erstellt wird (App-Details → Neu erstellen).');
+                text: 'Proxy-Host angelegt, er wartet auf DNS für status.example.de.');
 
         $this->assertSame('https://status.example.de', Settings::get('uptime_public_url'));
-        // the container gets it as PUBLIC_URL; empty leaves the variable out
-        $uptime = app(Catalog::class)->get('uptime');
-        $this->assertContains('PUBLIC_URL=https://status.example.de', ContainerSpec::for($uptime, '1.1.0', 'token')['Env']);
-        Settings::put('uptime_public_url', '');
-        $this->assertEmpty(array_filter(ContainerSpec::for($uptime, '1.1.0', 'token')['Env'], fn ($e) => str_starts_with($e, 'PUBLIC_URL=')));
     }
 
     public function test_details_show_incidents(): void

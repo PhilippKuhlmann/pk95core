@@ -236,13 +236,19 @@ class AutomationTest extends FeatureTestCase
         $this->assertTrue($host['enabled']);
         $this->assertSame([['name' => 'status.kuhlmannit.de', 'value' => '10.10.250.50']],
             array_map(fn ($r) => ['name' => $r['name'], 'value' => $r['value']], array_values($this->records)));
-        $this->assertSame([], $this->sent('POST', 'pk95-uptime'), 'no monitor: the root of the public port is not served');
+        // one monitor on the public API (the root and /api/health are 404 on that port)
+        $monitors = $this->sent('POST', 'pk95-uptime');
+        $this->assertCount(1, $monitors);
+        $this->assertSame('https://status.kuhlmannit.de/api/public/status', $monitors[0]['config']['url']);
+        $this->assertSame(14, $monitors[0]['config']['certWarnDays']);
+        $this->assertSame(['m1'], $link->fresh()->monitor_ids);
         $this->assertSame(1, AppEvent::query()->where('type', 'core.link.active')->count());
 
         // idempotent: again (every recreation of Uptime) changes nothing and records nothing
         $again = app(Linker::class)->linkStatusPages();
         $this->assertSame($link->id, $again->id);
         $this->assertCount(1, $this->sent('POST', '/api/hosts'));
+        $this->assertCount(1, $this->sent('POST', 'pk95-uptime'));
         $this->assertSame([], $this->sent('PUT', '/api/hosts/'));
         $this->assertCount(1, $this->records);
         $this->assertSame(1, AppEvent::query()->where('type', 'core.link.active')->count());
@@ -255,12 +261,14 @@ class AutomationTest extends FeatureTestCase
         $this->assertSame(AppLink::PENDING_DNS, $link->state);
         $this->assertFalse($this->hosts[$link->proxy_host_id]['enabled']);
 
-        // switched on by the regular check once DNS points here, still without a monitor
+        $this->assertSame([], $this->sent('POST', 'pk95-uptime'), 'no monitor while the domain does not point here');
+
+        // switched on by the regular check once DNS points here, with the status monitor
         $this->dnsAnswer = ['203.0.113.10'];
         $this->artisan('pk95:links')->assertSuccessful();
         $this->assertSame(AppLink::ACTIVE, $link->fresh()->state);
         $this->assertTrue($this->hosts[$link->proxy_host_id]['enabled']);
-        $this->assertSame([], $this->sent('POST', 'pk95-uptime'));
+        $this->assertSame(['https://status.kuhlmannit.de/api/public/status'], array_map(fn ($m) => $m['config']['url'], $this->sent('POST', 'pk95-uptime')));
 
         // the LXC got another LAN IP: the host's target moves along
         Settings::put('automation_lan_ip', '10.10.250.60');
@@ -269,12 +277,15 @@ class AutomationTest extends FeatureTestCase
         $this->assertTrue($this->hosts[$link->proxy_host_id]['enabled'], 'stays switched on');
         $this->assertSame([], array_diff(array_keys($this->sent('PUT', '/api/hosts/')[1]), Hosts::FIELDS));
 
-        // another address: the old host and record go, new ones come
+        // another address: the old host, record and monitor go, new ones come
         Settings::put('uptime_public_url', 'https://status.example.de');
         $new = app(Linker::class)->linkStatusPages();
         $this->assertSame('status.example.de', $new->domain);
         $this->assertSame([['status.example.de']], array_values(array_map(fn ($h) => $h['domains'], $this->hosts)));
         $this->assertSame(['status.example.de'], array_values(array_map(fn ($r) => $r['name'], $this->records)));
+        $this->assertCount(1, array_filter($this->calls, fn ($c) => $c['method'] === 'DELETE' && str_ends_with($c['url'], '/api/monitors/m1')));
+        $this->assertSame('https://status.example.de/api/public/status', $this->sent('POST', 'pk95-uptime')[1]['config']['url']);
+        $this->assertSame(['m2'], $new->fresh()->monitor_ids);
     }
 
     public function test_status_pages_without_address_or_without_proxy(): void

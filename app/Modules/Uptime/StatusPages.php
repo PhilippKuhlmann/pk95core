@@ -45,11 +45,9 @@ class StatusPages extends Component
 
             return;
         }
-        $changed = $url !== rtrim((string) Settings::get('uptime_public_url'), '/');
         Settings::put('uptime_public_url', $url);
         $this->publicUrl = $url;
-        $this->link($linker, $changed
-            ? ' PK95 Uptime übernimmt die Adresse, wenn der Container neu erstellt wird (App-Details → Neu erstellen).' : '');
+        $this->link($linker);
     }
 
     /** Proxy host and DNS record for the public address (button "Einrichten"; idempotent). */
@@ -140,11 +138,11 @@ class StatusPages extends Component
         ]);
     }
 
-    private function link(Linker $linker, string $suffix = ''): void
+    private function link(Linker $linker): void
     {
         $link = $linker->linkStatusPages();
         if ($link === null || trim((string) Settings::get('uptime_public_url')) === '') {
-            $this->dispatch('notice', kind: 'success', text: 'Keine öffentliche Adresse: Die Statusseiten sind nur intern.'.$suffix);
+            $this->dispatch('notice', kind: 'success', text: 'Keine öffentliche Adresse: Die Statusseiten sind nur intern.');
 
             return;
         }
@@ -153,7 +151,7 @@ class StatusPages extends Component
             AppLink::PENDING_DNS => ['success', "Proxy-Host angelegt, er wartet auf DNS für {$link->domain}."],
             default => ['error', 'Nicht eingerichtet: '.($link->message ?? 'unbekannter Fehler')],
         };
-        $this->dispatch('notice', kind: $kind, text: $text.$suffix);
+        $this->dispatch('notice', kind: $kind, text: $text);
     }
 
     protected function mapField(string $field): string

@@ -113,8 +113,8 @@ return [
         // proxy (the LXC). Empty = detected by a helper container in the host network.
         'automation_dns' => true,
         'automation_lan_ip' => '',
-        // Base address of PK95 Uptime's public status pages (<address>/status/<slug>): Uptime
-        // gets it as PUBLIC_URL, PK95 Proxy a host for its domain. Empty = not set up.
+        // Base address of PK95 Uptime's public status pages (<address>/status/<slug>): Core's links
+        // and a PK95 Proxy host for its domain (Uptime itself does not get it). Empty = not set up.
         'uptime_public_url' => 'https://status.kuhlmannit.de',
     ],
 
