@@ -6,6 +6,9 @@
         'good' => 'bg-green-500', 'warn' => 'bg-amber-500', 'bad' => 'bg-rose-500', default => 'bg-gray-300',
     };
     $kind = $form['kind'] ?? 'proxy';
+    // card view below md: small column labels and touch-sized (44 px) action buttons
+    $cardLabel = 'mb-1 text-[11px] uppercase tracking-wide text-gray-500 md:hidden dark:text-gray-400';
+    $tap = 'max-md:min-h-11 max-md:px-4 max-md:text-sm';
 @endphp
 
 <div wire:poll.20s>
@@ -194,15 +197,16 @@
             </div>
         </x-panel>
     @elseif ($shown)
+        {{-- One markup for both layouts: below md every row is a card (grid), from md on a table row. --}}
         <x-panel class="m-3 overflow-x-auto" polster="keins">
-            <table class="w-full text-left text-sm">
-                <thead class="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400">
+            <table class="block w-full text-left text-sm md:table">
+                <thead class="hidden border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500 md:table-header-group dark:border-gray-700 dark:text-gray-400">
                     <tr>
-                        <th class="px-4 py-3">Aktiv</th><th class="px-4 py-3">Domains</th><th class="px-4 py-3">Ziel</th>
-                        <th class="px-4 py-3">Zertifikat</th><th class="hidden px-4 py-3 lg:table-cell">Zugriff</th><th class="px-4 py-3"></th>
+                        <th class="px-3 py-3 xl:px-4">Aktiv</th><th class="px-3 py-3 xl:px-4">Domains</th><th class="px-3 py-3 xl:px-4">Ziel</th>
+                        <th class="px-3 py-3 xl:px-4">Zertifikat</th><th class="hidden px-3 py-3 xl:table-cell xl:px-4">Zugriff</th><th class="px-3 py-3 xl:px-4"></th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                <tbody class="block divide-y divide-gray-100 md:table-row-group dark:divide-gray-700">
                     @foreach ($shown as $x)
                         @php
                             $c = $checks[$x['id']] ?? null;
@@ -214,16 +218,16 @@
                             if ($x['tls_bsi']) $protect[] = 'BSI';
                             if ($x['allow_http']) $protect[] = 'HTTP erlaubt';
                         @endphp
-                        <tr wire:key="host-{{ $x['id'] }}" @class(['opacity-60' => ! $x['enabled']])>
-                            <td class="px-4 py-3 align-top">
+                        <tr wire:key="host-{{ $x['id'] }}" @class(['grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 py-4 md:table-row md:p-0', 'opacity-60' => ! $x['enabled']])>
+                            <td class="align-top md:px-3 md:py-3 xl:px-4">
                                 <button type="button" role="switch" aria-checked="{{ $x['enabled'] ? 'true' : 'false' }}" aria-label="{{ $x['domains'][0] }} aktiv"
                                     wire:click="toggle({{ $x['id'] }})" wire:loading.attr="disabled"
                                     @class(['relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors', 'bg-cerulean-600' => $x['enabled'], 'bg-gray-300 dark:bg-gray-600' => ! $x['enabled']])>
                                     <span @class(['inline-block h-5 w-5 translate-y-0.5 rounded-full bg-white shadow transition-transform', 'translate-x-5.5' => $x['enabled'], 'translate-x-0.5' => ! $x['enabled']])></span>
                                 </button>
                             </td>
-                            <td class="px-4 py-3 align-top">
-                                <div class="flex flex-col">
+                            <td class="min-w-0 align-top md:px-3 md:py-3 xl:px-4">
+                                <div class="flex flex-col break-all md:break-normal">
                                     @foreach ($x['domains'] as $d)
                                         <a href="{{ $logUrl($d) }}" wire:navigate title="Zugriffe ansehen" class="font-medium text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $d }}</a>
                                     @endforeach
@@ -240,7 +244,8 @@
                                     <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ $x['notes'] }}</div>
                                 @endif
                             </td>
-                            <td class="whitespace-nowrap px-4 py-3 align-top">
+                            <td class="col-span-2 min-w-0 break-all align-top md:whitespace-nowrap md:break-normal md:px-3 md:py-3 xl:px-4">
+                                <div class="{{ $cardLabel }}">Ziel</div>
                                 @switch($x['kind'])
                                     @case('redirect')
                                         <div class="font-mono text-xs">{{ $x['redirect_url'] }}</div>
@@ -263,7 +268,8 @@
                                         @endif
                                 @endswitch
                             </td>
-                            <td class="px-4 py-3 align-top text-xs">
+                            <td class="col-span-2 align-top text-xs md:px-3 md:py-3 xl:px-4">
+                                <div class="{{ $cardLabel }}">Zertifikat</div>
                                 @if (! $x['enabled'])
                                     <span class="text-gray-500 dark:text-gray-400">Deaktiviert</span>
                                 @elseif (! $c)
@@ -284,21 +290,23 @@
                                     @endforeach
                                 @endif
                             </td>
-                            <td class="hidden px-4 py-3 align-top text-xs lg:table-cell">
+                            <td class="col-span-2 align-top text-xs md:hidden md:px-3 md:py-3 xl:px-4 xl:table-cell">
+                                <div class="{{ $cardLabel }}">Zugriff</div>
                                 {!! $protect ? e(implode(', ', $protect)) : '<span class="text-gray-500 dark:text-gray-400">Öffentlich</span>' !!}
                             </td>
-                            <td class="px-4 py-3 align-top">
-                                <div class="flex justify-end gap-1">
+                            <td class="col-span-2 align-top md:px-3 md:py-3 xl:px-4">
+                                {{-- below md: labelled 44 px buttons, delete set apart on the right --}}
+                                <div class="flex flex-wrap gap-2 md:flex-nowrap md:justify-end md:gap-1">
                                     @if ($x['kind'] === 'proxy')
-                                        <x-input.button type="button" size="sm" :color="$x['maintenance'] ? 'blue' : 'gray'" wire:click="maintenance({{ $x['id'] }})"
+                                        <x-input.button type="button" size="sm" :color="$x['maintenance'] ? 'blue' : 'gray'" wire:click="maintenance({{ $x['id'] }})" class="{{ $tap }}"
                                             aria-pressed="{{ $x['maintenance'] ? 'true' : 'false' }}" title="{{ $x['maintenance'] ? 'Wartung beenden' : 'Wartung starten' }}">
-                                            <x-icon name="warn" class="h-4 w-4" /><span class="sr-only">{{ $x['domains'][0] }}: {{ $x['maintenance'] ? 'Wartung beenden' : 'Wartung starten' }}</span>
+                                            <x-icon name="warn" class="h-4 w-4" /><span class="sr-only">{{ $x['domains'][0] }}: </span><span class="md:sr-only">{{ $x['maintenance'] ? 'Wartung beenden' : 'Wartung starten' }}</span>
                                         </x-input.button>
                                     @endif
-                                    <x-input.button type="button" size="sm" color="gray" wire:click="edit({{ $x['id'] }})">Bearbeiten</x-input.button>
-                                    <x-input.button type="button" size="sm" color="gray" aria-label="{{ $x['domains'][0] }} löschen"
+                                    <x-input.button type="button" size="sm" color="gray" wire:click="edit({{ $x['id'] }})" class="{{ $tap }}">Bearbeiten</x-input.button>
+                                    <x-input.button type="button" size="sm" color="gray" aria-label="{{ $x['domains'][0] }} löschen" class="{{ $tap }} max-md:ml-auto"
                                         x-on:click="$store.confirm.ask({ title: {{ Js::from($x['domains'][0].' löschen?') }}, text: 'Die Domain ist danach sofort nicht mehr erreichbar. Bisherige Zugriffsdaten bleiben erhalten.', button: 'Löschen', ok: () => $wire.delete({{ $x['id'] }}) })">
-                                        <x-icon name="trash" class="h-4 w-4" />
+                                        <x-icon name="trash" class="h-4 w-4" /><span class="md:hidden">Löschen</span>
                                     </x-input.button>
                                 </div>
                             </td>

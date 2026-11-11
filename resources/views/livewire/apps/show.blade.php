@@ -12,10 +12,6 @@
             @endif
             <x-input.button type="button" color="gray" wire:click="action('reactivate')"
                 title="Image neu laden und Container neu erstellen (Daten bleiben)"><x-icon name="box" class="h-4 w-4" sw="2" />Neu erstellen</x-input.button>
-            <x-input.button type="button" color="red"
-                x-on:click="$store.confirm.ask({ title: {{ \Illuminate\Support\Js::from($installedApp->displayName().' entfernen?') }}, text: 'Der Container wird entfernt, die Daten (Volumes) bleiben erhalten.', button: 'Entfernen', ok: () => $wire.remove(true) })">
-                <x-icon name="trash" class="h-4 w-4" sw="2" />Entfernen
-            </x-input.button>
         @endif
     </x-page-header>
 
@@ -189,5 +185,21 @@
                 @endif
             @endif
         </x-panel>
+
+        {{-- removing is set apart from the everyday actions in the header --}}
+        @if (! $installedApp->isTransitional() || $installedApp->status === 'starting')
+            <x-panel class="border-red-200 dark:border-red-900/60" data-danger-zone>
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="min-w-0">
+                        <div class="text-lg font-CoconPro text-gray-900 dark:text-gray-100">Gefahrenzone</div>
+                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">App entfernen: Der Container wird gelöscht, die Daten (Volumes) bleiben erhalten. Beim erneuten Aktivieren sind sie wieder da.</p>
+                    </div>
+                    <x-input.button type="button" color="gray" class="text-red-700! dark:text-red-300!"
+                        x-on:click="$store.confirm.ask({ title: {{ \Illuminate\Support\Js::from($installedApp->displayName().' entfernen?') }}, text: 'Der Container wird entfernt, die Daten (Volumes) bleiben erhalten.', button: 'Entfernen', ok: () => $wire.remove(true) })">
+                        <x-icon name="trash" class="h-4 w-4" sw="2" />Entfernen
+                    </x-input.button>
+                </div>
+            </x-panel>
+        @endif
     </div>
 </div>

@@ -174,6 +174,40 @@ class ProxyModuleTest extends FeatureTestCase
         }
     }
 
+    public function test_hosts_are_cards_below_md_and_a_table_from_md_on(): void
+    {
+        $html = $this->get(route('apps.page', [$this->installed, 'hosts']))->assertOk()->getContent();
+
+        // one markup: table classes from md on, a grid card per host below
+        $this->assertStringContainsString('block w-full text-left text-sm md:table', $html);
+        $this->assertStringContainsString('hidden border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500 md:table-header-group', $html);
+        $this->assertStringContainsString('grid grid-cols-[auto_minmax(0,1fr)]', $html);
+        $this->assertStringContainsString('md:table-row', $html);
+        // column labels and touch-sized actions only on the card
+        foreach (['Ziel', 'Zertifikat', 'Zugriff'] as $label) {
+            $this->assertMatchesRegularExpression('/md:hidden[^"]*">'.$label.'</', $html);
+        }
+        $this->assertStringContainsString('max-md:min-h-11', $html);
+        $this->assertStringContainsString('<span class="md:hidden">Löschen</span>', $html);
+        $this->assertStringContainsString('<span class="md:sr-only">Wartung starten</span>', $html);
+    }
+
+    public function test_overview_header_filters_data_tile_and_legend(): void
+    {
+        $html = $this->get(route('apps.page', [$this->installed, 'overview']))->assertOk()
+            // title and range in the header, filters below it
+            ->assertSeeInOrder(['Übersicht', 'aria-label="Zeitraum"', 'Alle Hosts', 'Bots ausblenden', 'Anfragen'], false)
+            ->getContent();
+
+        $this->assertStringContainsString('max-w-xs', $html);
+        $this->assertStringNotContainsString('class="w-56', $html);
+        // data volume: one line each, number and unit never split
+        $this->assertMatchesRegularExpression('/whitespace-nowrap text-lg font-DINPro-bold">↓ [\d,.]+ \w+<\/span><span[^>]*>Download/u', $html);
+        $this->assertMatchesRegularExpression('/whitespace-nowrap text-lg font-DINPro-bold">↑ [\d,.]+ \w+<\/span><span[^>]*>Upload/u', $html);
+        // the legend may shrink and wrap
+        $this->assertStringContainsString('flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500', $html);
+    }
+
     public function test_host_form_sends_the_panel_input(): void
     {
         $page = Livewire::test(Hosts::class, ['installedApp' => $this->installed])
