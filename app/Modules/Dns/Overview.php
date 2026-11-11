@@ -84,10 +84,19 @@ class Overview extends Component
         return ['state' => ! empty($p['enabled']) ? 'on' : 'off', 'until' => 0];
     }
 
+    /** Stacked segments from the bottom: answered by the upstream, from the cache, blocked. */
+    public const SEGMENTS = [
+        'upstream' => 'fill-cerulean-500',
+        'cached' => 'fill-emerald-400',
+        'blocked' => 'fill-rose-500',
+    ];
+
     /**
-     * Geometry of the stacked bar chart (allowed below, blocked on top).
+     * Geometry of the stacked bar chart (answered below, blocked on top). With "cached" in
+     * the series (PK95 DNS since it reports it) the answered part is split into upstream and
+     * cache; "cached" in the result tells the view to show it in the legend.
      *
-     * @param  list<array{t: int, queries: int, blocked: int}>  $series
+     * @param  list<array{t: int, queries: int, blocked: int, cached?: int}>  $series
      * @return array<string, mixed>
      */
     public static function chart(array $series, bool $daily, int $width = 1000, int $height = 220): array
@@ -111,6 +120,8 @@ class Overview extends Component
         $every = max(1, (int) ceil($n / max(1, floor($plotW / 80))));
         $labels = [];
         $bars = [];
+        // older PK95 DNS versions do not report the cache share: chart as before
+        $hasCache = array_filter($series, fn ($b) => array_key_exists('cached', $b)) !== [];
         foreach ($series as $i => $b) {
             $at = Fmt::at($b['t']);
             $x = $m['left'] + $slot * $i;
@@ -118,23 +129,29 @@ class Overview extends Component
             if ($week ? $at->hour === 0 : $i % $every === 0) {
                 $labels[] = ['x' => round($x + $slot / 2, 1), 'text' => $daily || $week ? $at->format('d.m.') : $at->format('H:i')];
             }
-            $queries = (int) $b['queries'];
-            $blocked = min($queries, (int) $b['blocked']);
+            // clamped so no segment can go negative: blocked ≤ queries, cached ≤ the rest
+            $queries = max(0, (int) $b['queries']);
+            $blocked = max(0, min($queries, (int) $b['blocked']));
+            $cached = $hasCache ? max(0, min($queries - $blocked, (int) ($b['cached'] ?? 0))) : 0;
+            $values = ['upstream' => $queries - $blocked - $cached, 'cached' => $cached, 'blocked' => $blocked];
             $bx = round($x + ($slot - $barW) / 2, 1);
             $segs = [];
-            if ($queries - $blocked > 0) {
-                $segs[] = ['class' => 'fill-cerulean-500', 'x' => $bx, 'y' => round($y($queries - $blocked), 1), 'h' => round(max(1, $plotH - ($y($queries - $blocked) - $m['top'])), 1)];
-            }
-            if ($blocked > 0) {
-                $segs[] = ['class' => 'fill-rose-500', 'x' => $bx, 'y' => round($y($queries), 1), 'h' => round(max(1, $y($queries - $blocked) - $y($queries)), 1)];
+            $base = 0;
+            foreach (self::SEGMENTS as $key => $class) {
+                if ($values[$key] > 0) {
+                    $top = $y($base + $values[$key]);
+                    $segs[] = ['class' => $class, 'x' => $bx, 'y' => round($top, 1), 'h' => round(max(1, $y($base) - $top), 1)];
+                    $base += $values[$key];
+                }
             }
             // the end is one real hour later (on the night the clocks go back: 02:00 bis 02:00)
             $label = $daily ? $at->format('d.m.Y') : $at->format('d.m. H:i').' bis '.Fmt::at($b['t'] + 3600000)->format('H:i');
             $bars[] = ['x' => round($x, 1), 'w' => round($slot, 1), 'bw' => round($barW, 1), 'segs' => $segs,
-                'title' => $label."\n".Fmt::num($queries).' Anfragen, davon '.Fmt::num($blocked).' blockiert'];
+                'title' => $label."\n".Fmt::num($queries).' Anfragen, davon '
+                    .($hasCache ? Fmt::num($cached).' aus dem Cache, ' : '').Fmt::num($blocked).' blockiert'];
         }
 
-        return ['width' => $width, 'height' => $height, 'm' => $m, 'plotH' => $plotH, 'grid' => $grid, 'labels' => $labels, 'bars' => $bars];
+        return ['width' => $width, 'height' => $height, 'm' => $m, 'plotH' => $plotH, 'grid' => $grid, 'labels' => $labels, 'bars' => $bars, 'cached' => $hasCache];
     }
 
     public static function niceStep(float $max, int $ticks): float

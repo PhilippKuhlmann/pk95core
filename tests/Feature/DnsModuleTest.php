@@ -47,6 +47,8 @@ class DnsModuleTest extends FeatureTestCase
         ]);
         $now = (int) (microtime(true) * 1000);
         $this->state = [
+            // false: PK95 DNS before it reported the cache share (no "cached" per bucket)
+            'series_cached' => false,
             'protection' => ['enabled' => true, 'paused_until' => 0],
             'lists' => [
                 1 => ['id' => 1, 'name' => 'AdGuard DNS filter', 'url' => 'https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt', 'kind' => 'block',
@@ -346,7 +348,8 @@ class DnsModuleTest extends FeatureTestCase
                 ]]),
             'GET /api/stats' => Http::response(['hours' => (int) ($query['hours'] ?? 24), 'granularity' => ($query['hours'] ?? 24) == 720 ? 'day' : 'hour',
                 'totals' => ['queries' => 13530, 'blocked' => 2104, 'blocked_pct' => 15.6, 'cached' => 9120, 'safesearch' => 12, 'services' => 40, 'avg_ms' => 6.2],
-                'series' => array_map(fn ($h) => ['t' => $now - (24 - $h) * 3600000, 'queries' => 500 + $h * 10, 'blocked' => 80], range(0, 23)),
+                'series' => array_map(fn ($h) => ['t' => $now - (24 - $h) * 3600000, 'queries' => 500 + $h * 10, 'blocked' => 80]
+                    + ($this->state['series_cached'] ? ['cached' => 300] : []), range(0, 23)),
                 'top_domains' => [['name' => 'example.org', 'count' => 812]],
                 'top_blocked' => [['name' => 'ads.example.net', 'count' => 330]],
                 'top_clients' => [['ip' => '192.168.1.20', 'name' => 'Laptop', 'count' => 4210, 'blocked' => 600]],
@@ -824,6 +827,80 @@ class DnsModuleTest extends FeatureTestCase
             ->call('removeConditional', 0)
             ->assertSet('s.conditional.0.domain', 'fritz.box')
             ->assertHasNoErrors('s.conditional.0.domain')->assertDontSee('Ungültige Domain: bad domain');
+    }
+
+    public function test_chart_stacks_upstream_cache_and_blocked_from_the_bottom(): void
+    {
+        $t = 1762790400000;
+        $c = Overview::chart([['t' => $t, 'queries' => 400, 'blocked' => 100, 'cached' => 200]], false, 1000, 220);
+
+        $this->assertTrue($c['cached']);
+        $segs = $c['bars'][0]['segs'];
+        $this->assertSame(['fill-cerulean-500', 'fill-emerald-400', 'fill-rose-500'], array_column($segs, 'class'));
+        // axis top is 400: plot 190 px high from y=8, so 100 queries = 47.5 px
+        $this->assertSame([150.5, 55.5, 8.0], array_column($segs, 'y'));
+        $this->assertSame([47.5, 95.0, 47.5], array_column($segs, 'h'));
+        $this->assertStringEndsWith("\n400 Anfragen, davon 200 aus dem Cache, 100 blockiert", $c['bars'][0]['title']);
+    }
+
+    public function test_chart_clamps_values_so_no_segment_goes_negative(): void
+    {
+        $t = 1762790400000;
+        $c = Overview::chart([
+            ['t' => $t, 'queries' => 100, 'blocked' => 30, 'cached' => 500],   // cache above what was answered
+            ['t' => $t + 3600000, 'queries' => 100, 'blocked' => 150, 'cached' => 20], // blocked above queries
+            ['t' => $t + 7200000, 'queries' => 50, 'blocked' => 10, 'cached' => -5],
+            ['t' => $t + 10800000, 'queries' => 50, 'blocked' => 10],             // bucket without the field
+        ], false);
+
+        $titles = array_map(fn ($b) => substr($b['title'], strpos($b['title'], "\n") + 1), $c['bars']);
+        $this->assertSame([
+            '100 Anfragen, davon 70 aus dem Cache, 30 blockiert',
+            '100 Anfragen, davon 0 aus dem Cache, 100 blockiert',
+            '50 Anfragen, davon 0 aus dem Cache, 10 blockiert',
+            '50 Anfragen, davon 0 aus dem Cache, 10 blockiert',
+        ], $titles);
+        $this->assertSame(['fill-emerald-400', 'fill-rose-500'], array_column($c['bars'][0]['segs'], 'class'));
+        $this->assertSame(['fill-rose-500'], array_column($c['bars'][1]['segs'], 'class'));
+        foreach ($c['bars'] as $bar) {
+            foreach ($bar['segs'] as $s) {
+                $this->assertGreaterThan(0, $s['h']);
+            }
+        }
+    }
+
+    public function test_chart_without_cache_field_is_unchanged(): void
+    {
+        $t = 1762790400000;
+        $c = Overview::chart([['t' => $t, 'queries' => 400, 'blocked' => 100]], false, 1000, 220);
+
+        $this->assertFalse($c['cached']);
+        $this->assertSame([
+            ['class' => 'fill-cerulean-500', 'x' => 509.0, 'y' => 55.5, 'h' => 142.5],
+            ['class' => 'fill-rose-500', 'x' => 509.0, 'y' => 8.0, 'h' => 47.5],
+        ], $c['bars'][0]['segs']);
+        $this->assertStringEndsWith("\n400 Anfragen, davon 100 blockiert", $c['bars'][0]['title']);
+    }
+
+    public function test_overview_shows_the_cache_share_when_dns_reports_it(): void
+    {
+        $this->state['series_cached'] = true;
+
+        $this->get(route('apps.page', [$this->installed, 'overview']))->assertOk()
+            ->assertSeeInOrder(['Vom Upstream', 'bg-emerald-400"></i>Aus dem Cache', 'Blockiert'], false)
+            ->assertSee('fill-emerald-400', false)
+            ->assertSee('davon 300 aus dem Cache, 80 blockiert');
+    }
+
+    public function test_overview_of_an_older_dns_version_has_no_cache_legend(): void
+    {
+        $this->get(route('apps.page', [$this->installed, 'overview']))->assertOk()
+            ->assertSee('Beantwortet')
+            // the tile above ("Aus dem Cache" share in total) stays; only the legend entry is gone
+            ->assertDontSee('bg-emerald-400"></i>Aus dem Cache', false)
+            ->assertDontSee('Vom Upstream')
+            ->assertDontSee('fill-emerald-400', false)
+            ->assertSee('Anfragen, davon 80 blockiert');
     }
 
     public function test_overview_range_set_from_the_browser_is_checked(): void
