@@ -11,6 +11,7 @@ use App\Modules\Proxy\Security;
 use App\Modules\Proxy\Streams;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
@@ -27,6 +28,9 @@ class ProxyModuleTest extends FeatureTestCase
 
     /** @var array<int, array<string, mixed>> */
     private array $hosts = [];
+
+    /** @var array<string, mixed> replaces keys of the faked /api/stats answer */
+    private array $statsOverride = [];
 
     protected function setUp(): void
     {
@@ -135,7 +139,7 @@ class ProxyModuleTest extends FeatureTestCase
             'GET /api/blocklists' => Http::response(['lists' => [['id' => 'firehol1', 'name' => 'FireHOL Level 1', 'description' => 'Bekannte Angreifer',
                 'recommended' => true, 'custom' => false, 'urls' => [], 'enabled' => true, 'count' => 4500, 'fetched_at' => $now]],
                 'status' => ['networks' => 4500, 'dropped' => 3]]),
-            'GET /api/stats' => Http::response(['range' => '24h', 'from' => $now - 86400000, 'to' => $now, 'computed_at' => $now, 'bucket_ms' => 3600000,
+            'GET /api/stats' => Http::response($this->statsOverride + ['range' => '24h', 'from' => $now - 86400000, 'to' => $now, 'computed_at' => $now, 'bucket_ms' => 3600000,
                 'requests' => 12, 'visitors' => 3, 'bytes' => 5000, 'bytes_in' => 300, 'upload_since' => 0, 'errors_4xx' => 1, 'errors_5xx' => 0,
                 'bots' => 2, 'avg_ms' => 12, 'p95_ms' => 40, 'series' => [$bucket],
                 'hosts' => [['key' => 'app.example.de', 'count' => 10], ['key' => 'scan.example.de', 'count' => 2]],
@@ -206,6 +210,26 @@ class ProxyModuleTest extends FeatureTestCase
         $this->assertMatchesRegularExpression('/whitespace-nowrap text-lg font-DINPro-bold">↑ [\d,.]+ \w+<\/span><span[^>]*>Upload/u', $html);
         // the legend may shrink and wrap
         $this->assertStringContainsString('flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500', $html);
+    }
+
+    public function test_overview_uses_the_real_end_of_a_bucket_on_the_day_the_clocks_go_back(): void
+    {
+        // 7 days in 3 h buckets on the local wall clock: 25.10. 00:00–03:00 lasts 4 h
+        // (22:00 UTC to 02:00 UTC), the upload counter started inside the extra hour
+        $ts = Carbon::parse('2026-10-24 22:00', 'UTC')->getTimestampMs();
+        $end = Carbon::parse('2026-10-25 02:00', 'UTC')->getTimestampMs();
+        $bucket = ['ts' => $ts, 'end' => $end, 'requests' => 40, 's2xx' => 40, 's3xx' => 0, 's4xx' => 0, 's5xx' => 0, 'bytes' => 8000, 'bytes_in' => 2048];
+        $this->statsOverride = ['range' => '7d', 'from' => $ts, 'to' => $end, 'computed_at' => $end, 'bucket_ms' => 3 * 3600000,
+            'requests' => 40, 'bytes' => 8000, 'bytes_in' => 2048, 'upload_since' => $ts + 3 * 3600000 + 1800000, 'series' => [$bucket]];
+
+        $html = $this->get(route('apps.page', [$this->installed, 'overview']))->assertOk()->getContent();
+
+        // label in tooltips and table: up to 03:00, not 02:00 (= ts + bucket_ms)
+        $this->assertStringContainsString('25.10. 00:00 bis 03:00', $html);
+        $this->assertStringNotContainsString('25.10. 00:00 bis 02:00', $html);
+        // the bucket ends after upload_since: its upload counts (table and upload chart)
+        $this->assertStringContainsString('<td>2 KB</td></tr>', $html);
+        $this->assertStringNotContainsString('noch nicht erfasst', $html);
     }
 
     public function test_host_form_sends_the_panel_input(): void

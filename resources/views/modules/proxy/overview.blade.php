@@ -110,7 +110,7 @@
                     @php $b = $bar['b']; @endphp
                     <g class="group">
                         <rect x="{{ $bar['band']['x'] }}" y="{{ $c['m']['top'] }}" width="{{ $bar['band']['w'] }}" height="{{ $c['plotH'] + 1 }}" class="fill-transparent group-hover:fill-gray-100 dark:group-hover:fill-gray-700/50">
-                            <title>{{ Overview::bucketLabel($b['ts'], $d['bucket_ms']) }}&#10;{{ Fmt::num($b['requests']) }} gesamt&#10;@foreach (Overview::SERIES as $k => [$label]){{ Fmt::num($b[$k]) }} {{ $label }}&#10;@endforeach{{ Fmt::bytes($b['bytes']) }} Download</title>
+                            <title>{{ Overview::bucketLabel($b['ts'], $d['bucket_ms'], $bar['end']) }}&#10;{{ Fmt::num($b['requests']) }} gesamt&#10;@foreach (Overview::SERIES as $k => [$label]){{ Fmt::num($b[$k]) }} {{ $label }}&#10;@endforeach{{ Fmt::bytes($b['bytes']) }} Download</title>
                         </rect>
                         @foreach ($bar['segs'] as $s)
                             <rect x="{{ $s['x'] }}" y="{{ $s['y'] }}" width="{{ $s['w'] }}" height="{{ $s['h'] }}" rx="{{ $loop->last ? min(4, $s['w'] / 2) : 0 }}" class="{{ Overview::SERIES[$s['key']][1] }}" pointer-events="none" />
@@ -125,9 +125,10 @@
                         <thead class="text-gray-500"><tr><th class="py-1 text-left">Zeitraum</th><th>Gesamt</th>@foreach (array_keys(Overview::SERIES) as $k)<th>{{ substr($k, 1) }}</th>@endforeach<th>Download</th><th>Upload</th></tr></thead>
                         <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                             @foreach (array_reverse(array_filter($d['series'], fn ($b) => $b['requests'] > 0)) as $b)
-                                <tr><td class="whitespace-nowrap py-1 text-left">{{ Overview::bucketLabel($b['ts'], $d['bucket_ms']) }}</td><td>{{ Fmt::num($b['requests']) }}</td>
+                                @php $end = Overview::bucketEnd($b, $d['bucket_ms']); @endphp
+                                <tr><td class="whitespace-nowrap py-1 text-left">{{ Overview::bucketLabel($b['ts'], $d['bucket_ms'], $end) }}</td><td>{{ Fmt::num($b['requests']) }}</td>
                                     @foreach (array_keys(Overview::SERIES) as $k)<td>{{ Fmt::num($b[$k]) }}</td>@endforeach
-                                    <td>{{ Fmt::bytes($b['bytes']) }}</td><td>{{ $b['ts'] + $d['bucket_ms'] <= $d['upload_since'] ? '–' : Fmt::bytes($b['bytes_in']) }}</td></tr>
+                                    <td>{{ Fmt::bytes($b['bytes']) }}</td><td>{{ $end <= $d['upload_since'] ? '–' : Fmt::bytes($b['bytes_in']) }}</td></tr>
                             @endforeach
                         </tbody>
                     </table>
@@ -155,10 +156,10 @@
                                 <text x="{{ $l['x'] }}" y="{{ $t['height'] - 5 }}" text-anchor="middle" class="fill-current text-[11px]">{{ $l['text'] }}</text>
                             @endforeach
                             @foreach ($t['bars'] as $bar)
-                                @php $missing = $key === 'bytes_in' && $bar['b']['ts'] + $d['bucket_ms'] <= $d['upload_since']; @endphp
+                                @php $missing = $key === 'bytes_in' && $bar['end'] <= $d['upload_since']; @endphp
                                 <g class="group">
                                     <rect x="{{ $bar['band']['x'] }}" y="{{ $t['m']['top'] }}" width="{{ $bar['band']['w'] }}" height="{{ $t['plotH'] + 1 }}" class="fill-transparent group-hover:fill-gray-100 dark:group-hover:fill-gray-700/50">
-                                        <title>{{ Overview::bucketLabel($bar['b']['ts'], $d['bucket_ms']) }}&#10;{{ $missing ? '– noch nicht erfasst' : Fmt::bytes($bar['b'][$key]).' '.$title }}</title>
+                                        <title>{{ Overview::bucketLabel($bar['b']['ts'], $d['bucket_ms'], $bar['end']) }}&#10;{{ $missing ? '– noch nicht erfasst' : Fmt::bytes($bar['b'][$key]).' '.$title }}</title>
                                     </rect>
                                     @foreach ($bar['segs'] as $s)
                                         <rect x="{{ $s['x'] }}" y="{{ $s['y'] }}" width="{{ min(16, $s['w']) }}" height="{{ $s['h'] }}" rx="{{ min(4, $s['w'] / 2) }}" class="fill-cerulean-500" pointer-events="none" />

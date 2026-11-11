@@ -131,6 +131,30 @@ class TimezoneTest extends FeatureTestCase
         $this->assertSame(['bad', '16.11.2026 (abgelaufen)'], ProxyCertificates::validity($expires));
     }
 
+    public function test_proxy_buckets_on_the_local_wall_clock_end_at_their_real_end(): void
+    {
+        $h3 = 3 * 3600000;
+
+        // PK95 Proxy 1.1.1: 25.10. 00:00–03:00 local is 4 h (clocks go back at 03:00)
+        $autumn = ['ts' => self::ms('2026-10-24 22:00'), 'end' => self::ms('2026-10-25 02:00')];
+        $this->assertSame(self::ms('2026-10-25 02:00'), ProxyOverview::bucketEnd($autumn, $h3));
+        $this->assertSame('25.10. 00:00 bis 03:00', ProxyOverview::bucketLabel($autumn['ts'], $h3, ProxyOverview::bucketEnd($autumn, $h3)));
+
+        // 29.03. 00:00–03:00 local is 2 h (clocks go forward at 02:00)
+        $spring = ['ts' => self::ms('2026-03-28 23:00'), 'end' => self::ms('2026-03-29 01:00')];
+        $this->assertSame('29.03. 00:00 bis 03:00', ProxyOverview::bucketLabel($spring['ts'], $h3, ProxyOverview::bucketEnd($spring, $h3)));
+
+        // older Proxy versions send no "end": ts + bucket_ms as before
+        $old = ['ts' => self::ms('2026-11-10 15:00')];
+        $this->assertSame(self::ms('2026-11-10 18:00'), ProxyOverview::bucketEnd($old, $h3));
+        $this->assertSame('10.11. 16:00 bis 19:00', ProxyOverview::bucketLabel($old['ts'], $h3, ProxyOverview::bucketEnd($old, $h3)));
+        $this->assertSame('10.11. 16:00 bis 19:00', ProxyOverview::bucketLabel($old['ts'], $h3));
+
+        // bars() hands the end to the view
+        $bars = ProxyOverview::bars([$autumn + ['s2xx' => 1], $old + ['s2xx' => 1]], ['s2xx'], $h3, 600, 150, 58, 3, fn ($v) => (string) $v)['bars'];
+        $this->assertSame([self::ms('2026-10-25 02:00'), self::ms('2026-11-10 18:00')], array_column($bars, 'end'));
+    }
+
     public function test_apps_get_the_display_timezone_as_tz(): void
     {
         $app = AppDefinition::fromArray(['id' => 'uptime', 'name' => 'Uptime', 'image' => 'ghcr.io/x/uptime', 'port' => 3001], 'uptime.yaml');
