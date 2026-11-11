@@ -145,6 +145,33 @@ class AppPagesTest extends FeatureTestCase
             ->assertSee('Gestoppt');
     }
 
+    public function test_app_cards_show_the_version_and_details_but_no_remove_button(): void
+    {
+        $app = $this->runningDemo();
+
+        $html = $this->get('/apps')->assertOk()
+            ->assertSee('Version '.$app->version)
+            ->assertSee(route('apps.show', $app))
+            ->assertSee('Details')
+            ->assertSee('>example/demo</span>', false)          // image without its tag
+            ->assertDontSee('entfernen?')                          // removing is on the details page
+            ->getContent();
+        $this->assertStringContainsString('md:auto-rows-fr', $html);  // cards equally high side by side
+    }
+
+    public function test_show_page_keeps_remove_in_a_danger_zone(): void
+    {
+        $app = $this->runningDemo();
+
+        $html = $this->get(route('apps.show', $app))->assertOk()
+            ->assertSeeInOrder(['Neustart', 'Stoppen', 'Neu erstellen', 'Container-Log', 'Gefahrenzone', 'Demo-App entfernen?'])
+            ->getContent();
+        // removing is only offered in the danger zone, not among the everyday actions above it
+        $this->assertStringNotContainsString('entfernen?', strstr($html, 'Gefahrenzone', true));
+        $this->assertSame(1, substr_count($html, 'entfernen?'));
+        $this->assertStringContainsString('data-danger-zone', $html);
+    }
+
     public function test_show_page_remove_redirects_to_the_catalog(): void
     {
         $app = $this->runningDemo();

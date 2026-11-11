@@ -49,6 +49,8 @@ class DnsModuleTest extends FeatureTestCase
         $this->state = [
             // false: PK95 DNS before it reported the cache share (no "cached" per bucket)
             'series_cached' => false,
+            // null: PK95 DNS without totals.local (answers from own entries)
+            'totals_local' => null,
             'protection' => ['enabled' => true, 'paused_until' => 0],
             'lists' => [
                 1 => ['id' => 1, 'name' => 'AdGuard DNS filter', 'url' => 'https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt', 'kind' => 'block',
@@ -347,7 +349,8 @@ class DnsModuleTest extends FeatureTestCase
                     ['address' => 'quic://dns.adguard-dns.com', 'ok' => false, 'avg_ms' => 0, 'queries' => 0, 'failures' => 0, 'last_error' => ''],
                 ]]),
             'GET /api/stats' => Http::response(['hours' => (int) ($query['hours'] ?? 24), 'granularity' => ($query['hours'] ?? 24) == 720 ? 'day' : 'hour',
-                'totals' => ['queries' => 13530, 'blocked' => 2104, 'blocked_pct' => 15.6, 'cached' => 9120, 'safesearch' => 12, 'services' => 40, 'avg_ms' => 6.2],
+                'totals' => ['queries' => 13530, 'blocked' => 2104, 'blocked_pct' => 15.6, 'cached' => 9120, 'safesearch' => 12, 'services' => 40, 'avg_ms' => 6.2]
+                    + ($this->state['totals_local'] === null ? [] : ['local' => $this->state['totals_local']]),
                 'series' => array_map(fn ($h) => ['t' => $now - (24 - $h) * 3600000, 'queries' => 500 + $h * 10, 'blocked' => 80]
                     + ($this->state['series_cached'] ? ['cached' => 300] : []), range(0, 23)),
                 'top_domains' => [['name' => 'example.org', 'count' => 812]],
@@ -901,6 +904,25 @@ class DnsModuleTest extends FeatureTestCase
             ->assertDontSee('Vom Upstream')
             ->assertDontSee('fill-emerald-400', false)
             ->assertSee('Anfragen, davon 80 blockiert');
+    }
+
+    public function test_overview_tile_without_local_counts_shows_safesearch_only(): void
+    {
+        $this->get(route('apps.page', [$this->installed, 'overview']))->assertOk()
+            ->assertDontSee('Umgeschrieben')
+            ->assertDontSee('Eigene Antworten')
+            ->assertSeeInOrder(['SafeSearch', '12', 'auf sichere Suche umgeleitet'])
+            // service blocks are blocked queries
+            ->assertSee('15,6 % aller Anfragen · 40 × Dienste');
+    }
+
+    public function test_overview_tile_shows_own_answers_when_dns_reports_them(): void
+    {
+        $this->state['totals_local'] = 7;
+
+        $this->get(route('apps.page', [$this->installed, 'overview']))->assertOk()
+            ->assertDontSee('Umgeschrieben')
+            ->assertSeeInOrder(['Eigene Antworten', '19', '7 DNS-Einträge · 12 SafeSearch']);
     }
 
     public function test_overview_range_set_from_the_browser_is_checked(): void

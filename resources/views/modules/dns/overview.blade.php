@@ -101,7 +101,7 @@
             </a>
             <a href="{{ $log(['status' => 'blocked']) }}" wire:navigate class="{{ $tile }} hover:border-cerulean-400 dark:hover:border-cerulean-500">
                 <div class="{{ $muted }}">Blockiert</div><div class="mt-1 text-2xl font-DINPro-bold text-rose-700 dark:text-rose-300">{{ Fmt::compact($t['blocked']) }}</div>
-                <div class="{{ $muted }}">{{ Fmt::pct((float) $t['blocked_pct']) }} aller Anfragen</div>
+                <div class="{{ $muted }}">{{ Fmt::pct((float) $t['blocked_pct']) }} aller Anfragen{{ $t['services'] ? ' · '.Fmt::num($t['services']).' × Dienste' : '' }}</div>
             </a>
             <div class="{{ $tile }}">
                 <div class="{{ $muted }}">Aus dem Cache</div><div class="mt-1 text-2xl font-DINPro-bold text-gray-900 dark:text-gray-100">{{ Fmt::share($t['cached'], $t['queries']) }}</div>
@@ -111,17 +111,24 @@
                 <div class="{{ $muted }}">Antwortzeit</div><div class="mt-1 text-2xl font-DINPro-bold text-gray-900 dark:text-gray-100">{{ Fmt::ms($t['avg_ms']) }}</div>
                 <div class="{{ $muted }}">im Schnitt</div>
             </div>
+            {{-- answers Core's DNS gives itself: own entries (rewrites, records, zones; totals.local
+                 since PK95 DNS reports it) and SafeSearch. Service blocks count under "Blockiert". --}}
             <div class="{{ $tile }}">
-                <div class="{{ $muted }}">Umgeschrieben</div><div class="mt-1 text-2xl font-DINPro-bold text-gray-900 dark:text-gray-100">{{ Fmt::compact($t['safesearch']) }}</div>
-                <div class="{{ $muted }}">SafeSearch · {{ Fmt::num($t['services']) }} × Dienste blockiert</div>
+                @if (isset($t['local']))
+                    <div class="{{ $muted }}">Eigene Antworten</div><div class="mt-1 text-2xl font-DINPro-bold text-gray-900 dark:text-gray-100">{{ Fmt::compact($t['local'] + $t['safesearch']) }}</div>
+                    <div class="{{ $muted }}">{{ Fmt::num($t['local']) }} DNS-Einträge · {{ Fmt::num($t['safesearch']) }} SafeSearch</div>
+                @else
+                    <div class="{{ $muted }}">SafeSearch</div><div class="mt-1 text-2xl font-DINPro-bold text-gray-900 dark:text-gray-100">{{ Fmt::compact($t['safesearch']) }}</div>
+                    <div class="{{ $muted }}">auf sichere Suche umgeleitet</div>
+                @endif
             </div>
         </div>
 
         @php $c = Overview::chart($stats['series'], ($stats['granularity'] ?? 'hour') === 'day'); @endphp
         <x-panel class="m-3">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-                <div class="{{ $card }}">Anfragen im Zeitverlauf</div>
-                <div class="flex gap-3 {{ $muted }}">
+            <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                <div class="{{ $card }} shrink-0">Anfragen im Zeitverlauf</div>
+                <div class="flex min-w-0 flex-wrap gap-x-3 gap-y-1 whitespace-nowrap {{ $muted }}">
                     {{-- "cached" only when PK95 DNS reports it; "Beantwortet" then splits into upstream and cache --}}
                     <span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-sm bg-cerulean-500"></i>{{ $c['cached'] ? 'Vom Upstream' : 'Beantwortet' }}</span>
                     @if ($c['cached'])

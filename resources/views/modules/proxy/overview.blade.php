@@ -21,12 +21,16 @@
                     @class(['rounded-md px-3 py-1 text-sm', 'bg-cerulean-600 text-white' => $range === $id, 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700' => $range !== $id])>{{ $label }}</button>
             @endforeach
         </div>
-        <x-input.select wire:model.live="host" aria-label="Host" class="w-56">
+    </x-page-header>
+
+    {{-- filters below the header (like the DNS overview: title left, range right) --}}
+    <div class="mx-3 mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <x-input.select wire:model.live="host" aria-label="Host" class="max-w-xs">
             <option value="">Alle Hosts</option>
             @foreach ($configured as $dm)<option value="{{ $dm }}">{{ $dm }}</option>@endforeach
         </x-input.select>
         <x-input.checkbox label="Bots ausblenden" wire:model.live="hideBots" />
-    </x-page-header>
+    </div>
 
     @if ($loadError)
         <x-callout title="Statistik konnte nicht geladen werden" ton="gelb" class="m-3">{{ $loadError }}</x-callout>
@@ -58,8 +62,11 @@
                 <div class="text-xs text-gray-500">verschiedene IP-Adressen</div></div>
             <div class="{{ $tile }}" title="Download: von deinen Diensten zu den Besuchern. Upload: von den Besuchern zu deinen Diensten.">
                 <div class="text-xs text-gray-500">Datenmenge</div>
-                <div class="mt-1 flex gap-4"><div><div class="text-lg font-DINPro-bold">{{ Fmt::bytes($d['bytes']) }}</div><div class="text-xs text-gray-500">↓ Download</div></div>
-                    <div><div class="text-lg font-DINPro-bold">{{ Fmt::bytes($d['bytes_in']) }}</div><div class="text-xs text-gray-500">↑ Upload</div></div></div>
+                {{-- one line each; number and unit never split --}}
+                <div class="mt-1 space-y-0.5">
+                    <div class="flex flex-wrap items-baseline gap-x-1.5"><span class="whitespace-nowrap text-lg font-DINPro-bold">↓ {{ Fmt::bytes($d['bytes']) }}</span><span class="text-xs text-gray-500">Download</span></div>
+                    <div class="flex flex-wrap items-baseline gap-x-1.5"><span class="whitespace-nowrap text-lg font-DINPro-bold">↑ {{ Fmt::bytes($d['bytes_in']) }}</span><span class="text-xs text-gray-500">Upload</span></div>
+                </div>
                 @if ($uploadMissing)<div class="text-xs text-gray-500">Upload seit {{ Fmt::at($d['upload_since'])->format('d.m., H:i') }}</div>@endif
             </div>
             <div class="{{ $tile }}"><div class="text-xs text-gray-500">Serverfehler</div><div class="mt-1 text-2xl font-DINPro-bold">{{ Fmt::pct($pctServer) }}</div>
@@ -84,10 +91,11 @@
         {{-- requests over time --}}
         @php $c = Overview::bars($d['series'], array_keys(Overview::SERIES), $d['bucket_ms'], 1000, 240, 46, 4, fn ($v) => $v >= 1e6 ? Fmt::dec($v / 1e6).' M' : ($v >= 10000 ? Fmt::dec($v / 1e3).' T' : Fmt::num($v))); @endphp
         <x-panel class="m-3">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-                <div class="{{ $card }}">Anfragen im Zeitverlauf</div>
-                <div class="flex flex-wrap gap-3 text-xs text-gray-500">
-                    @foreach (Overview::SERIES as [$label, , $swatch])<span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-sm {{ $swatch }}"></i>{{ $label }}</span>@endforeach
+            {{-- the legend may shrink (min-w-0) and wraps instead of running out of the panel --}}
+            <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                <div class="{{ $card }} shrink-0">Anfragen im Zeitverlauf</div>
+                <div class="flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
+                    @foreach (Overview::SERIES as [$label, , $swatch])<span class="flex items-center gap-1.5 whitespace-nowrap"><i class="h-2.5 w-2.5 shrink-0 rounded-sm {{ $swatch }}"></i>{{ $label }}</span>@endforeach
                 </div>
             </div>
             <svg viewBox="0 0 {{ $c['width'] }} {{ $c['height'] }}" class="mt-3 w-full text-gray-400" role="img" aria-label="Anfragen im Zeitverlauf nach Statusklasse">

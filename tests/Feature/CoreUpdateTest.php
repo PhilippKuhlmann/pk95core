@@ -192,7 +192,10 @@ class CoreUpdateTest extends FeatureTestCase
             ->assertSee('PK95 Core')
             ->assertSee('abcdef1')
             ->assertSee('Update verfügbar')
-            ->assertSee('Build 9876543');
+            ->assertSee('Build 9876543')
+            // the image without ":latest", the version in its own chip (like the app cards)
+            ->assertSee('>ghcr.io/philippkuhlmann/pk95core</span>', false)
+            ->assertDontSee('>ghcr.io/philippkuhlmann/pk95core:latest</span>', false);
 
         Livewire::test(Index::class)
             ->call('updateCore')

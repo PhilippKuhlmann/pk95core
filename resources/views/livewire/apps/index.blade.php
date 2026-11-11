@@ -53,7 +53,8 @@
         </div>
     @endif
 
-    <div class="m-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+    {{-- md:auto-rows-fr: cards equally high side by side (one column on phones: natural height) --}}
+    <div class="m-3 grid grid-cols-1 gap-3 md:auto-rows-fr md:grid-cols-2 xl:grid-cols-3">
         @include('livewire.apps.partials.core-card')
 
         @foreach ($definitions as $def)
@@ -68,7 +69,7 @@
                     <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-2">
                             @if ($app)
-                                <a href="{{ route('apps.show', $app) }}" class="text-xl font-CoconPro text-gray-900 hover:text-cerulean-600 dark:text-gray-100 dark:hover:text-cerulean-400">{{ $def->name }}</a>
+                                <a href="{{ route('apps.show', $app) }}" class="group inline-flex items-center gap-1 text-xl font-CoconPro text-gray-900 hover:text-cerulean-600 dark:text-gray-100 dark:hover:text-cerulean-400">{{ $def->name }}<x-icon name="arrow-right" class="h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-0.5" sw="2" /></a>
                             @else
                                 <span class="text-xl font-CoconPro text-gray-900 dark:text-gray-100">{{ $def->name }}</span>
                             @endif
@@ -79,12 +80,13 @@
                 </div>
 
                 <div class="mt-4 flex flex-wrap gap-1.5 text-xs">
-                    <span class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 font-mono text-gray-700 dark:bg-gray-700 dark:text-gray-200">{{ $def->imageRef($app?->tag) }}</span>
+                    {{-- like the Core card: image without tag, the real version next to it --}}
+                    <span class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 font-mono text-gray-700 dark:bg-gray-700 dark:text-gray-200" title="{{ $def->imageRef($app?->tag) }}">{{ $def->image }}</span>
+                    @if ($app)
+                        <span class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-gray-700 dark:bg-gray-700 dark:text-gray-200">{{ $app->version ? 'Version '.ltrim($app->version, 'v') : '„'.$app->tag.'“' }}</span>
+                    @endif
                     @if ($def->networkMode === 'host')
                         <span class="inline-flex items-center rounded bg-amber-100 px-2 py-0.5 text-amber-900 dark:bg-amber-900 dark:text-amber-100">Host-Netz</span>
-                    @endif
-                    @if ($app?->version)
-                        <span class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-gray-700 dark:bg-gray-700 dark:text-gray-200">Version {{ $app->version }}</span>
                     @endif
                 </div>
 
@@ -94,9 +96,18 @@
                     </div>
                 @elseif ($app?->available_version && ! $app->isTransitional())
                     @php($change = UpdateService::change($app))
-                    <div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm dark:border-amber-800/60 dark:bg-amber-950/40" data-update-badge>
-                        <div class="font-DINPro-bold text-amber-900 dark:text-amber-100">Update verfügbar</div>
-                        <div class="text-amber-800 dark:text-amber-200">installiert {{ $change['from'] }} → neu {{ $change['to'] }}</div>
+                    {{-- the update button lives in the notice, so the actions below stay in one line --}}
+                    <div class="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm dark:border-amber-800/60 dark:bg-amber-950/40" data-update-badge>
+                        <div class="min-w-0">
+                            <div class="font-DINPro-bold text-amber-900 dark:text-amber-100">Update verfügbar</div>
+                            <div class="text-amber-800 dark:text-amber-200">installiert {{ $change['from'] }} → neu {{ $change['to'] }}</div>
+                        </div>
+                        @if (! $app->step && $run === null)
+                            <x-input.button type="button" size="sm"
+                                x-on:click="$store.confirm.ask({ title: {{ \Illuminate\Support\Js::from($def->name.' aktualisieren?') }}, tone: 'blue', button: 'Aktualisieren', text: 'Core sichert die Daten, lädt das neue Image und startet die App neu. Klappt die Funktionsprüfung nicht, kehrt Core zur vorigen Version zurück.', ok: () => $wire.updateApp('{{ $def->id }}') })">
+                                <x-icon name="rocket" class="h-4 w-4" sw="2" />Aktualisieren
+                            </x-input.button>
+                        @endif
                     </div>
                 @endif
                 @if ($app && ($hint = $hints[$def->id] ?? null))
@@ -109,27 +120,22 @@
                     <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">{{ $app->error }}</div>
                 @endif
 
-                <div class="mt-auto flex flex-wrap items-center justify-end gap-2 pt-5">
+                {{-- lifecycle left, "Details" right; removing an app is on its details page (Gefahrenzone) --}}
+                <div class="mt-auto flex flex-wrap items-center gap-1.5 pt-5 sm:gap-2">
                     @if (! $app)
-                        <x-input.button type="button" wire:click="activate('{{ $def->id }}')" wire:loading.attr="disabled">
+                        <x-input.button type="button" wire:click="activate('{{ $def->id }}')" wire:loading.attr="disabled" class="ml-auto">
                             <x-icon name="power" class="h-4 w-4" sw="2" />Aktivieren
                         </x-input.button>
                     @elseif (! $app->isTransitional() || $app->status === 'starting')
-                        @if ($app->available_version && ! $app->step && ! $app->isTransitional() && $run === null)
-                            <x-input.button type="button"
-                                x-on:click="$store.confirm.ask({ title: {{ \Illuminate\Support\Js::from($def->name.' aktualisieren?') }}, tone: 'blue', button: 'Aktualisieren', text: 'Core sichert die Daten, lädt das neue Image und startet die App neu. Klappt die Funktionsprüfung nicht, kehrt Core zur vorigen Version zurück.', ok: () => $wire.updateApp('{{ $def->id }}') })">
-                                <x-icon name="rocket" class="h-4 w-4" sw="2" />Aktualisieren
-                            </x-input.button>
-                        @endif
                         @if (in_array($app->status, ['running', 'unhealthy', 'starting'], true))
-                            <x-input.button type="button" color="gray" wire:click="restart('{{ $def->id }}')">
+                            <x-input.button type="button" color="gray" wire:click="restart('{{ $def->id }}')" class="max-sm:px-3">
                                 <x-icon name="refresh" class="h-4 w-4" sw="2" />Neustart
                             </x-input.button>
-                            <x-input.button type="button" color="gray" wire:click="stop('{{ $def->id }}')">
+                            <x-input.button type="button" color="gray" wire:click="stop('{{ $def->id }}')" class="max-sm:px-3">
                                 <x-icon name="stop" class="h-4 w-4" sw="2" />Stoppen
                             </x-input.button>
                         @elseif ($app->status === 'stopped')
-                            <x-input.button type="button" wire:click="start('{{ $def->id }}')">
+                            <x-input.button type="button" wire:click="start('{{ $def->id }}')" class="max-sm:px-3">
                                 <x-icon name="play" class="h-4 w-4" sw="2" />Starten
                             </x-input.button>
                         @elseif ($app->status === 'failed')
@@ -137,14 +143,9 @@
                                 <x-icon name="refresh" class="h-4 w-4" sw="2" />Erneut aktivieren
                             </x-input.button>
                         @endif
-                        <x-input.button type="button" color="gray"
-                            x-on:click="$store.confirm.ask({ title: {{ \Illuminate\Support\Js::from($def->name.' entfernen?') }}, text: 'Der Container wird entfernt, die Daten (Volumes) bleiben erhalten. Beim erneuten Aktivieren sind sie wieder da.', button: 'Entfernen', ok: () => $wire.remove('{{ $def->id }}', true) })">
-                            <x-icon name="trash" class="h-4 w-4" sw="2" />
-                            <span class="sr-only">Entfernen</span>
-                        </x-input.button>
                     @endif
                     @if ($app)
-                        <x-input.linkbutton :href="route('apps.show', $app)" color="gray">Details</x-input.linkbutton>
+                        <x-input.linkbutton :href="route('apps.show', $app)" color="gray" class="ml-auto max-sm:px-3">Details</x-input.linkbutton>
                     @endif
                 </div>
             </x-panel>
