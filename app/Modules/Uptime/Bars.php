@@ -5,9 +5,11 @@ namespace App\Modules\Uptime;
 use App\Http\Support\Format;
 
 /**
- * The small 24 h bars of a monitor in the list. PK95 Uptime sends "bars24h" per monitor
- * (24 or 48 sections, oldest first, {at, end, up, warn, down} with UTC ms); all counts 0 =
- * no data or paused. Older Uptime versions send nothing: no strip then.
+ * The small 24 h bars of a monitor in the list. PK95 Uptime sends "bars24h" per monitor in
+ * GET /api/monitors only: 48 sections of 30 min, oldest first, {at, end, up, warn, down}
+ * with UTC ms and "end" exclusive; the last one is still running (end in the future). "up"
+ * excludes warnings, pending checks are not counted; all counts 0 = no data or paused.
+ * Older Uptime versions send nothing: no strip then.
  */
 final class Bars
 {
@@ -54,12 +56,12 @@ final class Bars
         return $bars === [] ? null : ['bars' => $bars, 'label' => self::label($raw)];
     }
 
-    /** "11.11. 14:00 bis 14:30" and what was counted. */
+    /** "11.11. 14:00 bis 14:30" ("bis jetzt" for the running last section) and what was counted. */
     public static function title(array $bar): string
     {
         $from = Format::fromMs((int) $bar['at']);
-        $to = Format::fromMs((int) $bar['end']);
-        $span = $from->format('d.m. H:i').' bis '.$to->format('H:i');
+        $end = (int) $bar['end'];
+        $span = $from->format('d.m. H:i').' bis '.($end > now()->getTimestampMs() ? 'jetzt' : Format::fromMs($end)->format('H:i'));
         [$up, $warn, $down] = [(int) ($bar['up'] ?? 0), (int) ($bar['warn'] ?? 0), (int) ($bar['down'] ?? 0)];
         if ($up + $warn + $down === 0) {
             return $span."\nKeine Daten oder pausiert";

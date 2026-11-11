@@ -166,6 +166,19 @@ class UptimeModuleTest extends FeatureTestCase
         $this->assertNull(Bars::strip(['bars24h' => []]));
     }
 
+    public function test_the_running_last_section_ends_now(): void
+    {
+        $bars = $this->bars24h();
+        // 11:40 UTC lies in the last section (11:30–12:00 UTC = 12:30–13:00 in Berlin)
+        Carbon::setTestNow(Carbon::parse('2026-11-11 11:40', 'UTC'));
+        try {
+            $this->assertSame("11.11. 12:30 bis jetzt\n30 OK", Bars::title($bars[47]));
+            $this->assertSame("11.11. 12:00 bis 12:30\n30 OK", Bars::title($bars[46]));
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_monitor_list_shows_the_24h_bars(): void
     {
         $this->monitors['m1']['bars24h'] = $this->bars24h();
