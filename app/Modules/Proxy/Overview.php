@@ -94,11 +94,23 @@ class Overview extends Component
         return max(1, $nice * $pow);
     }
 
-    /** Label of a time bucket ("08.11. 14:00 bis 15:00"). */
-    public static function bucketLabel(int $ts, int $bucketMs): string
+    /**
+     * End of a bucket (UTC ms). PK95 Proxy since 1.1.1 aligns buckets of 3 h and more to the
+     * local wall clock and sends their real "end": on the days the clocks change such a bucket
+     * is an hour shorter or longer than the nominal bucket_ms. Older versions: ts + bucket_ms.
+     *
+     * @param  array<string, mixed>  $b
+     */
+    public static function bucketEnd(array $b, int $bucketMs): int
+    {
+        return isset($b['end']) ? (int) $b['end'] : (int) $b['ts'] + $bucketMs;
+    }
+
+    /** Label of a time bucket ("08.11. 14:00 bis 15:00"); $end from bucketEnd(). */
+    public static function bucketLabel(int $ts, int $bucketMs, ?int $end = null): string
     {
         $start = Fmt::at($ts);
-        $end = Fmt::at($ts + $bucketMs);
+        $end = Fmt::at($end ?? $ts + $bucketMs);
 
         return $bucketMs >= 3600000 ? $start->format('d.m. H:i').' bis '.$end->format('H:i') : $start->format('H:i').' bis '.$end->format('H:i');
     }
@@ -151,7 +163,8 @@ class Overview extends Component
                 $acc += $v;
                 $segs[] = ['key' => $k, 'x' => round($x, 1), 'y' => round($y1, 1), 'w' => round($barW, 1), 'h' => round(max(1, $y0 - $y1 - ($segs && $y0 - $y1 > 3 ? 2 : 0)), 1)];
             }
-            $bars[] = ['band' => ['x' => round($m['left'] + $slot * $i, 1), 'w' => round($slot, 1)], 'segs' => $segs, 'b' => $b];
+            $bars[] = ['band' => ['x' => round($m['left'] + $slot * $i, 1), 'w' => round($slot, 1)], 'segs' => $segs, 'b' => $b,
+                'end' => self::bucketEnd($b, $bucketMs)];
         }
 
         return ['width' => $width, 'height' => $height, 'm' => $m, 'plotH' => $plotH, 'grid' => $grid, 'labels' => $labels, 'bars' => $bars];
