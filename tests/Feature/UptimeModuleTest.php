@@ -235,6 +235,23 @@ class UptimeModuleTest extends FeatureTestCase
         $this->assertStringNotContainsString('/status/intern"', $html);
     }
 
+    public function test_an_uptime_container_without_the_status_port_asks_to_recreate_it(): void
+    {
+        $url = route('apps.page', [$this->installed, 'status-pages']);
+        // no container known (or no Docker): no hint
+        $this->get($url)->assertOk()->assertDontSee('data-port-missing', false);
+
+        // created before Core published 3002
+        $this->docker['containers']['u1'] = ['Id' => 'u1', 'Name' => 'pk95-uptime', 'running' => true,
+            'spec' => ['Image' => 'ghcr.io/philippkuhlmann/pk95-uptime:1.1.0', 'HostConfig' => ['NetworkMode' => 'pk95']]];
+        $this->get($url)->assertOk()->assertSee('data-port-missing', false)
+            ->assertSee('Erstelle Uptime einmal neu')->assertSee(route('apps.show', $this->installed));
+
+        // recreated: 3002 is published
+        $this->docker['containers']['u1']['spec']['HostConfig']['PortBindings'] = ['3002/tcp' => [['HostPort' => '3002']]];
+        $this->get($url)->assertOk()->assertDontSee('data-port-missing', false);
+    }
+
     public function test_status_pages_without_a_public_address_say_so(): void
     {
         Settings::put('uptime_public_url', '');
