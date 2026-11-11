@@ -10,6 +10,7 @@ use App\Services\Updates\CoreUpdater;
 use App\Services\Updates\UpdateAll;
 use App\Services\Updates\UpdateService;
 use App\Support\Settings;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -126,6 +127,23 @@ class UpdateAllTest extends FeatureTestCase
         DB::table('jobs')->delete();
         $this->assertSame('core', app(UpdateAll::class)->tick());
         $this->assertSame(['core'], $this->ran);
+    }
+
+    public function test_the_summary_is_recorded_once_when_two_callers_tick_at_the_same_time(): void
+    {
+        // a run whose apps are done and without Core: the next tick writes the summary
+        Settings::put(UpdateAll::SETTING, ['started_at' => now()->subMinute()->toIso8601String(), 'apps' => [], 'core' => false, 'core_started' => false]);
+
+        // the scheduler holds the lock: the Apps page's poll leaves the run alone
+        $other = Cache::lock(UpdateAll::LOCK, 120);
+        $this->assertTrue($other->get());
+        $this->assertNull(app(UpdateAll::class)->tick());
+        $this->assertSame(0, AppEvent::query()->where('type', 'core.update.all')->count());
+        $other->release();
+
+        $this->assertSame('done', app(UpdateAll::class)->tick());
+        $this->assertNull(app(UpdateAll::class)->tick());
+        $this->assertSame(1, AppEvent::query()->where('type', 'core.update.all')->count());
     }
 
     public function test_a_run_whose_queue_never_finishes_is_closed_after_hours(): void

@@ -9,6 +9,7 @@ use App\Services\Docker\DockerClient;
 use App\Services\Docker\DockerException;
 use App\Support\Settings;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 /**
@@ -27,6 +28,9 @@ use Throwable;
 class CoreUpdater
 {
     public const HELPER = 'pk95core-updater';
+
+    /** Cache lock around finish() (database store: shared by web, scheduler and queue). */
+    public const FINISH_LOCK = 'pk95:core-update-finish';
 
     /** A helper still running after this long has hung. */
     private const STALE_MINUTES = 20;
@@ -179,8 +183,28 @@ class CoreUpdater
     /**
      * After the helper has ended: record the outcome and remove it. Called every minute and by
      * the Apps page; returns the result (done, current, rolled_back, failed) or null meanwhile.
+     *
+     * Right after the restart the scheduler and the reloading Apps page call this at the same
+     * moment: only the holder of the lock finishes (re-reading the state inside it), so
+     * core.update.done is recorded exactly once per update.
      */
     public function finish(): ?string
+    {
+        if (Settings::get('core_self_update') === null) {
+            return null;
+        }
+        $lock = Cache::lock(self::FINISH_LOCK, 120);
+        if (! $lock->get()) {
+            return null;
+        }
+        try {
+            return $this->finishLocked();
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function finishLocked(): ?string
     {
         $state = Settings::get('core_self_update');
         if ($state === null) {
