@@ -9,6 +9,7 @@ use App\Services\Apps\AppException;
 use App\Support\Settings;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -27,6 +28,9 @@ class UpdateAll
     public const SETTING = 'update_all';
 
     public const RESULT = 'update_all_result';
+
+    /** Cache lock around tick() (database store: shared by web and scheduler). */
+    public const LOCK = 'pk95:update-all-tick';
 
     /** A run whose app jobs are still not done after this long is closed anyway (queue gone). */
     private const STALE_HOURS = 3;
@@ -110,9 +114,31 @@ class UpdateAll
     /**
      * Moves the run on (scheduler every minute, Apps page while polling).
      *
+     * Both can call this at the same moment: only the holder of the lock moves the run on
+     * (re-reading it inside), so Core is started once and the summary recorded once.
+     *
      * @return 'core'|'done'|null "core" = Core's self update was just started
      */
     public function tick(): ?string
+    {
+        if ($this->running() === null) {
+            return null;
+        }
+        $lock = Cache::lock(self::LOCK, 120);
+        if (! $lock->get()) {
+            return null;
+        }
+        try {
+            return $this->tickLocked();
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * @return 'core'|'done'|null
+     */
+    private function tickLocked(): ?string
     {
         $run = $this->running();
         if ($run === null) {

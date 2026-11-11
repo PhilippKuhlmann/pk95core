@@ -8,6 +8,7 @@ use App\Services\Docker\DockerClient;
 use App\Services\Updates\CoreUpdater;
 use App\Services\Updates\Registry;
 use App\Support\Settings;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Livewire;
 use Mockery\MockInterface;
 
@@ -37,6 +38,9 @@ class CoreUpdateTest extends FeatureTestCase
 
     /** @var list<string> */
     private array $helperLog = [];
+
+    /** Runs (once) while finish() reads the helper's log: a second caller arriving meanwhile. */
+    private ?\Closure $whileReadingLogs = null;
 
     /** @var list<array<string, mixed>> */
     private array $created = [];
@@ -69,7 +73,14 @@ class CoreUpdateTest extends FeatureTestCase
                 return 'helper-id';
             });
             $m->shouldReceive('startContainer')->andReturnNull();
-            $m->shouldReceive('logs')->andReturnUsing(fn () => array_map(fn ($l) => ['stream' => 'stdout', 'line' => '2026-11-09T10:00:00.000Z '.$l], $this->helperLog));
+            $m->shouldReceive('logs')->andReturnUsing(function () {
+                if ($hook = $this->whileReadingLogs) {
+                    $this->whileReadingLogs = null;
+                    $hook();
+                }
+
+                return array_map(fn ($l) => ['stream' => 'stdout', 'line' => '2026-11-09T10:00:00.000Z '.$l], $this->helperLog);
+            });
             // the Apps page lists the catalog containers as well
             $m->shouldReceive('containersWithLabel')->andReturn([]);
         });
@@ -159,6 +170,44 @@ class CoreUpdateTest extends FeatureTestCase
         $this->assertNull(Settings::get('core_update'));
         $this->assertSame('done', Settings::get('core_self_update_result')['result']);
         $this->assertStringContainsString('10:00:01 Lade das neue Image', Settings::get('core_self_update_result')['log']);
+    }
+
+    public function test_an_update_is_recorded_once_when_two_callers_finish_at_the_same_time(): void
+    {
+        // after the restart the scheduler (pk95:sync) and the reloading Apps page both call
+        // finish(): the second one arrives while the first still reads the helper's log
+        Settings::put('core_self_update', ['started_at' => now()->subMinutes(2)->toIso8601String(), 'from' => 'f65ec9b']);
+        $this->helper = ['State' => ['Running' => false]];
+        $this->helperLog = ['RESULT done'];
+        $second = 'not called';
+        $this->whileReadingLogs = function () use (&$second) {
+            $second = app(CoreUpdater::class)->finish();
+        };
+
+        $this->assertSame('done', app(CoreUpdater::class)->finish());
+        $this->assertNull($second, 'the second caller does not finish the same update');
+        $this->assertSame(1, AppEvent::query()->where('type', 'core.update.done')->count());
+
+        // and later calls find nothing to finish
+        $this->assertNull(app(CoreUpdater::class)->finish());
+        $this->assertSame(1, AppEvent::query()->where('type', 'core.update.done')->count());
+    }
+
+    public function test_finish_waits_while_another_process_holds_the_lock(): void
+    {
+        Settings::put('core_self_update', ['started_at' => now()->subMinutes(2)->toIso8601String(), 'from' => 'f65ec9b']);
+        $this->helper = ['State' => ['Running' => false]];
+        $this->helperLog = ['RESULT done'];
+
+        $other = Cache::lock(CoreUpdater::FINISH_LOCK, 120);
+        $this->assertTrue($other->get());
+        $this->assertNull(app(CoreUpdater::class)->finish());
+        $this->assertSame(0, AppEvent::query()->count());
+        $this->assertNotNull(Settings::get('core_self_update'), 'left for the lock holder');
+
+        $other->release();
+        $this->assertSame('done', app(CoreUpdater::class)->finish());
+        $this->assertSame(1, AppEvent::query()->where('type', 'core.update.done')->count());
     }
 
     public function test_finish_reports_a_rollback(): void
