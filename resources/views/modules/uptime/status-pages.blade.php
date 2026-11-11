@@ -34,6 +34,14 @@
                     @endif
                 </div>
             </form>
+            @if ($publicBase !== '' && $portMissing)
+                {{-- the container is older than the published status port: recreate once --}}
+                <p class="mt-3 flex items-start gap-1.5 text-sm text-amber-800 dark:text-amber-200" data-port-missing>
+                    <x-icon name="warn" class="mt-0.5 h-4 w-4 shrink-0" sw="2" />
+                    <span>PK95 Uptime öffnet den Port für die Statusseiten noch nicht. Erstelle Uptime einmal neu
+                        (<a href="{{ route('apps.show', $installedApp) }}" wire:navigate class="underline">App-Details</a> → „Neu erstellen“), dann sind die Seiten über den Proxy erreichbar.</span>
+                </p>
+            @endif
             @if ($publicBase !== '')
                 <div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
                     @if ($linkState)

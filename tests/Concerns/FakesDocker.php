@@ -149,6 +149,7 @@ trait FakesDocker
                     'Id' => $id,
                     'Image' => $this->imageId((string) ($this->docker['containers'][$id]['spec']['Image'] ?? '')),
                     'State' => ['Running' => $this->docker['containers'][$id]['running'], 'ExitCode' => 0],
+                    'HostConfig' => $this->docker['containers'][$id]['spec']['HostConfig'] ?? [],
                 ]),
                 $action === 'wait' => Http::response(['StatusCode' => $this->runHelper($this->docker['containers'][$id]['spec'])]),
                 $action === 'logs' && $this->docker['helperOutput'] !== null && isset($this->docker['containers'][$id]['spec']['Labels']['pk95.helper']) => Http::response(self::frame(1, '2026-11-08T10:00:00Z '.$this->docker['helperOutput']."\n")),

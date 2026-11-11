@@ -6,8 +6,10 @@ use App\Models\AppLink;
 use App\Models\InstalledApp;
 use App\Modules\Concerns\TalksToApp;
 use App\Services\Automation\Linker;
+use App\Services\Docker\DockerClient;
 use App\Support\Settings;
 use Livewire\Component;
+use Throwable;
 
 /**
  * PK95 Uptime: public status pages (/status/<slug> of the Uptime container).
@@ -122,7 +124,7 @@ class StatusPages extends Component
         }
     }
 
-    public function render()
+    public function render(DockerClient $docker)
     {
         [$pages, $error] = $this->load('/api/status-pages');
         [$monitors] = $this->load('/api/monitors');
@@ -131,11 +133,27 @@ class StatusPages extends Component
             // links "Öffnen"/copy point here; empty = no public address
             'publicBase' => rtrim(trim((string) Settings::get('uptime_public_url')), '/'),
             'statusLink' => Linker::statusLink(),
+            'portMissing' => $this->statusPortMissing($docker),
             'pages' => is_array($pages) ? $pages : [],
             'monitors' => collect(is_array($monitors) ? $monitors : [])->sortBy(fn ($m) => mb_strtolower($m['name']))->values(),
             'loadError' => $error,
             'ranges' => self::RANGES,
         ]);
+    }
+
+    /**
+     * The running Uptime container was created before Core published the status port (3002):
+     * it needs to be recreated once. Unknown (no Docker, no container) counts as fine.
+     */
+    private function statusPortMissing(DockerClient $docker): bool
+    {
+        try {
+            $container = $docker->inspectContainer($this->installedApp->definition()?->containerName() ?? 'pk95-uptime');
+        } catch (Throwable) {
+            return false;
+        }
+
+        return $container !== null && empty($container['HostConfig']['PortBindings'][Linker::statusPort().'/tcp']);
     }
 
     private function link(Linker $linker): void
