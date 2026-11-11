@@ -16,6 +16,14 @@ sysctls:
 volumes:
   - name: data
     target: /data
+# Public status pages: a second port of Uptime that serves only /status*, /api/public/status*
+# and their assets. PK95 Proxy reaches it at <LAN-IP>:3002 (Linker::linkStatusPages); the
+# admin API on 3001 stays inside the pk95 network.
+ports:
+  - "3002:3002"
 env:
   DATA_DIR: /data
   RETENTION_DAYS: 90
+  # Uptime's second port, only for the status pages (empty = off). PUBLIC_URL is not set: it is
+  # Uptime's base for push URLs; the status pages' address is a Core setting for the links only.
+  PUBLIC_PORT: 3002

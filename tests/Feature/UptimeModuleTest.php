@@ -2,16 +2,20 @@
 
 namespace Tests\Feature;
 
+use App\Models\AppLink;
 use App\Models\InstalledApp;
 use App\Modules\Uptime\Bars;
 use App\Modules\Uptime\Monitors;
 use App\Modules\Uptime\StatusPages;
 use App\Modules\Uptime\UptimeModule;
+use App\Services\Automation\Linker;
+use App\Support\Settings;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
+use Mockery\MockInterface;
 
 /**
  * The Uptime module against a fake of the Uptime API (http://pk95-uptime:3001).
@@ -203,6 +207,64 @@ class UptimeModuleTest extends FeatureTestCase
             ->assertDontSee('data-bars24h', false)
             ->assertSee('h-5 w-1.5 rounded-sm bg-green-500', false)
             ->assertSee('Webseite');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function statusPage(string $id, string $slug, bool $enabled): array
+    {
+        return ['id' => $id, 'slug' => $slug, 'title' => 'Seite '.$slug, 'description' => '', 'enabled' => $enabled, 'range' => '30d',
+            'monitors' => [['monitorId' => 'm1', 'publicName' => 'Webseite', 'group' => '']], 'createdAt' => 1];
+    }
+
+    public function test_status_pages_link_to_their_public_address(): void
+    {
+        $this->pages = ['p1' => $this->statusPage('p1', 'familie', true), 'p2' => $this->statusPage('p2', 'intern', false)];
+
+        $html = $this->get(route('apps.page', [$this->installed, 'status-pages']))->assertOk()
+            ->assertSee('Öffentliche Adresse der Statusseiten')
+            ->assertSee('href="https://status.kuhlmannit.de/status/familie"', false)
+            ->assertSee('target="_blank" rel="noopener" title="https://status.kuhlmannit.de/status/familie"', false)
+            ->assertSee('x-on:click="$kopieren(\'https:\/\/status.kuhlmannit.de\/status\/familie\')"', false)
+            ->assertSee('Nicht öffentlich: In der Seite „Öffentlich erreichbar“ einschalten.')
+            ->assertSee('Noch nicht eingerichtet')
+            ->getContent();
+
+        // the switched-off page gets no link
+        $this->assertStringNotContainsString('/status/intern"', $html);
+    }
+
+    public function test_status_pages_without_a_public_address_say_so(): void
+    {
+        Settings::put('uptime_public_url', '');
+        $this->pages = ['p1' => $this->statusPage('p1', 'familie', true)];
+
+        $this->get(route('apps.page', [$this->installed, 'status-pages']))->assertOk()
+            ->assertSee('Keine öffentliche Adresse eingerichtet')
+            ->assertDontSee('/status/familie"', false)
+            ->assertDontSee('Einrichten');
+    }
+
+    public function test_public_address_is_checked_saved_and_set_up(): void
+    {
+        $this->mock(Linker::class, function (MockInterface $m) {
+            $m->shouldReceive('linkStatusPages')->once()->andReturn(new AppLink(['state' => AppLink::PENDING_DNS, 'domain' => 'status.example.de']));
+        });
+
+        Livewire::test(StatusPages::class, ['installedApp' => $this->installed])
+            ->assertSet('publicUrl', 'https://status.kuhlmannit.de')
+            ->set('publicUrl', 'ftp://status.example.de')
+            ->call('savePublicUrl')
+            ->assertHasErrors('publicUrl')
+            ->set('publicUrl', 'https://status.example.de/')
+            ->call('savePublicUrl')
+            ->assertHasNoErrors()
+            ->assertSet('publicUrl', 'https://status.example.de')
+            ->assertDispatched('notice', kind: 'success',
+                text: 'Proxy-Host angelegt, er wartet auf DNS für status.example.de.');
+
+        $this->assertSame('https://status.example.de', Settings::get('uptime_public_url'));
     }
 
     public function test_details_show_incidents(): void
