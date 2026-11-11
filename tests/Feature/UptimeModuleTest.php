@@ -3,11 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\InstalledApp;
+use App\Modules\Uptime\Bars;
 use App\Modules\Uptime\Monitors;
 use App\Modules\Uptime\StatusPages;
 use App\Modules\Uptime\UptimeModule;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
@@ -120,6 +122,74 @@ class UptimeModuleTest extends FeatureTestCase
             ->assertSee('Extern');
 
         $this->assertSame('Bearer '.$this->installed->token, $this->calls[0]['auth']);
+    }
+
+    /**
+     * 48 half hours from 10.11. 12:00 UTC: 4 without data, one with a warning, two
+     * failed in a row (one outage), the rest fine.
+     *
+     * @return list<array{at: int, end: int, up: int, warn: int, down: int}>
+     */
+    private function bars24h(): array
+    {
+        $start = Carbon::parse('2026-11-10 12:00', 'UTC')->getTimestampMs();
+        $bars = [];
+        for ($i = 0; $i < 48; $i++) {
+            [$up, $warn, $down] = match (true) {
+                $i < 4 => [0, 0, 0],
+                $i === 10 => [28, 2, 0],
+                $i === 20, $i === 21 => [20, 0, 10],
+                default => [30, 0, 0],
+            };
+            $bars[] = ['at' => $start + $i * 1800000, 'end' => $start + ($i + 1) * 1800000, 'up' => $up, 'warn' => $warn, 'down' => $down];
+        }
+
+        return $bars;
+    }
+
+    public function test_bars_tone_tooltip_and_summary(): void
+    {
+        $this->assertSame('down', Bars::tone(['up' => 5, 'warn' => 1, 'down' => 1]));
+        $this->assertSame('warn', Bars::tone(['up' => 5, 'warn' => 1, 'down' => 0]));
+        $this->assertSame('up', Bars::tone(['up' => 5, 'warn' => 0, 'down' => 0]));
+        $this->assertSame('none', Bars::tone(['up' => 0, 'warn' => 0, 'down' => 0]));
+
+        $bars = $this->bars24h();
+        // display timezone: 22:00 UTC is 23:00 in Berlin
+        $this->assertSame("10.11. 23:00 bis 23:30\n20 OK, 10 fehlgeschlagen", Bars::title($bars[20]));
+        $this->assertSame("10.11. 18:00 bis 18:30\n28 OK, 2 mit Warnung", Bars::title($bars[10]));
+        $this->assertSame("10.11. 13:00 bis 13:30\nKeine Daten oder pausiert", Bars::title($bars[0]));
+        // 1300 of 1320 checks answered; two failed sections in a row are one outage
+        $this->assertSame('24 h: 98,5 % verfügbar, 1 Ausfall', Bars::label($bars));
+        $this->assertSame('24 h: keine Daten', Bars::label(array_slice($bars, 0, 4)));
+        $this->assertNull(Bars::strip(['id' => 'x']));
+        $this->assertNull(Bars::strip(['bars24h' => []]));
+    }
+
+    public function test_monitor_list_shows_the_24h_bars(): void
+    {
+        $this->monitors['m1']['bars24h'] = $this->bars24h();
+
+        $html = $this->get(route('apps.page', [$this->installed, 'monitors']))->assertOk()
+            ->assertSee('aria-label="24 h: 98,5 % verfügbar, 1 Ausfall"', false)
+            ->assertSee("title=\"11.11. 12:30 bis 13:00\n30 OK\"", false)
+            ->getContent();
+
+        $this->assertSame(1, substr_count($html, 'data-bars24h'), 'only the monitor that sends bars');
+        $this->assertSame(48, preg_match_all('/class="h-5 w-1 shrink-0 rounded-sm /', $html));
+        $this->assertSame(2, preg_match_all('/w-1 shrink-0 rounded-sm bg-rose-500/', $html));
+        $this->assertSame(1, preg_match_all('/w-1 shrink-0 rounded-sm bg-amber-500/', $html));
+        $this->assertSame(4, preg_match_all('/w-1 shrink-0 rounded-sm bg-gray-200 dark:bg-gray-600/', $html));
+        // phones: only the last 12 h (the older half hidden below sm)
+        $this->assertSame(24, preg_match_all('/class="h-5 w-1 shrink-0 rounded-sm [^"]*max-sm:hidden"/', $html));
+    }
+
+    public function test_monitor_list_without_bars_from_an_older_uptime_keeps_the_checks(): void
+    {
+        $this->get(route('apps.page', [$this->installed, 'monitors']))->assertOk()
+            ->assertDontSee('data-bars24h', false)
+            ->assertSee('h-5 w-1.5 rounded-sm bg-green-500', false)
+            ->assertSee('Webseite');
     }
 
     public function test_details_show_incidents(): void
