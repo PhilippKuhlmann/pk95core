@@ -122,14 +122,18 @@
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="{{ $card }}">Anfragen im Zeitverlauf</div>
                 <div class="flex gap-3 {{ $muted }}">
-                    <span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-sm bg-cerulean-500"></i>Beantwortet</span>
+                    {{-- "cached" only when PK95 DNS reports it; "Beantwortet" then splits into upstream and cache --}}
+                    <span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-sm bg-cerulean-500"></i>{{ $c['cached'] ? 'Vom Upstream' : 'Beantwortet' }}</span>
+                    @if ($c['cached'])
+                        <span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-sm bg-emerald-400"></i>Aus dem Cache</span>
+                    @endif
                     <span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-sm bg-rose-500"></i>Blockiert</span>
                 </div>
             </div>
             @if (! $stats['series'] || $t['queries'] === 0)
                 <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">In diesem Zeitraum gab es keine Anfragen. Trage die Adresse dieses LXC als DNS-Server im Router oder auf den Geräten ein.</p>
             @else
-                <svg viewBox="0 0 {{ $c['width'] }} {{ $c['height'] }}" class="mt-3 w-full text-gray-500 dark:text-gray-400" role="img" aria-label="Anfragen im Zeitverlauf, beantwortet und blockiert">
+                <svg viewBox="0 0 {{ $c['width'] }} {{ $c['height'] }}" class="mt-3 w-full text-gray-500 dark:text-gray-400" role="img" aria-label="{{ $c['cached'] ? 'Anfragen im Zeitverlauf: vom Upstream, aus dem Cache und blockiert' : 'Anfragen im Zeitverlauf, beantwortet und blockiert' }}">
                     @foreach ($c['grid'] as $g)
                         <line x1="{{ $c['m']['left'] }}" x2="{{ $c['width'] - $c['m']['right'] }}" y1="{{ $g['y'] }}" y2="{{ $g['y'] }}" @class(['stroke-gray-300 dark:stroke-gray-600' => $g['base'], 'stroke-gray-100 dark:stroke-gray-700' => ! $g['base']]) />
                         <text x="{{ $c['m']['left'] - 8 }}" y="{{ $g['y'] + 4 }}" text-anchor="end" class="fill-current text-[11px]">{{ $g['label'] }}</text>
