@@ -6,7 +6,11 @@ use App\Jobs\InstallApp;
 use App\Models\InstalledApp;
 use App\Services\Apps\AppException;
 use App\Services\Apps\AppManager;
+use App\Services\Automation\Linker;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Mockery\MockInterface;
 
 class AppLifecycleTest extends FeatureTestCase
 {
@@ -39,6 +43,36 @@ class AppLifecycleTest extends FeatureTestCase
             $this->assertSame('Bearer '.$app->token, $request['auth']);
         }
         $this->assertTrue($app->logs()->where('level', 'success')->exists());
+    }
+
+    public function test_activating_uptime_publishes_the_status_port_and_sets_up_its_public_address(): void
+    {
+        // the real catalog entry of Uptime, its API answered like the demo app
+        config(['pk95.catalog_dir' => base_path('catalog')]);
+        $this->appManifest['id'] = 'uptime';
+        Http::fake(['pk95-uptime:3001/*' => fn (Request $r) => match (parse_url($r->url(), PHP_URL_PATH)) {
+            '/core/health' => Http::response(['ok' => true]),
+            '/core/manifest' => Http::response($this->appManifest),
+            default => Http::response(['error' => 'not found'], 404),
+        }]);
+        $this->mock(Linker::class, fn (MockInterface $m) => $m->shouldReceive('linkStatusPages')->once()->andReturnNull());
+
+        $app = $this->manager()->activate('uptime')->refresh();
+
+        $this->assertSame(InstalledApp::RUNNING, $app->status);
+        $spec = $this->container('pk95-uptime')['spec'];
+        $this->assertContains('PUBLIC_PORT=3002', $spec['Env']);
+        $this->assertContains('PUBLIC_URL=https://status.kuhlmannit.de', $spec['Env']);
+        $this->assertContains('TRUST_PROXY=1', $spec['Env']);
+        $this->assertSame([['HostPort' => '3002']], $spec['HostConfig']['PortBindings']['3002/tcp']);
+        $this->assertArrayNotHasKey('3001/tcp', $spec['HostConfig']['PortBindings'], 'the admin API stays internal');
+    }
+
+    public function test_other_apps_do_not_touch_the_status_pages(): void
+    {
+        $this->mock(Linker::class, fn (MockInterface $m) => $m->shouldNotReceive('linkStatusPages'));
+
+        $this->assertSame(InstalledApp::RUNNING, $this->manager()->activate('demo')->refresh()->status);
     }
 
     public function test_activation_is_queued(): void

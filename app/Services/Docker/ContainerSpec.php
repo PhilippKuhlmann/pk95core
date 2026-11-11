@@ -4,6 +4,7 @@ namespace App\Services\Docker;
 
 use App\Http\Support\Format;
 use App\Services\Catalog\AppDefinition;
+use App\Support\Settings;
 
 /**
  * Builds the Docker "container create" body for an app from its catalog entry.
@@ -17,7 +18,7 @@ final class ContainerSpec
     {
         // $image: an image id (sha256:…) instead of image:tag, used to roll back to the
         // exact image that ran before an update even if the tag has moved on.
-        $env = $app->env + [
+        $env = self::resolve($app->env) + [
             'PK95_CORE_MODE' => '1',
             // A host-network app cannot resolve "pk95core": it reaches Core's published port.
             'PK95_CORE_URL' => (string) config($app->networkMode === 'host' ? 'pk95.host_core_url' : 'pk95.core_url'),
@@ -73,5 +74,28 @@ final class ContainerSpec
         $spec['HostConfig'] = $host;
 
         return $spec;
+    }
+
+    /**
+     * Catalog env values "{setting:<key>}" take the current value of that Core setting (e.g.
+     * PUBLIC_URL of Uptime); an empty value leaves the variable out, so the app's default applies.
+     *
+     * @param  array<string, string>  $env
+     * @return array<string, string>
+     */
+    public static function resolve(array $env): array
+    {
+        $out = [];
+        foreach ($env as $key => $value) {
+            if (preg_match('/^\{setting:([a-z0-9_]+)\}$/', $value, $m)) {
+                $value = trim((string) Settings::get($m[1]));
+                if ($value === '') {
+                    continue;
+                }
+            }
+            $out[$key] = $value;
+        }
+
+        return $out;
     }
 }

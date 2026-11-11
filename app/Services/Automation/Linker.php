@@ -8,6 +8,7 @@ use App\Models\InstalledApp;
 use App\Modules\Proxy\Hosts;
 use App\Services\Apps\AppClient;
 use App\Services\Apps\AppException;
+use App\Services\Catalog\Catalog;
 use App\Support\Settings;
 use Illuminate\Http\Client\Response;
 use Throwable;
@@ -23,6 +24,11 @@ use Throwable;
 class Linker
 {
     public const GROUP = 'Apps';
+
+    /** AppLink source of PK95 Uptime's public status pages (one link, source_id 1). */
+    public const STATUS_SOURCE = 'uptime-status';
+
+    public const STATUS_PORT = 3002;
 
     public function __construct(private readonly Dns $dns, private readonly LanIp $lanIp) {}
 
@@ -139,7 +145,8 @@ class Linker
                 throw new AppException((string) ($response->json('error') ?? 'HTTP '.$response->status()));
             }
             $ids = $link->monitor_ids ?? [];
-            if (($uptime = $this->app('uptime', 'automation_uptime')) && count($ids) < 2) {
+            // the status pages' root path is not public: no domain monitor for them
+            if ($link->source_app !== self::STATUS_SOURCE && ($uptime = $this->app('uptime', 'automation_uptime')) && count($ids) < 2) {
                 $ids[] = $this->createMonitor($uptime, self::domainMonitor($link));
             }
             $link->update(['state' => AppLink::ACTIVE, 'monitor_ids' => $ids, 'message' => null]);
@@ -180,6 +187,113 @@ class Linker
             "{$link->name}: Proxy-Host, DNS-Eintrag und Monitore entfernt", $link->message, ['link' => $link->id]);
 
         return $link;
+    }
+
+    /**
+     * PK95 Uptime's public status pages: a proxy host for the domain of uptime_public_url to
+     * the port Uptime publishes for them on the LXC (<LAN-IP>:3002), and the local DNS record.
+     * Idempotent: runs after every (re)creation of Uptime and from the button on the status
+     * pages page. A changed LAN IP moves the host's target, a changed address takes down what
+     * was set up for the old one. Problems end up in the link's message, never as an exception.
+     */
+    public function linkStatusPages(): ?AppLink
+    {
+        $url = trim((string) Settings::get('uptime_public_url'));
+        $domain = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $link = AppLink::query()->firstOrNew(['source_app' => self::STATUS_SOURCE, 'source_id' => 1]);
+        if ($link->exists && $link->state !== AppLink::REMOVED && $link->domain !== $domain) {
+            $link = $this->unlink(self::STATUS_SOURCE, 1) ?? $link;
+        }
+        if ($domain === '') {
+            return $link->exists ? $link : null;
+        }
+        $before = $link->exists ? [$link->state, $link->message] : null;
+        $link->fill(['name' => 'Statusseiten', 'hostname' => 'PK95 Uptime', 'domain' => $domain,
+            'monitor_ids' => [], 'checked_at' => now()]);
+        $notes = [];
+        $ip = $this->lanIp->current();
+        $port = self::statusPort();
+        $link->target = $ip !== null ? 'http://'.(str_contains($ip, ':') ? "[{$ip}]" : $ip).':'.$port : (string) $link->target;
+        $enabled = false;
+        $waiting = false; // an existing host that is still switched off: check DNS again below
+
+        $proxy = $this->app('proxy', 'automation_proxy');
+        if ($ip === null) {
+            $notes[] = 'Die LAN-IP des Proxy ist nicht bekannt: kein Proxy-Host. Trag sie unter Automatik ein.';
+        } elseif ($proxy === null) {
+            $notes[] = InstalledApp::query()->where('app_id', 'proxy')->exists() && Settings::get('automation_proxy')
+                ? 'PK95 Proxy läuft gerade nicht: noch kein Proxy-Host.'
+                : 'Ohne PK95 Proxy (oder mit abgeschalteter Automatik) gibt es keinen Proxy-Host.';
+        } else {
+            try {
+                $host = $link->proxy_host_id
+                    ? collect((array) $proxy->client()->get('/api/hosts')->json())->firstWhere('id', $link->proxy_host_id)
+                    : null;
+                if ($host === null) {
+                    // new, or the host was deleted in PK95 Proxy: create it (again)
+                    $dns = $this->dns->check($domain);
+                    $enabled = $dns['ok'];
+                    $link->proxy_host_id = $this->createHost($proxy, $link, $enabled, $notes);
+                    if ($link->proxy_host_id && ! $enabled) {
+                        $notes[] = 'Host deaktiviert angelegt: '.$dns['reason'].' Core schaltet ihn ein, sobald DNS passt.';
+                    }
+                } else {
+                    $enabled = (bool) ($host['enabled'] ?? false);
+                    $waiting = ! $enabled;
+                    [, $hostIp] = self::parseTarget($link->target) ?? [null, null];
+                    if ((string) ($host['upstream_host'] ?? '') !== $hostIp || (int) ($host['upstream_port'] ?? 0) !== $port) {
+                        $body = array_merge(array_intersect_key($host, array_flip(Hosts::FIELDS)),
+                            ['scheme' => 'http', 'upstream_host' => $hostIp, 'upstream_port' => $port]);
+                        self::ensureOk($proxy->client()->put('/api/hosts/'.$link->proxy_host_id, $body));
+                    }
+                }
+            } catch (Throwable $e) {
+                $notes[] = 'Proxy-Host nicht eingerichtet: '.$e->getMessage();
+            }
+        }
+        $this->ensureRecord($link);
+
+        $link->state = match (true) {
+            ! $link->proxy_host_id => AppLink::FAILED,
+            // Proxy not reachable this time: the host Core made earlier keeps its state
+            $ip === null || $proxy === null => in_array($link->state, [AppLink::ACTIVE, AppLink::PENDING_DNS], true) ? $link->state : AppLink::FAILED,
+            default => $enabled ? AppLink::ACTIVE : AppLink::PENDING_DNS,
+        };
+        $link->message = $notes ? implode(' ', $notes) : null;
+        $link->save();
+        if ($waiting) {
+            $this->recheck($link); // switches the host on once the domain points here
+            $link->refresh();
+        }
+
+        // an event only when something changed (this runs on every recreation of Uptime)
+        if ($before !== [$link->state, $link->message]) {
+            $details = trim(implode(' ', array_filter([$link->message, $link->dns_message])));
+            AppEvent::record(AppEvent::CORE, 'core.link.'.$link->state, $link->state === AppLink::ACTIVE && $link->dns_message === null ? 'info' : 'warning',
+                match ($link->state) {
+                    AppLink::ACTIVE => "Statusseiten sind unter https://{$domain} eingerichtet",
+                    AppLink::PENDING_DNS => "Statusseiten: {$domain} wartet auf DNS",
+                    default => 'Statusseiten konnten nicht eingerichtet werden',
+                }, $details !== '' ? $details : null, ['link' => $link->id, 'domain' => $domain]);
+        }
+
+        return $link;
+    }
+
+    /** The link of the status pages (null: never set up). */
+    public static function statusLink(): ?AppLink
+    {
+        return AppLink::query()->where('source_app', self::STATUS_SOURCE)->where('source_id', 1)->first();
+    }
+
+    /** Port Uptime publishes for the status pages (PUBLIC_PORT of its catalog entry). */
+    public static function statusPort(): int
+    {
+        try {
+            return (int) (app(Catalog::class)->get('uptime')->env['PUBLIC_PORT'] ?? self::STATUS_PORT) ?: self::STATUS_PORT;
+        } catch (Throwable) {
+            return self::STATUS_PORT;
+        }
     }
 
     /**

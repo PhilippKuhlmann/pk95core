@@ -5,6 +5,7 @@ namespace App\Services\Apps;
 use App\Jobs\InstallApp;
 use App\Models\AppEvent;
 use App\Models\InstalledApp;
+use App\Services\Automation\Linker;
 use App\Services\Catalog\AppDefinition;
 use App\Services\Catalog\Catalog;
 use App\Services\Docker\ContainerSpec;
@@ -125,6 +126,15 @@ class AppManager
             'image_id' => $this->docker->inspectContainer($id)['Image'] ?? null,
         ]);
         $app->log("{$manifest->name} {$manifest->version} läuft", 'success');
+        // Uptime's public status pages: proxy host and local DNS record (idempotent; problems
+        // land in the link's message, the deploy itself never fails because of them)
+        if ($app->app_id === 'uptime') {
+            try {
+                app(Linker::class)->linkStatusPages();
+            } catch (Throwable $e) {
+                report($e);
+            }
+        }
 
         return $manifest;
     }

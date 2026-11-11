@@ -223,6 +223,74 @@ class AutomationTest extends FeatureTestCase
         $this->assertDatabaseHas('app_events', ['app_id' => AppEvent::CORE, 'type' => 'core.link.active']);
     }
 
+    public function test_status_pages_get_a_proxy_host_to_the_public_port_and_a_dns_record(): void
+    {
+        $this->dnsAnswer = ['203.0.113.10'];
+        $link = app(Linker::class)->linkStatusPages();
+
+        $this->assertSame(AppLink::ACTIVE, $link->state);
+        $this->assertSame('status.kuhlmannit.de', $link->domain, 'default of uptime_public_url');
+        $host = $this->sent('POST', '/api/hosts')[0];
+        $this->assertSame(['status.kuhlmannit.de'], $host['domains']);
+        $this->assertSame(['http', '10.10.250.50', 3002], [$host['scheme'], $host['upstream_host'], $host['upstream_port']]);
+        $this->assertTrue($host['enabled']);
+        $this->assertSame([['name' => 'status.kuhlmannit.de', 'value' => '10.10.250.50']],
+            array_map(fn ($r) => ['name' => $r['name'], 'value' => $r['value']], array_values($this->records)));
+        $this->assertSame([], $this->sent('POST', 'pk95-uptime'), 'no monitor: the root of the public port is not served');
+        $this->assertSame(1, AppEvent::query()->where('type', 'core.link.active')->count());
+
+        // idempotent: again (every recreation of Uptime) changes nothing and records nothing
+        $again = app(Linker::class)->linkStatusPages();
+        $this->assertSame($link->id, $again->id);
+        $this->assertCount(1, $this->sent('POST', '/api/hosts'));
+        $this->assertSame([], $this->sent('PUT', '/api/hosts/'));
+        $this->assertCount(1, $this->records);
+        $this->assertSame(1, AppEvent::query()->where('type', 'core.link.active')->count());
+    }
+
+    public function test_status_pages_wait_for_dns_follow_the_lan_ip_and_a_new_address(): void
+    {
+        $this->dnsAnswer = [];
+        $link = app(Linker::class)->linkStatusPages();
+        $this->assertSame(AppLink::PENDING_DNS, $link->state);
+        $this->assertFalse($this->hosts[$link->proxy_host_id]['enabled']);
+
+        // switched on by the regular check once DNS points here, still without a monitor
+        $this->dnsAnswer = ['203.0.113.10'];
+        $this->artisan('pk95:links')->assertSuccessful();
+        $this->assertSame(AppLink::ACTIVE, $link->fresh()->state);
+        $this->assertTrue($this->hosts[$link->proxy_host_id]['enabled']);
+        $this->assertSame([], $this->sent('POST', 'pk95-uptime'));
+
+        // the LXC got another LAN IP: the host's target moves along
+        Settings::put('automation_lan_ip', '10.10.250.60');
+        app(Linker::class)->linkStatusPages();
+        $this->assertSame('10.10.250.60', $this->hosts[$link->proxy_host_id]['upstream_host']);
+        $this->assertTrue($this->hosts[$link->proxy_host_id]['enabled'], 'stays switched on');
+        $this->assertSame([], array_diff(array_keys($this->sent('PUT', '/api/hosts/')[1]), Hosts::FIELDS));
+
+        // another address: the old host and record go, new ones come
+        Settings::put('uptime_public_url', 'https://status.example.de');
+        $new = app(Linker::class)->linkStatusPages();
+        $this->assertSame('status.example.de', $new->domain);
+        $this->assertSame([['status.example.de']], array_values(array_map(fn ($h) => $h['domains'], $this->hosts)));
+        $this->assertSame(['status.example.de'], array_values(array_map(fn ($r) => $r['name'], $this->records)));
+    }
+
+    public function test_status_pages_without_address_or_without_proxy(): void
+    {
+        Settings::put('uptime_public_url', '');
+        $this->assertNull(app(Linker::class)->linkStatusPages());
+        $this->assertSame([], $this->sent('POST', '/api/hosts'));
+
+        Settings::put('uptime_public_url', 'https://status.kuhlmannit.de');
+        InstalledApp::query()->where('app_id', 'proxy')->update(['status' => InstalledApp::STOPPED]);
+        $link = app(Linker::class)->linkStatusPages();
+        $this->assertSame(AppLink::FAILED, $link->state);
+        $this->assertStringContainsString('PK95 Proxy läuft gerade nicht', $link->message);
+        $this->assertDatabaseHas('app_events', ['type' => 'core.link.failed', 'severity' => 'warning']);
+    }
+
     public function test_without_dns_the_host_waits_disabled_and_is_switched_on_later(): void
     {
         $this->dnsAnswer = [];
