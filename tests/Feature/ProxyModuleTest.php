@@ -152,7 +152,7 @@ class ProxyModuleTest extends FeatureTestCase
                 'countries' => [['key' => 'DE', 'count' => 11, 'bytes' => 4000], ['key' => 'LAN', 'count' => 1, 'bytes' => 1000]],
                 'clients' => [], 'protos' => [], 'statuses' => [['key' => '200', 'count' => 10]], 'referers' => []]),
             // PK95 Proxy with client filter; null = an older version (404)
-            'GET /api/requests/clients' => $this->clientList === null ? Http::response(['error' => 'unbekannt'], 404) : Http::response($this->clientList),
+            'GET /api/requests/clients' => $this->clientList === null ? Http::response(['error' => 'unbekannt'], 404) : Http::response(['range' => '24h', 'from' => $now - 86400000, 'to' => $now, 'computed_at' => $now, 'clients' => $this->clientList]),
             'GET /api/requests' => Http::response([['id' => 99, 'ts' => $now, 'host' => 'app.example.de', 'method' => 'GET', 'path' => '/login',
                 'proto' => 'HTTP/2.0', 'status' => 404, 'bytes' => 512, 'bytes_in' => 0, 'duration_ms' => 3.2, 'ip' => '198.51.100.4', 'country' => 'DE',
                 'client' => 'Firefox', 'is_bot' => false, 'ua' => 'Mozilla/5.0', 'referer' => '']]),
@@ -168,7 +168,7 @@ class ProxyModuleTest extends FeatureTestCase
 
     public function test_log_hides_clients_through_the_panel_and_remembers_them(): void
     {
-        $this->clientList = [['client' => 'Uptime-Monitor', 'count' => 2880, 'is_bot' => false], ['client' => 'Firefox', 'count' => 12, 'is_bot' => false]];
+        $this->clientList = [['client' => 'Uptime-Monitor', 'count' => 2880], ['client' => 'Firefox', 'count' => 12]];
 
         $page = Livewire::test(AccessLog::class, ['installedApp' => $this->installed])
             ->assertSee('Client ausblenden …')
@@ -187,11 +187,16 @@ class ProxyModuleTest extends FeatureTestCase
         $this->assertStringEndsWith('&exclude_client=Uptime-Monitor', last($this->requestQueries()));
         $this->assertSame(['Uptime-Monitor'], Settings::get(AccessLog::HIDDEN_SETTING));
 
-        // repeated key; a comma in a name stays part of the name
-        $page->call('hideClient', 'curl, wget')->assertSee('2 Clients ausgeblendet');
-        $this->assertStringEndsWith('&exclude_client=Uptime-Monitor&exclude_client=curl%2C%20wget', last($this->requestQueries()));
+        // repeated key per hidden client
+        $page->call('hideClient', 'curl')->assertSee('2 Clients ausgeblendet');
+        $this->assertStringEndsWith('&exclude_client=Uptime-Monitor&exclude_client=curl', last($this->requestQueries()));
 
-        $page->call('showClient', 'curl, wget')->call('onlyClient', 'Firefox')->assertSee('Nur Client: Firefox');
+        // the panel splits exclude_client at commas: such a name is refused, not silently ignored
+        $page->call('hideClient', 'curl, wget')
+            ->assertDispatched('notice', kind: 'error', text: '„curl, wget“ enthält ein Komma und lässt sich deshalb nicht ausblenden.')
+            ->assertSet('hidden', ['Uptime-Monitor', 'curl']);
+
+        $page->call('showClient', 'curl')->call('onlyClient', 'Firefox')->assertSee('Nur Client: Firefox');
         $this->assertStringContainsString('client=Firefox', last($this->requestQueries()));
 
         $page->call('clearClient')->call('showAllClients')->assertSet('hidden', [])->assertDontSee('Alle zeigen');
@@ -201,7 +206,7 @@ class ProxyModuleTest extends FeatureTestCase
 
     public function test_hidden_clients_come_back_after_a_reload_and_the_url_wins(): void
     {
-        $this->clientList = [['client' => 'Uptime-Monitor', 'count' => 2880, 'is_bot' => false]];
+        $this->clientList = [['client' => 'Uptime-Monitor', 'count' => 2880]];
         Settings::put(AccessLog::HIDDEN_SETTING, ['Uptime-Monitor']);
         $log = route('apps.page', [$this->installed, 'log']);
 

@@ -16,8 +16,10 @@ use Livewire\Component;
  *
  * Clients (e.g. "Uptime-Monitor") can be hidden or shown alone. The panel filters them
  * (exclude_client / client on /api/requests), never this page: filtering loaded rows here
- * would break the paging. Proxy versions without GET /api/requests/clients do not know the
- * parameters, so the filter is only offered when that list answers.
+ * would break the paging. PK95 Proxy before 1.3.0 does not know the parameters (and ignores
+ * them), so the filter is only offered when GET /api/requests/clients answers. The panel takes
+ * at most 100 exclude_client values and also splits them at commas; Core sends at most
+ * MAX_HIDDEN and refuses names with a comma.
  */
 class AccessLog extends Component
 {
@@ -129,6 +131,12 @@ class AccessLog extends Component
     {
         $name = self::name($name);
         if ($name === '' || in_array($name, $this->hidden, true)) {
+            return;
+        }
+        // the panel splits exclude_client at commas too: such a name would never match
+        if (str_contains($name, ',')) {
+            $this->dispatch('notice', kind: 'error', text: "„{$name}“ enthält ein Komma und lässt sich deshalb nicht ausblenden.");
+
             return;
         }
         if (count($this->hidden) >= self::MAX_HIDDEN) {
@@ -250,7 +258,9 @@ class AccessLog extends Component
             return;
         }
         $this->clientFilter = true;
-        $this->clients = collect((array) $response->json())
+        // {range, from, to, computed_at, clients: [{client, count}]} (PK95 Proxy 1.3.0); a bare list is fine too
+        $json = (array) $response->json();
+        $this->clients = collect((array) ($json['clients'] ?? (array_is_list($json) ? $json : [])))
             ->filter(fn ($c) => is_array($c) && self::name((string) ($c['client'] ?? '')) !== '')
             ->map(fn ($c) => ['client' => self::name((string) $c['client']), 'count' => (int) ($c['count'] ?? 0)])
             ->take(100)->values()->all();
