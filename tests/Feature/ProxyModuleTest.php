@@ -3,12 +3,14 @@
 namespace Tests\Feature;
 
 use App\Models\InstalledApp;
+use App\Modules\Proxy\AccessLog;
 use App\Modules\Proxy\Certificates;
 use App\Modules\Proxy\ErrorPages;
 use App\Modules\Proxy\Hosts;
 use App\Modules\Proxy\ProxyModule;
 use App\Modules\Proxy\Security;
 use App\Modules\Proxy\Streams;
+use App\Support\Settings;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
@@ -28,6 +30,9 @@ class ProxyModuleTest extends FeatureTestCase
 
     /** @var array<int, array<string, mixed>> */
     private array $hosts = [];
+
+    /** @var list<array<string, mixed>>|null GET /api/requests/clients; null = older Proxy (404) */
+    private ?array $clientList = null;
 
     /** @var array<string, mixed> replaces keys of the faked /api/stats answer */
     private array $statsOverride = [];
@@ -146,11 +151,84 @@ class ProxyModuleTest extends FeatureTestCase
                 'paths' => [['key' => '/', 'count' => 12]], 'ips' => [['key' => '198.51.100.4', 'count' => 12]],
                 'countries' => [['key' => 'DE', 'count' => 11, 'bytes' => 4000], ['key' => 'LAN', 'count' => 1, 'bytes' => 1000]],
                 'clients' => [], 'protos' => [], 'statuses' => [['key' => '200', 'count' => 10]], 'referers' => []]),
+            // PK95 Proxy with client filter; null = an older version (404)
+            'GET /api/requests/clients' => $this->clientList === null ? Http::response(['error' => 'unbekannt'], 404) : Http::response(['range' => '24h', 'from' => $now - 86400000, 'to' => $now, 'computed_at' => $now, 'clients' => $this->clientList]),
             'GET /api/requests' => Http::response([['id' => 99, 'ts' => $now, 'host' => 'app.example.de', 'method' => 'GET', 'path' => '/login',
                 'proto' => 'HTTP/2.0', 'status' => 404, 'bytes' => 512, 'bytes_in' => 0, 'duration_ms' => 3.2, 'ip' => '198.51.100.4', 'country' => 'DE',
                 'client' => 'Firefox', 'is_bot' => false, 'ua' => 'Mozilla/5.0', 'referer' => '']]),
             default => Http::response(['error' => 'unbekannt: '.$r->method().' '.$path], 404),
         };
+    }
+
+    /** Query strings of the requests to /api/requests, in order. */
+    private function requestQueries(): array
+    {
+        return array_values(array_map(fn ($c) => $c['query'], array_filter($this->calls, fn ($c) => $c['method'] === 'GET' && $c['path'] === '/api/requests')));
+    }
+
+    public function test_log_hides_clients_through_the_panel_and_remembers_them(): void
+    {
+        $this->clientList = [['client' => 'Uptime-Monitor', 'count' => 2880], ['client' => 'Firefox', 'count' => 12]];
+
+        $page = Livewire::test(AccessLog::class, ['installedApp' => $this->installed])
+            ->assertSee('Client ausblenden …')
+            ->assertSee('Uptime-Monitor (2.880)')
+            ->assertSee('aria-label="Client Firefox ausblenden"', false)
+            // on phones the client column is hidden: the details carry the same actions
+            ->call('toggle', 99)
+            ->assertSee('Nur dieser Client')
+            ->assertSee('Client „Firefox“ ausblenden');
+        $this->assertStringContainsString('range=24h', collect($this->calls)->firstWhere('path', '/api/requests/clients')['query']);
+
+        $page->call('hideClient', 'Uptime-Monitor')
+            ->assertSet('hidden', ['Uptime-Monitor'])
+            ->assertSee('1 Client ausgeblendet')
+            ->assertSee('Alle zeigen');
+        $this->assertStringEndsWith('&exclude_client=Uptime-Monitor', last($this->requestQueries()));
+        $this->assertSame(['Uptime-Monitor'], Settings::get(AccessLog::HIDDEN_SETTING));
+
+        // repeated key per hidden client
+        $page->call('hideClient', 'curl')->assertSee('2 Clients ausgeblendet');
+        $this->assertStringEndsWith('&exclude_client=Uptime-Monitor&exclude_client=curl', last($this->requestQueries()));
+
+        // the panel splits exclude_client at commas: such a name is refused, not silently ignored
+        $page->call('hideClient', 'curl, wget')
+            ->assertDispatched('notice', kind: 'error', text: '„curl, wget“ enthält ein Komma und lässt sich deshalb nicht ausblenden.')
+            ->assertSet('hidden', ['Uptime-Monitor', 'curl']);
+
+        $page->call('showClient', 'curl')->call('onlyClient', 'Firefox')->assertSee('Nur Client: Firefox');
+        $this->assertStringContainsString('client=Firefox', last($this->requestQueries()));
+
+        $page->call('clearClient')->call('showAllClients')->assertSet('hidden', [])->assertDontSee('Alle zeigen');
+        $this->assertStringNotContainsString('client', last($this->requestQueries()));
+        $this->assertSame([], Settings::get(AccessLog::HIDDEN_SETTING));
+    }
+
+    public function test_hidden_clients_come_back_after_a_reload_and_the_url_wins(): void
+    {
+        $this->clientList = [['client' => 'Uptime-Monitor', 'count' => 2880]];
+        Settings::put(AccessLog::HIDDEN_SETTING, ['Uptime-Monitor']);
+        $log = route('apps.page', [$this->installed, 'log']);
+
+        $this->get($log)->assertOk()->assertSee('1 Client ausgeblendet');
+        $this->assertStringContainsString('exclude_client=Uptime-Monitor', last($this->requestQueries()));
+
+        // a link with its own selection shows exactly that
+        $this->get($log.'?hide[0]=Firefox')->assertOk();
+        $this->assertStringEndsWith('&exclude_client=Firefox', last($this->requestQueries()));
+    }
+
+    public function test_an_older_proxy_gets_no_client_filter_and_nothing_is_filtered_here(): void
+    {
+        Settings::put(AccessLog::HIDDEN_SETTING, ['Uptime-Monitor']);
+
+        $this->get(route('apps.page', [$this->installed, 'log']))->assertOk()
+            ->assertSee('Clients ausblenden: braucht PK95 Proxy 1.3.0')
+            ->assertSee('1 ausgeblendeter Client wirkt erst mit PK95 Proxy 1.3.0')
+            ->assertDontSee('Client ausblenden …')
+            ->assertDontSee('aria-label="Client Firefox ausblenden"', false)
+            ->assertSee('Firefox');
+        $this->assertStringNotContainsString('client', last($this->requestQueries()), 'no parameter the old panel would ignore');
     }
 
     public function test_every_page_renders_with_panel_data(): void

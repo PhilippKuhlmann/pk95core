@@ -58,10 +58,10 @@ trait TalksToApp
      * GET for render(): data or null, plus the reason when it failed (shown in the page,
      * not as a toast, because polling would repeat it).
      *
-     * @param  array<string, mixed>  $query
+     * @param  array<string, mixed>|string  $query  string: sent as it is (repeated keys)
      * @return array{0: mixed, 1: ?string}
      */
-    protected function load(string $path, array $query = []): array
+    protected function load(string $path, array|string $query = []): array
     {
         try {
             $response = $this->installedApp->client()->get($path, $query);
