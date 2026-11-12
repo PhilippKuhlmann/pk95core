@@ -30,9 +30,10 @@ class AppClient
     }
 
     /**
-     * @param  array<string, mixed>  $query
+     * @param  array<string, mixed>|string  $query  a string goes out as it is (repeated keys
+     *                                              like exclude_client=a&exclude_client=b)
      */
-    public function get(string $path, array $query = []): Response
+    public function get(string $path, array|string $query = []): Response
     {
         return $this->call(fn () => $this->request()->get($path, $query));
     }

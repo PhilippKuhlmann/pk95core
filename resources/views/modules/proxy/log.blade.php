@@ -27,7 +27,51 @@
         <input type="search" wire:model.live.debounce.300ms="ip" placeholder="IP-Adresse" aria-label="IP-Adresse" class="{{ $input }} w-40">
         <input type="search" wire:model.live.debounce.300ms="q" placeholder="Pfad enthält …" aria-label="Pfad" class="{{ $input }} w-48">
         <x-input.checkbox label="Bots ausblenden" wire:model.live="hideBots" />
+        @if ($clientFilter)
+            {{-- picking a name hides it at once; the select goes back to its prompt --}}
+            <select aria-label="Client ausblenden" class="{{ $input }} w-48" data-client-hide
+                x-on:change="if ($event.target.value !== '') { $wire.hideClient($event.target.value); $event.target.value = '' }">
+                <option value="">Client ausblenden …</option>
+                @foreach ($clientNames as $name)
+                    <option value="{{ $name }}">{{ $name.(isset($clientCounts[$name]) ? ' ('.Fmt::num($clientCounts[$name]).')' : '') }}</option>
+                @endforeach
+            </select>
+            <select wire:model.live="client" aria-label="Nur Client" class="{{ $input }} w-44">
+                <option value="">Alle Clients</option>
+                @if ($client !== '' && ! in_array($client, $clientNames, true))<option value="{{ $client }}">{{ $client }}</option>@endif
+                @foreach ($clientNames as $name)<option value="{{ $name }}">Nur {{ $name }}</option>@endforeach
+            </select>
+        @else
+            <span class="text-xs text-gray-500 dark:text-gray-400" title="Die installierte Version von PK95 Proxy kann noch nicht nach Client filtern." data-client-filter-missing>
+                Clients ausblenden: braucht eine neuere Version von PK95 Proxy
+            </span>
+        @endif
     </div>
+
+    @if ($clientFilter && ($hidden || $client !== ''))
+        <div class="mx-3 mt-2 flex flex-wrap items-center gap-2 text-xs" data-client-chips>
+            @if ($client !== '')
+                <button type="button" wire:click="clearClient" title="Filter entfernen"
+                    class="rounded-full border border-cerulean-200 bg-cerulean-50 px-2.5 py-1 text-cerulean-800 hover:border-rose-300 hover:bg-rose-50 dark:border-cerulean-800 dark:bg-cerulean-950 dark:text-cerulean-200 dark:hover:border-rose-800 dark:hover:bg-rose-950">
+                    Nur Client: {{ $client }} ×
+                </button>
+            @endif
+            @if ($hidden)
+                <span class="text-gray-600 dark:text-gray-300">{{ count($hidden) === 1 ? '1 Client ausgeblendet' : count($hidden).' Clients ausgeblendet' }}:</span>
+                @foreach ($hidden as $name)
+                    <button type="button" wire:click="showClient({{ Js::from($name) }})" title="Wieder zeigen" wire:key="hidden-{{ md5($name) }}"
+                        class="max-w-56 truncate rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700 hover:border-rose-300 hover:bg-rose-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-rose-800 dark:hover:bg-rose-950">
+                        {{ $name }} ×
+                    </button>
+                @endforeach
+                <button type="button" wire:click="showAllClients" class="text-cerulean-700 underline hover:no-underline dark:text-cerulean-300">Alle zeigen</button>
+            @endif
+        </div>
+    @elseif (! $clientFilter && $hidden)
+        <p class="mx-3 mt-2 text-xs text-amber-800 dark:text-amber-200" data-client-filter-inactive>
+            {{ count($hidden) === 1 ? '1 ausgeblendeter Client wirkt' : count($hidden).' ausgeblendete Clients wirken' }} erst mit einer neueren Version von PK95 Proxy, bis dahin sind alle Zugriffe zu sehen.
+        </p>
+    @endif
 
     @if ($loadError)
         <x-callout title="Zugriffe konnten nicht geladen werden" ton="gelb" class="m-3">{{ $loadError }}</x-callout>
@@ -60,8 +104,19 @@
                             <td class="max-w-md truncate px-3 py-1.5 font-mono" title="{{ $r['path'] }}">{{ $r['path'] }}</td>
                             <td class="whitespace-nowrap px-3 py-1.5 font-mono"><span title="{{ $r['country'] ? Fmt::country($r['country']) : '' }}">{{ Fmt::flag($r['country']) }} {{ $r['ip'] }}
                                 @if ($r['country'] && $r['country'] !== 'LAN')<span class="text-gray-500 dark:text-gray-400">{{ $r['country'] }}</span>@endif</span></td>
-                            <td class="hidden max-w-56 truncate px-3 py-1.5 lg:table-cell" title="{{ $r['client'] }}">{{ $r['client'] }}
-                                @if ($r['is_bot'])<span class="ml-1 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-600 dark:bg-gray-700 dark:text-gray-300">Bot</span>@endif</td>
+                            <td class="group/client hidden max-w-56 px-3 py-1.5 lg:table-cell" title="{{ $r['client'] }}">
+                                <span class="flex items-center gap-1">
+                                    <span class="truncate">{{ $r['client'] }}</span>
+                                    @if ($r['is_bot'])<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-600 dark:bg-gray-700 dark:text-gray-300">Bot</span>@endif
+                                    @if ($clientFilter && $r['client'] !== '')
+                                        {{-- quick action: hide this client (visible on hover/focus) --}}
+                                        <button type="button" wire:click.stop="hideClient({{ Js::from($r['client']) }})" title="Client „{{ $r['client'] }}“ ausblenden" aria-label="Client {{ $r['client'] }} ausblenden"
+                                            class="shrink-0 rounded p-0.5 text-gray-400 opacity-0 hover:bg-gray-100 hover:text-gray-700 focus:opacity-100 group-hover/client:opacity-100 dark:hover:bg-gray-700 dark:hover:text-gray-200">
+                                            <x-icon name="eye-off" class="h-3.5 w-3.5" />
+                                        </button>
+                                    @endif
+                                </span>
+                            </td>
                             <td class="whitespace-nowrap px-3 py-1.5 text-right tabular-nums">{{ Fmt::bytes($r['bytes']) }}</td>
                             <td class="whitespace-nowrap px-3 py-1.5 text-right tabular-nums">{{ Fmt::ms($r['duration_ms']) }}</td>
                         </tr>
@@ -74,13 +129,20 @@
                                         <dt class="text-gray-500">Download</dt><dd>{{ Fmt::bytes($r['bytes']) }}</dd>
                                         <dt class="text-gray-500">Upload</dt><dd>{{ Fmt::bytes($r['bytes_in']) }}</dd>
                                         <dt class="text-gray-500">Land</dt><dd>{{ Fmt::flag($r['country']) }} {{ Fmt::country($r['country']) }}</dd>
+                                        <dt class="text-gray-500">Client</dt><dd>{{ $r['client'] ?: '–' }}{{ $r['is_bot'] ? ' (Bot)' : '' }}</dd>
                                         <dt class="text-gray-500">User-Agent</dt><dd class="break-all">{{ $r['ua'] ?: '–' }}</dd>
                                         <dt class="text-gray-500">Verweis</dt><dd class="break-all">{{ $r['referer'] ?: '–' }}</dd>
                                     </dl>
-                                    <div class="mt-2 flex gap-2">
+                                    <div class="mt-2 flex flex-wrap gap-2">
                                         <x-input.button type="button" size="sm" color="gray" wire:click.stop="filterBy('ip', {{ Js::from($r['ip']) }})">Nur diese IP-Adresse</x-input.button>
                                         @if ($r['host'])
                                             <x-input.button type="button" size="sm" color="gray" wire:click.stop="filterBy('host', {{ Js::from($r['host']) }})">Nur dieser Host</x-input.button>
+                                        @endif
+                                        @if ($clientFilter && $r['client'] !== '')
+                                            <x-input.button type="button" size="sm" color="gray" wire:click.stop="onlyClient({{ Js::from($r['client']) }})">Nur dieser Client</x-input.button>
+                                            <x-input.button type="button" size="sm" color="gray" wire:click.stop="hideClient({{ Js::from($r['client']) }})">
+                                                <x-icon name="eye-off" class="h-3.5 w-3.5" />Client „{{ $r['client'] }}“ ausblenden
+                                            </x-input.button>
                                         @endif
                                     </div>
                                 </td>
