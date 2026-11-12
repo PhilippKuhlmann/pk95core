@@ -43,7 +43,7 @@
             </select>
         @else
             <span class="text-xs text-gray-500 dark:text-gray-400" title="Die installierte Version von PK95 Proxy kann noch nicht nach Client filtern." data-client-filter-missing>
-                Clients ausblenden: braucht eine neuere Version von PK95 Proxy
+                Clients ausblenden: braucht PK95 Proxy 1.3.0
             </span>
         @endif
     </div>
@@ -69,7 +69,7 @@
         </div>
     @elseif (! $clientFilter && $hidden)
         <p class="mx-3 mt-2 text-xs text-amber-800 dark:text-amber-200" data-client-filter-inactive>
-            {{ count($hidden) === 1 ? '1 ausgeblendeter Client wirkt' : count($hidden).' ausgeblendete Clients wirken' }} erst mit einer neueren Version von PK95 Proxy, bis dahin sind alle Zugriffe zu sehen.
+            {{ count($hidden) === 1 ? '1 ausgeblendeter Client wirkt' : count($hidden).' ausgeblendete Clients wirken' }} erst mit PK95 Proxy 1.3.0, bis dahin sind alle Zugriffe zu sehen.
         </p>
     @endif
 

@@ -218,8 +218,8 @@ class ProxyModuleTest extends FeatureTestCase
         Settings::put(AccessLog::HIDDEN_SETTING, ['Uptime-Monitor']);
 
         $this->get(route('apps.page', [$this->installed, 'log']))->assertOk()
-            ->assertSee('Clients ausblenden: braucht eine neuere Version von PK95 Proxy')
-            ->assertSee('1 ausgeblendeter Client wirkt erst mit einer neueren Version von PK95 Proxy')
+            ->assertSee('Clients ausblenden: braucht PK95 Proxy 1.3.0')
+            ->assertSee('1 ausgeblendeter Client wirkt erst mit PK95 Proxy 1.3.0')
             ->assertDontSee('Client ausblenden …')
             ->assertDontSee('aria-label="Client Firefox ausblenden"', false)
             ->assertSee('Firefox');
