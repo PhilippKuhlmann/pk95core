@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Backup;
 use App\Models\InstalledApp;
 use App\Models\NotificationChannel;
 use Illuminate\Support\Carbon;
@@ -62,7 +63,10 @@ class LocaleTest extends FeatureTestCase
         NotificationChannel::query()->create(['name' => 'Telegram', 'last_success_at' => now()->subSeconds(5)] + $channel);
         NotificationChannel::query()->create(['name' => 'Telegram 2', 'last_error_at' => now()->subDays(2), 'last_error' => 'Zeitüberschreitung'] + $channel);
 
-        $this->get('/')->assertOk()->assertSee('zuletzt erreichbar vor 13 Minuten')->assertDontSee(' ago');
+        // dashboard: the last backup (Core panel)
+        Backup::query()->create(['app_id' => $app->app_id, 'reason' => 'manual', 'status' => 'done'])
+            ->forceFill(['created_at' => now()->subMinutes(13)])->save();
+        $this->get('/')->assertOk()->assertSee('vor 13 Minuten')->assertDontSee(' ago');
         $this->get(route('apps.show', $app))->assertOk()->assertSee('Zuletzt geprüft: vor 3 Stunden')->assertDontSee(' ago');
         $this->get('/notifications')->assertOk()
             ->assertSee('Zuletzt zugestellt vor 5 Sekunden')->assertSee('Fehler vor 2 Tagen')->assertDontSee(' ago');
