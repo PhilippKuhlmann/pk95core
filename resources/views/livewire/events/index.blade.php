@@ -8,12 +8,7 @@
 <div wire:poll.30s>
     <x-page-header title="Ereignisse">
         <x-slot:sub>Was die Apps und Core melden. Benachrichtigungen dafür stellst du unter „Benachrichtigungen“ ein.</x-slot:sub>
-        <x-input.select wire:model.live="app" class="w-48 text-sm" aria-label="App">
-            <option value="">Alle Apps</option>
-            @foreach ($apps as $id => $name)
-                <option value="{{ $id }}">{{ $name }}</option>
-            @endforeach
-        </x-input.select>
+        <x-input.combobox wire:model.live="app" label="App" :options="$apps" placeholder="Alle Apps" reset="Alle Apps" class="w-full sm:w-48" />
         <x-input.select wire:model.live="severity" class="w-44 text-sm" aria-label="Schweregrad">
             <option value="">Alle Stufen</option>
             <option value="warning">ab Warnung</option>

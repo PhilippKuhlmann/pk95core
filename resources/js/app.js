@@ -190,6 +190,173 @@ document.addEventListener('alpine:init', () => {
         },
     }));
 
+    // ---- combobox: searchable dropdown (x-input.combobox) ------------------------------------
+    // Options come from data-options (JSON) and follow Livewire re-renders; the value is bound
+    // with x-modelable, so wire:model / wire:model.live work as on a native select. The menu
+    // is position: fixed next to the trigger, so overflow containers do not cut it off.
+    Alpine.data('combobox', (cfg) => ({
+        value: cfg.multiple ? [] : '',
+        open: false,
+        query: '',
+        active: 0,
+        style: '',
+        raw: '[]',
+        parsedRaw: null,
+        parsed: [],
+        init() {
+            this.raw = this.$root.dataset.options || '[]';
+            new MutationObserver(() => { this.raw = this.$root.dataset.options || '[]'; })
+                .observe(this.$root, { attributes: true, attributeFilter: ['data-options'] });
+        },
+        get options() {
+            if (this.raw !== this.parsedRaw) {
+                this.parsedRaw = this.raw;
+                try { this.parsed = JSON.parse(this.raw); } catch (e) { this.parsed = []; }
+            }
+            return this.parsed;
+        },
+        get items() {
+            const q = this.query.trim().toLowerCase();
+            const list = q ? this.options.filter((o) => (o.label + ' ' + (o.hint || '')).toLowerCase().includes(q)) : this.options;
+            let group = null;
+            return list.map((o) => {
+                const head = o.group && o.group !== group ? o.group : null;
+                if (o.group) group = o.group;
+                return { ...o, head };
+            });
+        },
+        selected() {
+            return cfg.multiple ? (Array.isArray(this.value) ? this.value.map(String) : []) : [String(this.value ?? '')];
+        },
+        isSelected(v) {
+            return this.selected().includes(String(v));
+        },
+        labelOf(v) {
+            const o = this.options.find((x) => x.value === String(v));
+            return o ? o.label : String(v);
+        },
+        get display() {
+            if (cfg.multiple) {
+                const n = this.selected().length;
+                return n === 0 ? cfg.placeholder : (n === 1 ? this.labelOf(this.selected()[0]) : n + ' ' + cfg.many);
+            }
+            return this.value === '' || this.value === null || this.value === undefined ? cfg.placeholder : this.labelOf(this.value);
+        },
+        get empty() {
+            return cfg.multiple ? this.selected().length === 0 : (this.value === '' || this.value === null || this.value === undefined);
+        },
+        parts(label) {
+            const q = this.query.trim();
+            const i = q ? label.toLowerCase().indexOf(q.toLowerCase()) : -1;
+            return i < 0 ? [{ t: label, m: false }]
+                : [{ t: label.slice(0, i), m: false }, { t: label.slice(i, i + q.length), m: true }, { t: label.slice(i + q.length), m: false }];
+        },
+        optId(i) {
+            return cfg.id + '-o-' + i;
+        },
+        toggle() {
+            this.open ? this.close() : this.show();
+        },
+        show() {
+            this.query = '';
+            this.open = true;
+            const at = this.items.findIndex((o) => this.isSelected(o.value));
+            this.active = at < 0 ? 0 : at;
+            this.$nextTick(() => {
+                this.place();
+                (this.$refs.search || this.$refs.trigger).focus();
+                this.reveal();
+            });
+        },
+        close(focus = true) {
+            if (!this.open) return;
+            this.open = false;
+            if (focus) this.$refs.trigger.focus();
+        },
+        choose(o) {
+            if (!o) return;
+            if (cfg.multiple) {
+                const v = this.selected();
+                const k = v.indexOf(String(o.value));
+                if (k >= 0) v.splice(k, 1); else v.push(String(o.value));
+                this.value = v;
+            } else {
+                this.value = String(o.value);
+                this.close();
+            }
+        },
+        clear() {
+            this.value = cfg.multiple ? [] : '';
+            this.close();
+        },
+        key(e) {
+            const last = this.items.length - 1;
+            switch (e.key) {
+                case 'ArrowDown':
+                    e.preventDefault();
+                    if (!this.open) return this.show();
+                    this.active = Math.min(last, this.active + 1);
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    if (!this.open) return this.show();
+                    this.active = Math.max(0, this.active - 1);
+                    break;
+                case 'Home':
+                    if (!this.open) return;
+                    e.preventDefault();
+                    this.active = 0;
+                    break;
+                case 'End':
+                    if (!this.open) return;
+                    e.preventDefault();
+                    this.active = Math.max(0, last);
+                    break;
+                case 'Enter':
+                    e.preventDefault();
+                    if (!this.open) return this.show();
+                    this.choose(this.items[this.active]);
+                    break;
+                case 'Escape':
+                    if (this.open) { e.preventDefault(); e.stopPropagation(); this.close(); }
+                    break;
+                case 'Tab':
+                    this.close(false);
+                    return;
+                default:
+                    // typing on the trigger opens the search and keeps the characters
+                    if (cfg.search && e.target === this.$refs.trigger && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                        e.preventDefault();
+                        if (!this.open) this.show();
+                        this.query += e.key;
+                        this.active = 0;
+                        this.reveal();
+                    }
+                    return;
+            }
+            this.reveal();
+        },
+        reveal() {
+            this.$nextTick(() => document.getElementById(this.optId(this.active))?.scrollIntoView({ block: 'nearest' }));
+        },
+        // below the trigger, or above when there is more room there; full width on phones
+        place() {
+            if (!this.open || !this.$refs.menu) return;
+            const r = this.$refs.trigger.getBoundingClientRect();
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            const h = Math.min(this.$refs.menu.scrollHeight, 336);
+            const below = vh - r.bottom - 8;
+            const above = r.top - 8;
+            const up = below < h && above > below;
+            let left = r.left;
+            let width = Math.max(r.width, 240);
+            if (vw < 640) { left = 8; width = vw - 16; } else if (left + width > vw - 8) { left = Math.max(8, vw - 8 - width); }
+            const top = up ? Math.max(8, r.top - 4 - h) : r.bottom + 4;
+            this.style = `top:${top}px;left:${left}px;width:${width}px;max-height:${Math.max(160, Math.min(336, up ? above : below))}px`;
+        },
+    }));
+
     // ---- live deployment log console --------------------------------------------------------
     Alpine.data('deploymentLog', (initial) => ({
         lines: initial || [],

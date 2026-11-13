@@ -190,15 +190,9 @@
 
     {{-- records --}}
     <div class="mx-3 mt-4 flex flex-wrap items-center gap-2">
-        <select wire:model.live="zone" aria-label="Zone" class="{{ $input }}">
-            <option value="">Alle Einträge</option>
-            <option value="0">Einzeleinträge</option>
-            @foreach ($zones as $z)<option value="{{ $z['id'] }}">{{ $z['name'] }}</option>@endforeach
-        </select>
-        <select wire:model.live="type" aria-label="Typ" class="{{ $input }}">
-            <option value="">Alle Typen</option>
-            @foreach (Records::TYPES as $t)<option value="{{ $t }}">{{ $t }}</option>@endforeach
-        </select>
+        <x-input.combobox wire:model.live="zone" label="Zone" :options="['0' => 'Einzeleinträge'] + collect($zones)->mapWithKeys(fn ($z) => [(string) $z['id'] => $z['name']])->all()"
+            placeholder="Alle Einträge" reset="Alle Einträge" :search="true" class="w-full sm:w-56" />
+        <x-input.combobox wire:model.live="type" label="Typ" :options="array_combine(Records::TYPES, Records::TYPES)" placeholder="Alle Typen" reset="Alle Typen" class="w-full sm:w-40" />
         <input type="search" wire:model.live.debounce.400ms="q" placeholder="Name oder Wert enthält …" aria-label="Suche" class="{{ $input }} w-60">
         @if ($filtered)
             <button type="button" wire:click="resetFilters" class="text-sm text-cerulean-700 hover:underline dark:text-cerulean-300">Filter zurücksetzen</button>
