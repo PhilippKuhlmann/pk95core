@@ -30,7 +30,7 @@
                     <x-input.button type="submit" size="feld">Speichern</x-input.button>
                     @if ($publicBase !== '')
                         <x-input.button type="button" color="gray" size="feld" wire:click="setupPublic" wire:loading.attr="disabled" wire:target="setupPublic"
-                            title="Proxy-Host und lokalen DNS-Eintrag anlegen bzw. prüfen">Einrichten</x-input.button>
+                            data-tip="Proxy-Host und lokalen DNS-Eintrag anlegen bzw. prüfen">Einrichten</x-input.button>
                     @endif
                 </div>
             </form>
@@ -141,7 +141,7 @@
                     @if ($page['enabled'] && $publicBase !== '')
                         @php $publicPage = $publicBase.'/status/'.rawurlencode($page['slug']); @endphp
                         <span class="flex items-center gap-1" x-data="{ copied: false }">
-                            <x-input.linkbutton :href="$publicPage" target="_blank" rel="noopener" color="gray" size="sm" title="{{ $publicPage }}">
+                            <x-input.linkbutton :href="$publicPage" target="_blank" rel="noopener" color="gray" size="sm" data-tip="{{ $publicPage }}">
                                 <x-icon name="external" class="h-4 w-4" />Öffnen
                             </x-input.linkbutton>
                             <x-input.symbolknopf x-on:click="$kopieren({{ \Illuminate\Support\Js::from($publicPage) }})" titel="Link kopieren">

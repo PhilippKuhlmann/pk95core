@@ -63,6 +63,153 @@ document.addEventListener('livewire:init', () => {
     });
 });
 
+// ---- tooltips: data-tip="…" on any element, one layer for the whole page ---------------
+// Replaces the native title tooltip (which only shows after about a second). Shows right
+// away on hover, on keyboard focus and on tap; Esc, leaving or a tap elsewhere hides it.
+// A newline in data-tip starts a new line, the first line of several is the heading.
+// Bars in SVG charts (and elements with data-tip-follow) follow the mouse, everything else
+// sits above the element; it flips below at the top edge and stays inside the viewport.
+// The tip is only visual: the element keeps its accessible name (aria-label, visible or
+// sr-only text) and is described by the layer while it is shown.
+const tooltip = (() => {
+    const GAP = 8;
+    let layer = null, target = null, point = null, follow = false;
+    let showTimer = null, hideTimer = null, described = null;
+
+    const ensureLayer = () => {
+        if (layer?.isConnected) return layer;
+        layer = document.createElement('div');
+        layer.id = 'pk95-tip';
+        layer.setAttribute('role', 'tooltip');
+        layer.hidden = true;
+        layer.className = 'pointer-events-none fixed left-0 top-0 z-[70] max-w-[min(20rem,calc(100vw-16px))] rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs leading-snug text-gray-700 shadow-lg break-words dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200';
+        document.body.appendChild(layer);
+        return layer;
+    };
+
+    const fill = (text) => {
+        const lines = text.split('\n').map((l) => l.trim()).filter((l) => l !== '');
+        layer.replaceChildren(...lines.map((l, i) => {
+            const div = document.createElement('div');
+            div.textContent = l;
+            if (i === 0 && lines.length > 1) div.className = 'mb-0.5 font-semibold text-gray-900 dark:text-white';
+            return div;
+        }));
+    };
+
+    const place = () => {
+        if (!target || layer.hidden) return;
+        const w = layer.offsetWidth, h = layer.offsetHeight;
+        const vw = document.documentElement.clientWidth, vh = window.innerHeight;
+        let x, above, below;
+        if (follow && point) {
+            x = point.x; above = point.y - 14; below = point.y + 18;
+        } else {
+            const r = target.getBoundingClientRect();
+            x = r.left + r.width / 2; above = r.top - 6; below = r.bottom + 6;
+        }
+        let top = above - h;
+        if (top < GAP) top = below;
+        if (top + h > vh - GAP) top = Math.max(GAP, vh - GAP - h);
+        const left = Math.min(Math.max(GAP, x - w / 2), Math.max(GAP, vw - GAP - w));
+        layer.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+    };
+
+    const undescribe = () => {
+        if (!described) return;
+        const [el, before] = described;
+        if (before === null) el.removeAttribute('aria-describedby'); else el.setAttribute('aria-describedby', before);
+        described = null;
+    };
+
+    const show = (el, e = null) => {
+        clearTimeout(showTimer); clearTimeout(hideTimer);
+        const text = el.dataset.tip?.trim();
+        if (!text) return hide();
+        ensureLayer();
+        if (target !== el) undescribe();
+        target = el;
+        follow = el instanceof SVGElement || el.hasAttribute('data-tip-follow');
+        point = e && 'clientX' in e && (e.clientX || e.clientY) ? { x: e.clientX, y: e.clientY } : null;
+        fill(text);
+        layer.hidden = false;
+        place();
+        if (!described && el.getAttribute('aria-label') !== text) {
+            described = [el, el.getAttribute('aria-describedby')];
+            el.setAttribute('aria-describedby', [described[1], 'pk95-tip'].filter(Boolean).join(' '));
+        }
+    };
+
+    function hide() {
+        clearTimeout(showTimer); clearTimeout(hideTimer);
+        undescribe();
+        target = null;
+        if (layer) layer.hidden = true;
+    }
+
+    // first tip after a moment (no flicker when the mouse just passes), then without delay
+    const showSoon = (el, e) => {
+        clearTimeout(hideTimer);
+        if (el === target) return;
+        clearTimeout(showTimer);
+        if (layer && !layer.hidden) return show(el, e);
+        showTimer = setTimeout(() => show(el, e), 60);
+    };
+    const hideSoon = () => {
+        clearTimeout(showTimer);
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(hide, 80);
+    };
+
+    const tipOf = (node) => (node instanceof Element ? node.closest('[data-tip]') : null);
+
+    document.addEventListener('pointerover', (e) => {
+        if (e.pointerType === 'touch') return;
+        const el = tipOf(e.target);
+        if (el) showSoon(el, e);
+        else { clearTimeout(showTimer); if (target) hideSoon(); }
+    });
+    document.addEventListener('pointermove', (e) => {
+        if (e.pointerType === 'touch' || !target || !follow) return;
+        point = { x: e.clientX, y: e.clientY };
+        place();
+    }, { passive: true });
+    document.documentElement.addEventListener('pointerleave', () => hideSoon());
+    // touch: tapping an element with a tip shows it, tapping anywhere else hides it
+    document.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'touch') return;
+        const el = tipOf(e.target);
+        if (el) show(el, e); else hide();
+    }, { passive: true });
+    document.addEventListener('focusin', (e) => {
+        const el = tipOf(e.target);
+        if (el && e.target.matches(':focus-visible')) show(el); else if (target && !el) hide();
+    });
+    document.addEventListener('focusout', (e) => {
+        if (target && target.contains(e.target)) hide();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && target) hide();
+    });
+    window.addEventListener('scroll', () => { if (target && !follow) place(); else if (target) hide(); }, { capture: true, passive: true });
+    window.addEventListener('resize', () => hide());
+    document.addEventListener('livewire:navigating', () => hide());
+    // a Livewire re-render (polling) may change or remove the element under the tip
+    document.addEventListener('livewire:init', () => {
+        window.Livewire.hook('morphed', () => {
+            if (!target) return;
+            if (!target.isConnected) return hide();
+            const text = target.dataset.tip?.trim();
+            if (!text) return hide();
+            fill(text);
+            place();
+        });
+    });
+
+    return { show, hide };
+})();
+window.pk95Tooltip = tooltip;
+
 document.addEventListener('alpine:init', () => {
     registerProxyMap(window.Alpine);
     const Alpine = window.Alpine;

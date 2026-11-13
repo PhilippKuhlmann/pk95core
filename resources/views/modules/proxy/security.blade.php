@@ -50,7 +50,7 @@
         <div class="mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ $mode === 'allow' ? 'Freigegebene Länder' : 'Gesperrte Länder' }}</div>
         <div class="mt-2 flex flex-wrap gap-1.5">
             @forelse ($sorted as $c)
-                <button type="button" wire:click="unselect('{{ $c }}')" title="{{ $mode === 'allow' ? 'Nicht mehr freigeben' : 'Entsperren' }}"
+                <button type="button" wire:click="unselect('{{ $c }}')" data-tip="{{ $mode === 'allow' ? 'Nicht mehr freigeben' : 'Entsperren' }}"
                     class="group inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 py-1 pl-2.5 pr-2 text-xs text-gray-700 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-rose-800 dark:hover:bg-rose-950 dark:hover:text-rose-200">
                     <span aria-hidden="true">{{ Fmt::flag($c) }}</span>{{ $names[$c] ?? $c }}
                     <span class="text-gray-400 group-hover:text-rose-600 dark:text-gray-500 dark:group-hover:text-rose-300" aria-hidden="true">×</span>
@@ -72,7 +72,7 @@
             </div>
             <div class="grid max-h-80 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-x-1 overflow-y-auto p-1.5" role="group" aria-label="Länder">
                 @foreach ($codes as $c)
-                    <label wire:key="cty-{{ $c }}" title="{{ $names[$c] }}"
+                    <label wire:key="cty-{{ $c }}" data-tip="{{ $names[$c] }}"
                         x-show="!q || {{ Js::from(mb_strtolower($names[$c])) }}.includes(q.toLowerCase()) || q.toUpperCase() === '{{ $c }}'"
                         class="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm text-gray-700 hover:bg-gray-100 has-checked:bg-cerulean-50 has-checked:text-cerulean-900 dark:text-gray-300 dark:hover:bg-gray-700/60 dark:has-checked:bg-cerulean-950/60 dark:has-checked:text-cerulean-100">
                         <input type="checkbox" value="{{ $c }}" wire:model.live="{{ $listProp }}"
@@ -80,7 +80,7 @@
                         <span class="shrink-0" aria-hidden="true">{{ Fmt::flag($c) }}</span>
                         <span class="min-w-0 flex-1 truncate">{{ $names[$c] }}</span>
                         @if ($traffic[$c] ?? 0)
-                            <span class="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400" title="{{ Fmt::num($traffic[$c]) }} Zugriffe in 7 Tagen">{{ Fmt::num($traffic[$c]) }}</span>
+                            <span class="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400" data-tip="{{ Fmt::num($traffic[$c]) }} Zugriffe in 7 Tagen">{{ Fmt::num($traffic[$c]) }}<span class="sr-only"> Zugriffe in 7 Tagen</span></span>
                         @endif
                     </label>
                 @endforeach
@@ -186,9 +186,9 @@
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                         @foreach ($d['bans'] as $b)
                             <tr wire:key="ban-{{ $b['ip'] }}">
-                                <td class="whitespace-nowrap py-1.5 pr-3 font-mono"><span title="{{ Fmt::country($b['country'] ?? null) }}">{{ Fmt::flag($b['country'] ?? null) }}</span> {{ $b['ip'] }}</td>
+                                <td class="whitespace-nowrap py-1.5 pr-3 font-mono"><span data-tip="{{ Fmt::country($b['country'] ?? null) }}">{{ Fmt::flag($b['country'] ?? null) }}</span> {{ $b['ip'] }}</td>
                                 <td class="py-1.5 pr-3">{{ Security::REASONS[$b['reason']] ?? $b['reason'] }}{{ ($b['strikes'] ?? 1) > 1 ? ' ('.$b['strikes'].'.)' : '' }}</td>
-                                <td class="max-w-xs truncate py-1.5 pr-3" title="{{ $b['host'] ?? '' }}">{{ $b['detail'] ?? '' }}</td>
+                                <td class="max-w-xs truncate py-1.5 pr-3" data-tip="{{ $b['host'] ?? '' }}">{{ $b['detail'] ?? '' }}</td>
                                 <td class="whitespace-nowrap py-1.5 pr-3">{{ Fmt::stamp($b['created_at']) }}</td>
                                 <td class="whitespace-nowrap py-1.5 pr-3">{{ ($b['expires_at'] ?? 0) ? Fmt::stamp($b['expires_at']) : 'Dauerhaft' }}</td>
                                 <td class="whitespace-nowrap py-1.5 text-right">

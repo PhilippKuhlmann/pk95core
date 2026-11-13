@@ -10,7 +10,7 @@
         @if ($show)
             <span class="min-w-0 wrap-anywhere">{{ $value }}</span>
         @endif
-        <button type="button" title="Kopieren" aria-label="Kopieren"
+        <button type="button" data-tip="Kopieren" aria-label="Kopieren"
             x-on:click="$kopieren(@js($val))"
             class="shrink-0 text-gray-400 hover:text-cerulean-600 dark:text-gray-500 dark:hover:text-gray-300 focus:outline-hidden">
             <svg x-show="!copied" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">

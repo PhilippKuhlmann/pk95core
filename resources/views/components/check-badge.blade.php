@@ -9,7 +9,7 @@
         'inline-flex max-w-[16rem] items-center gap-1 truncate rounded px-1.5 py-0.5 text-[11px] font-semibold',
         'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100' => $check['ok'],
         'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-100' => ! $check['ok'],
-    ]) title="{{ $check['msg'] }}">
+    ]) data-tip="{{ $check['msg'] }}">
         <x-icon :name="$check['ok'] ? 'check' : 'warn'" class="h-3 w-3 shrink-0" sw="2.4" />{{ $check['msg'] }}
     </span>
 @endif

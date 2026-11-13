@@ -60,7 +60,7 @@
                         <tr wire:key="q-{{ $r['id'] }}" class="align-top hover:bg-gray-50 dark:hover:bg-gray-700/40">
                             <td class="whitespace-nowrap px-3 py-2 tabular-nums">{{ Fmt::stamp($r['ts']) }}</td>
                             <td class="px-3 py-2">
-                                <button type="button" wire:click="filterClient({{ Js::from($r['client_ip']) }})" title="Nur diesen Client zeigen" class="text-left hover:underline">
+                                <button type="button" wire:click="filterClient({{ Js::from($r['client_ip']) }})" data-tip="Nur diesen Client zeigen" class="text-left hover:underline">
                                     @if ($r['client_name'] !== '')
                                         <span class="block">{{ $r['client_name'] }}</span><span class="block font-mono text-gray-500 dark:text-gray-400">{{ $r['client_ip'] }}</span>
                                     @else
@@ -75,7 +75,7 @@
                             <td class="px-3 py-2">
                                 <span class="inline-block whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-semibold {{ Fmt::badge($r['status']) }}">{{ Fmt::status($r['status']) }}</span>
                                 @if ($detail)<span class="mt-0.5 block text-gray-500 dark:text-gray-400">{{ implode(' · ', $detail) }}</span>@endif
-                                @if ($r['rule'] !== '')<span class="block break-all font-mono text-gray-500 dark:text-gray-400" title="Regel">{{ $r['rule'] }}</span>@endif
+                                @if ($r['rule'] !== '')<span class="block break-all font-mono text-gray-500 dark:text-gray-400" data-tip="Regel"><span class="sr-only">Regel: </span>{{ $r['rule'] }}</span>@endif
                             </td>
                             <td class="hidden max-w-xs px-3 py-2 lg:table-cell">
                                 <span class="block break-all font-mono">{{ $r['answer'] !== '' ? $r['answer'] : '–' }}</span>
@@ -86,7 +86,7 @@
                                 <div class="flex justify-end gap-1">
                                     @if ($own)
                                         <x-input.button type="button" size="sm" color="gray" wire:click="quick({{ Js::from($r['name']) }}, 'remove')" aria-label="Eigene Regel für {{ $r['name'] }} entfernen"
-                                            title="Eigene Regel ({{ $own === 'block' ? 'blockiert' : 'erlaubt' }}) entfernen">Regel entfernen</x-input.button>
+                                            data-tip="Eigene Regel ({{ $own === 'block' ? 'blockiert' : 'erlaubt' }}) entfernen">Regel entfernen</x-input.button>
                                     @endif
                                     @if (! QueryLog::quickable($r['name']))
                                         {{-- e.g. root queries: the app accepts no rule for this name --}}

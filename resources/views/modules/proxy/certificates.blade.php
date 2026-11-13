@@ -76,9 +76,9 @@
                                     <span class="flex items-center gap-2"><span class="h-2 w-2 rounded-full {{ Fmt::dot($tone) }}"></span>{{ $text }}</span>
                                 @else
                                     @php $waiting = $nowMs - $c['created_at'] > 600000; @endphp
-                                    <span class="flex items-center gap-2" title="Caddy versucht es automatisch weiter.">
+                                    <span class="flex items-center gap-2" data-tip="Caddy versucht es automatisch weiter.">
                                         <span @class(['h-2 w-2 rounded-full', Fmt::dot($waiting ? 'bad' : 'warn'), 'animate-pulse' => ! $waiting])></span>
-                                        {{ $waiting ? 'Noch nicht ausgestellt: DNS und Port 80 prüfen' : 'Wird geholt …' }}
+                                        {{ $waiting ? 'Noch nicht ausgestellt: DNS und Port 80 prüfen' : 'Wird geholt …' }}<span class="sr-only">. Caddy versucht es automatisch weiter.</span>
                                     </span>
                                 @endif
                             </td>
@@ -133,7 +133,7 @@
                             <td class="py-2 pr-3">{{ $c['name'] }}</td>
                             <td class="py-2 pr-3 text-xs">{{ implode(', ', $c['domains']) }}</td>
                             <td class="py-2 pr-3">{{ $c['issuer'] }}
-                                @unless ($c['trusted'])<span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-900 dark:bg-amber-900 dark:text-amber-100" title="Browser zeigen dafür eine Warnung, zum Beispiel bei selbstsignierten Zertifikaten.">nicht öffentlich vertraut</span>@endunless
+                                @unless ($c['trusted'])<span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-900 dark:bg-amber-900 dark:text-amber-100" data-tip="Browser zeigen dafür eine Warnung, zum Beispiel bei selbstsignierten Zertifikaten.">nicht öffentlich vertraut<span class="sr-only">: Browser zeigen dafür eine Warnung, zum Beispiel bei selbstsignierten Zertifikaten.</span></span>@endunless
                             </td>
                             <td class="whitespace-nowrap py-2 pr-3"><span class="flex items-center gap-2"><span class="h-2 w-2 rounded-full {{ Fmt::dot($tone) }}"></span>{{ $text }}</span></td>
                             <td class="py-2 text-right">

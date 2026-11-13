@@ -13,7 +13,7 @@
 
     <div class="mx-3 mt-2 flex flex-wrap items-center gap-2">
         @if ($country)
-            <button type="button" wire:click="clearCountry" title="Filter entfernen" class="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-700 hover:border-rose-300 hover:bg-rose-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-rose-800 dark:hover:bg-rose-950">
+            <button type="button" wire:click="clearCountry" data-tip="Filter entfernen" class="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-700 hover:border-rose-300 hover:bg-rose-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-rose-800 dark:hover:bg-rose-950">
                 {{ Fmt::flag($country) }} Land: {{ Fmt::country($country) }} ×
             </button>
         @endif
@@ -29,7 +29,7 @@
             <x-input.combobox wire:model.live="client" label="Nur Client" :options="array_map(fn ($o) => ['label' => $o['value']] + $o, array_values(array_filter($clientOptions, fn ($o) => ! in_array($o['value'], $hidden, true))))"
                 placeholder="Alle Clients" reset="Alle Clients" :search="true" class="w-full sm:w-48" />
         @else
-            <span class="text-xs text-gray-500 dark:text-gray-400" title="Die installierte Version von PK95 Proxy kann noch nicht nach Client filtern." data-client-filter-missing>
+            <span class="text-xs text-gray-500 dark:text-gray-400" data-tip="Die installierte Version von PK95 Proxy kann noch nicht nach Client filtern." data-client-filter-missing>
                 Clients ausblenden: braucht PK95 Proxy 1.3.0
             </span>
         @endif
@@ -38,7 +38,7 @@
     @if ($clientFilter && ($hidden || $client !== ''))
         <div class="mx-3 mt-2 flex flex-wrap items-center gap-2 text-xs" data-client-chips>
             @if ($client !== '')
-                <button type="button" wire:click="clearClient" title="Filter entfernen"
+                <button type="button" wire:click="clearClient" data-tip="Filter entfernen"
                     class="rounded-full border border-cerulean-200 bg-cerulean-50 px-2.5 py-1 text-cerulean-800 hover:border-rose-300 hover:bg-rose-50 dark:border-cerulean-800 dark:bg-cerulean-950 dark:text-cerulean-200 dark:hover:border-rose-800 dark:hover:bg-rose-950">
                     Nur Client: {{ $client }} ×
                 </button>
@@ -46,7 +46,7 @@
             @if ($hidden)
                 <span class="text-gray-600 dark:text-gray-300">{{ count($hidden) === 1 ? '1 Client ausgeblendet' : count($hidden).' Clients ausgeblendet' }}:</span>
                 @foreach ($hidden as $name)
-                    <button type="button" wire:click="showClient({{ Js::from($name) }})" title="Wieder zeigen" wire:key="hidden-{{ md5($name) }}"
+                    <button type="button" wire:click="showClient({{ Js::from($name) }})" data-tip="Wieder zeigen" wire:key="hidden-{{ md5($name) }}"
                         class="max-w-56 truncate rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700 hover:border-rose-300 hover:bg-rose-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-rose-800 dark:hover:bg-rose-950">
                         {{ $name }} ×
                     </button>
@@ -87,17 +87,17 @@
                             <td class="whitespace-nowrap px-3 py-1.5 tabular-nums">{{ Fmt::stamp($r['ts']) }}</td>
                             <td class="whitespace-nowrap px-3 py-1.5 font-medium {{ Fmt::statusTone($r['status']) }}">{{ $r['status'] ?: '–' }}</td>
                             <td class="px-3 py-1.5">{{ $r['method'] }}</td>
-                            <td class="max-w-48 truncate px-3 py-1.5" title="{{ $r['host'] }}">{{ $r['host'] ?: '–' }}</td>
-                            <td class="max-w-md truncate px-3 py-1.5 font-mono" title="{{ $r['path'] }}">{{ $r['path'] }}</td>
-                            <td class="whitespace-nowrap px-3 py-1.5 font-mono"><span title="{{ $r['country'] ? Fmt::country($r['country']) : '' }}">{{ Fmt::flag($r['country']) }} {{ $r['ip'] }}
+                            <td class="max-w-48 truncate px-3 py-1.5" data-tip="{{ $r['host'] }}">{{ $r['host'] ?: '–' }}</td>
+                            <td class="max-w-md truncate px-3 py-1.5 font-mono" data-tip="{{ $r['path'] }}">{{ $r['path'] }}</td>
+                            <td class="whitespace-nowrap px-3 py-1.5 font-mono"><span data-tip="{{ $r['country'] ? Fmt::country($r['country']) : '' }}">{{ Fmt::flag($r['country']) }} {{ $r['ip'] }}
                                 @if ($r['country'] && $r['country'] !== 'LAN')<span class="text-gray-500 dark:text-gray-400">{{ $r['country'] }}</span>@endif</span></td>
-                            <td class="group/client hidden max-w-56 px-3 py-1.5 lg:table-cell" title="{{ $r['client'] }}">
+                            <td class="group/client hidden max-w-56 px-3 py-1.5 lg:table-cell" data-tip="{{ $r['client'] }}">
                                 <span class="flex items-center gap-1">
                                     <span class="truncate">{{ $r['client'] }}</span>
                                     @if ($r['is_bot'])<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-600 dark:bg-gray-700 dark:text-gray-300">Bot</span>@endif
                                     @if ($clientFilter && $r['client'] !== '')
                                         {{-- quick action: hide this client (visible on hover/focus) --}}
-                                        <button type="button" wire:click.stop="hideClient({{ Js::from($r['client']) }})" title="Client „{{ $r['client'] }}“ ausblenden" aria-label="Client {{ $r['client'] }} ausblenden"
+                                        <button type="button" wire:click.stop="hideClient({{ Js::from($r['client']) }})" data-tip="Client „{{ $r['client'] }}“ ausblenden" aria-label="Client {{ $r['client'] }} ausblenden"
                                             class="shrink-0 rounded p-0.5 text-gray-400 opacity-0 hover:bg-gray-100 hover:text-gray-700 focus:opacity-100 group-hover/client:opacity-100 dark:hover:bg-gray-700 dark:hover:text-gray-200">
                                             <x-icon name="eye-off" class="h-3.5 w-3.5" />
                                         </button>

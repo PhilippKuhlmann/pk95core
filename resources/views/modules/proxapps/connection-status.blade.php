@@ -14,7 +14,7 @@
         ])>
             <div class="flex min-h-8 items-center gap-3">
                 <span @class(['h-3 w-3 shrink-0 rounded-full', 'bg-emerald-500' => $i['ok'], 'bg-red-500' => ! $i['ok']])
-                    title="{{ $i['ok'] ? 'erreichbar' : 'nicht erreichbar' }}"></span>
+                    role="img" aria-label="{{ $i['ok'] ? 'erreichbar' : 'nicht erreichbar' }}" data-tip="{{ $i['ok'] ? 'erreichbar' : 'nicht erreichbar' }}"></span>
                 <div class="min-w-0 flex-1">
                     <div class="flex flex-wrap items-baseline gap-x-2 text-sm">
                         <a href="{{ $this->pageUrl('connection-form', ['id' => $c->id]) }}"
@@ -29,7 +29,7 @@
                         <div class="text-xs text-red-700 wrap-anywhere dark:text-red-300">{{ $i['error'] }}</div>
                     @endif
                 </div>
-                <button type="button" wire:click="refresh" title="Neu abfragen" aria-label="Neu abfragen"
+                <button type="button" wire:click="refresh" data-tip="Neu abfragen" aria-label="Neu abfragen"
                     class="shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-cerulean-600 dark:hover:bg-gray-700">
                     <x-icon name="refresh" class="h-4 w-4" wire:loading.class="animate-spin" />
                 </button>

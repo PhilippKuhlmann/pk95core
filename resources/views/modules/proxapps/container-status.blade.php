@@ -13,7 +13,7 @@
 <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-xs dark:border-gray-700 dark:bg-gray-800">
     <div class="mb-1.5 flex items-center justify-between gap-2">
         <span class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Live-Status</span>
-        <button type="button" wire:click="load" title="Aktualisieren" aria-label="Aktualisieren"
+        <button type="button" wire:click="load" data-tip="Aktualisieren" aria-label="Aktualisieren"
             class="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-cerulean-600 dark:hover:bg-gray-700">
             <x-icon name="refresh" class="h-4 w-4" wire:loading.class="animate-spin" wire:target="load" />
         </button>

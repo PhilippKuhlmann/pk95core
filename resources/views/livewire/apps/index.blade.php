@@ -81,7 +81,7 @@
 
                 <div class="mt-4 flex flex-wrap gap-1.5 text-xs">
                     {{-- like the Core card: image without tag, the real version next to it --}}
-                    <span class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 font-mono text-gray-700 dark:bg-gray-700 dark:text-gray-200" title="{{ $def->imageRef($app?->tag) }}">{{ $def->image }}</span>
+                    <span class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 font-mono text-gray-700 dark:bg-gray-700 dark:text-gray-200" data-tip="{{ $def->imageRef($app?->tag) }}">{{ $def->image }}</span>
                     @if ($app)
                         <span class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-gray-700 dark:bg-gray-700 dark:text-gray-200">{{ $app->version ? 'Version '.ltrim($app->version, 'v') : '„'.$app->tag.'“' }}</span>
                     @endif

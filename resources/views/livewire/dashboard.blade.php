@@ -63,7 +63,7 @@
                 <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
                     <div>
                         <div class="text-xs text-gray-500 dark:text-gray-400">Letzte Sicherung</div>
-                        <div class="text-sm font-DINPro-bold text-gray-900 dark:text-gray-100" title="{{ $lastBackup ? \App\Http\Support\Format::dt($lastBackup->created_at) : '' }}">{{ \App\Livewire\Dashboard::ago($lastBackup?->created_at) }}</div>
+                        <div class="text-sm font-DINPro-bold text-gray-900 dark:text-gray-100" data-tip="{{ $lastBackup ? \App\Http\Support\Format::dt($lastBackup->created_at) : '' }}">{{ \App\Livewire\Dashboard::ago($lastBackup?->created_at) }}</div>
                         @if ($lastBackupApp)<div class="truncate text-xs text-gray-500 dark:text-gray-400">{{ $lastBackupApp }}</div>@endif
                     </div>
                     <div>

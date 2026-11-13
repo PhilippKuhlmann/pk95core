@@ -164,19 +164,19 @@
                                 {{-- last 24 h, oldest left; below lg its own line under the row, on phones the last 12 h --}}
                                 <span class="flex items-end gap-px max-lg:order-last max-lg:basis-full" role="img" aria-label="{{ $strip['label'] }}" data-bars24h>
                                     @foreach ($strip['bars'] as $bar)
-                                        <span @class(['h-5 w-1 shrink-0 rounded-sm', $bar['class'], 'max-sm:hidden' => $loop->index < intdiv($loop->count, 2)]) title="{{ $bar['title'] }}"></span>
+                                        <span @class(['h-5 w-1 shrink-0 rounded-sm', $bar['class'], 'max-sm:hidden' => $loop->index < intdiv($loop->count, 2)]) data-tip="{{ $bar['title'] }}"></span>
                                     @endforeach
                                 </span>
                             @else
                                 {{-- older PK95 Uptime without bars24h: latest checks, oldest left --}}
                                 <span class="hidden items-end gap-px lg:flex" aria-hidden="true">
                                     @foreach (array_slice($m['beats'] ?? [], -30) as $beat)
-                                        <span class="h-5 w-1.5 rounded-sm {{ ($status[$beat['status']] ?? $status['pending'])[2] }}" title="{{ $beat['message'] ?? 'OK' }}"></span>
+                                        <span class="h-5 w-1.5 rounded-sm {{ ($status[$beat['status']] ?? $status['pending'])[2] }}" data-tip="{{ $beat['message'] ?? 'OK' }}"></span>
                                     @endforeach
                                 </span>
                             @endif
-                            <span class="w-24 text-right text-sm text-gray-700 dark:text-gray-200" title="Verfügbarkeit 24 h">{{ $pct($m['uptime24h']) }}</span>
-                            <span class="w-20 text-right text-sm text-gray-500 dark:text-gray-400" title="Letzte Antwortzeit">{{ $ms($m['lastLatencyMs']) }}</span>
+                            <span class="w-24 text-right text-sm text-gray-700 dark:text-gray-200" data-tip="Verfügbarkeit 24 h"><span class="sr-only">Verfügbarkeit 24 h: </span>{{ $pct($m['uptime24h']) }}</span>
+                            <span class="w-20 text-right text-sm text-gray-500 dark:text-gray-400" data-tip="Letzte Antwortzeit"><span class="sr-only">Letzte Antwortzeit: </span>{{ $ms($m['lastLatencyMs']) }}</span>
                             <span class="flex shrink-0 gap-1">
                                 @if ($m['type'] !== 'push' && $m['status'] !== 'paused')
                                     <x-input.symbolknopf wire:click="checkNow('{{ $m['id'] }}')" titel="Jetzt prüfen"><x-icon name="refresh" class="h-4 w-4" /></x-input.symbolknopf>

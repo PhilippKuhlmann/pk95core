@@ -2,7 +2,7 @@
 @php($nutzer = auth()->user())
 
 <div class="relative" x-data="{ offen: false }" x-on:click.outside="offen = false" x-on:keydown.escape.window="offen = false">
-    <button type="button" x-on:click="offen = ! offen" :aria-expanded="offen.toString()" title="{{ $nutzer?->username }}"
+    <button type="button" x-on:click="offen = ! offen" :aria-expanded="offen.toString()" data-tip="{{ $nutzer?->username }}"
         class="flex h-8 w-8 items-center justify-center rounded-full bg-chathams-blue-800 text-gray-200
                transition-colors hover:bg-chathams-blue-900 focus:outline-hidden focus:ring-2
                focus:ring-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600

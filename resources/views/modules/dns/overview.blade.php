@@ -149,8 +149,8 @@
                         <text x="{{ $l['x'] }}" y="{{ $c['height'] - 6 }}" text-anchor="middle" class="fill-current text-[11px]">{{ $l['text'] }}</text>
                     @endforeach
                     @foreach ($c['bars'] as $bar)
-                        <g class="group">
-                            <rect x="{{ $bar['x'] }}" y="{{ $c['m']['top'] }}" width="{{ $bar['w'] }}" height="{{ $c['plotH'] + 1 }}" class="fill-transparent group-hover:fill-gray-100 dark:group-hover:fill-gray-700/50"><title>{{ $bar['title'] }}</title></rect>
+                        <g class="group" data-tip="{{ $bar['title'] }}">
+                            <rect x="{{ $bar['x'] }}" y="{{ $c['m']['top'] }}" width="{{ $bar['w'] }}" height="{{ $c['plotH'] + 1 }}" class="fill-transparent group-hover:fill-gray-100 dark:group-hover:fill-gray-700/50" />
                             @foreach ($bar['segs'] as $s)
                                 <rect x="{{ $s['x'] }}" y="{{ $s['y'] }}" width="{{ $bar['bw'] }}" height="{{ $s['h'] }}" class="{{ $s['class'] }}" pointer-events="none" />
                             @endforeach

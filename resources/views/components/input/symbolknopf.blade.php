@@ -1,6 +1,6 @@
 {{--
     The square button that only carries an icon: pencil, trash, play …
-    titel is used as title AND aria-label - the icon alone has no name for a screen reader.
+    titel is the tooltip (data-tip) AND the aria-label - the icon alone has no name for a screen reader.
     href turns it into an <a>.
 --}}
 @props([
@@ -24,11 +24,11 @@
 @endphp
 
 @if ($href)
-    <a href="{{ $href }}" title="{{ $titel }}" aria-label="{{ $titel }}" {{ $attributes->merge(['class' => $klassen]) }}>
+    <a href="{{ $href }}" data-tip="{{ $titel }}" aria-label="{{ $titel }}" {{ $attributes->merge(['class' => $klassen]) }}>
         {{ $slot }}
     </a>
 @else
-    <button type="button" title="{{ $titel }}" aria-label="{{ $titel }}" {{ $attributes->merge(['class' => $klassen]) }}>
+    <button type="button" data-tip="{{ $titel }}" aria-label="{{ $titel }}" {{ $attributes->merge(['class' => $klassen]) }}>
         {{ $slot }}
     </button>
 @endif

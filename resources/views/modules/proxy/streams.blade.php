@@ -119,7 +119,7 @@
                                 <div>{{ Fmt::num($st['active'] ?? 0) }} offen, {{ Fmt::num($st['total'] ?? 0) }} gesamt</div>
                                 <div class="text-gray-500">{{ Fmt::num($st['denied'] ?? 0) }} abgewiesen</div>
                             </td>
-                            <td class="whitespace-nowrap px-4 py-3 text-right align-top text-xs tabular-nums" title="Vom Besucher zum Ziel und zurück, seit dem letzten Start des Dienstes">
+                            <td class="whitespace-nowrap px-4 py-3 text-right align-top text-xs tabular-nums" data-tip="Vom Besucher zum Ziel und zurück, seit dem letzten Start des Dienstes">
                                 <div>↑ {{ Fmt::bytes($st['bytes_in'] ?? 0) }}</div><div>↓ {{ Fmt::bytes($st['bytes_out'] ?? 0) }}</div>
                             </td>
                             <td class="px-4 py-3 align-top">
@@ -150,7 +150,7 @@
                             <tr>
                                 <td class="whitespace-nowrap py-1.5 pr-3 tabular-nums">{{ Fmt::stamp($e['ts']) }}</td>
                                 <td class="py-1.5 pr-3">{{ $e['name'] }} ({{ strtoupper($e['protocol']) }})</td>
-                                <td class="whitespace-nowrap py-1.5 pr-3 font-mono"><span title="{{ Fmt::country($e['country'] ?? null) }}">{{ Fmt::flag($e['country'] ?? null) }}</span> {{ $e['ip'] }}</td>
+                                <td class="whitespace-nowrap py-1.5 pr-3 font-mono"><span data-tip="{{ Fmt::country($e['country'] ?? null) }}">{{ Fmt::flag($e['country'] ?? null) }}</span> {{ $e['ip'] }}</td>
                                 <td class="py-1.5 pr-3">
                                     @if (($e['denied'] ?? ''))
                                         <span class="flex items-center gap-2"><span class="h-2 w-2 rounded-full {{ Fmt::dot('bad') }}"></span>Abgewiesen: {{ ($e['denied'] ?? '') }}</span>
