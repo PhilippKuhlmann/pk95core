@@ -323,6 +323,10 @@ class ProxyModuleTest extends FeatureTestCase
         // label in tooltips and table: up to 03:00, not 02:00 (= ts + bucket_ms)
         $this->assertStringContainsString('25.10. 00:00 bis 03:00', $html);
         $this->assertStringNotContainsString('25.10. 00:00 bis 02:00', $html);
+        // the bar tooltips are data-tip (own layer, one line each), no native SVG <title>
+        $this->assertStringContainsString("<g class=\"group\" data-tip=\"25.10. 00:00 bis 03:00\n40 gesamt\n", $html);
+        $this->assertStringContainsString('data-tip="25.10. 00:00 bis 03:00&#10;2 KB Upload"', $html);
+        $this->assertStringNotContainsString('<title>25.10.', $html);
         // the bucket ends after upload_since: its upload counts (table and upload chart)
         $this->assertStringContainsString('<td>2 KB</td></tr>', $html);
         $this->assertStringNotContainsString('noch nicht erfasst', $html);

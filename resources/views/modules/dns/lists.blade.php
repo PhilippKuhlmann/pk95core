@@ -92,7 +92,7 @@
                                 <td class="px-4 py-3 align-top"><x-proxy.switch :on="$l['enabled']" :label="$l['name'].' aktiv'" wire:click="toggle({{ $l['id'] }})" /></td>
                                 <td class="max-w-md px-4 py-3 align-top">
                                     <div class="font-medium">{{ $l['name'] }}</div>
-                                    <div class="truncate font-mono text-xs text-gray-500 dark:text-gray-400" title="{{ $l['url'] }}">{{ $l['url'] }}</div>
+                                    <div class="truncate font-mono text-xs text-gray-500 dark:text-gray-400" data-tip="{{ $l['url'] }}">{{ $l['url'] }}</div>
                                     @if (($l['last_error'] ?? '') !== '')
                                         <div class="mt-1 text-xs text-rose-700 dark:text-rose-300">{{ $l['last_error'] }}</div>
                                     @endif
@@ -109,7 +109,7 @@
                                 </td>
                                 <td class="px-4 py-3 align-top">
                                     <div class="flex justify-end gap-1">
-                                        <x-input.button type="button" size="sm" color="gray" wire:click="refresh({{ $l['id'] }})" aria-label="{{ $l['name'] }} neu laden" title="Neu laden" :disabled="! $l['enabled'] || ! empty($l['updating'])">
+                                        <x-input.button type="button" size="sm" color="gray" wire:click="refresh({{ $l['id'] }})" aria-label="{{ $l['name'] }} neu laden" data-tip="Neu laden" :disabled="! $l['enabled'] || ! empty($l['updating'])">
                                             <x-icon name="refresh" class="h-4 w-4" />
                                         </x-input.button>
                                         <x-input.button type="button" size="sm" color="gray" wire:click="edit({{ $l['id'] }})">Bearbeiten</x-input.button>

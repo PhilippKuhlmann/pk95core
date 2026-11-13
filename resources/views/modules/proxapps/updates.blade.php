@@ -89,7 +89,7 @@
                                     <td class="py-2.5 px-4 text-xs">
                                         <span class="font-mono text-gray-900 dark:text-gray-100">{{ $d->updates_checked_at ? Format::dt($d->updates_checked_at) : 'nie' }}</span>
                                         @if ($d->update_check_error)
-                                            <div class="mt-0.5 max-w-xs text-red-600 wrap-anywhere dark:text-red-400" title="{{ $d->update_check_error }}">{{ \Illuminate\Support\Str::limit($d->update_check_error, 90) }}</div>
+                                            <div class="mt-0.5 max-w-xs text-red-600 wrap-anywhere dark:text-red-400" data-tip="{{ $d->update_check_error }}"><span aria-hidden="true">{{ \Illuminate\Support\Str::limit($d->update_check_error, 90) }}</span><span class="sr-only">{{ $d->update_check_error }}</span></div>
                                         @endif
                                     </td>
                                     <td class="py-2.5 px-4">

@@ -38,11 +38,11 @@
     <div class="mt-4 flex flex-wrap gap-1.5 text-xs">
         {{-- like the app cards: image without its tag (":latest" says nothing), the version next to it --}}
         @if ($core['image'])
-            <span class="{{ $chip }} font-mono" title="{{ $core['image'] }}">{{ CoreUpdater::splitRef($core['image'])[0] }}</span>
+            <span class="{{ $chip }} font-mono" data-tip="{{ $core['image'] }}">{{ CoreUpdater::splitRef($core['image'])[0] }}</span>
         @endif
         <span class="{{ $chip }}">Version {{ $core['version'] }}</span>
         @if ($core['revision'])
-            <span class="{{ $chip }}" title="Commit, aus dem das laufende Image gebaut wurde">
+            <span class="{{ $chip }}" data-tip="Commit, aus dem das laufende Image gebaut wurde">
                 Build <span class="font-mono">{{ $core['revision'] }}</span>@if ($core['built']) · {{ $core['built']->format('d.m.Y') }}@endif
             </span>
         @endif

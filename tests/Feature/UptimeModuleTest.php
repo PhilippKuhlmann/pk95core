@@ -189,7 +189,7 @@ class UptimeModuleTest extends FeatureTestCase
 
         $html = $this->get(route('apps.page', [$this->installed, 'monitors']))->assertOk()
             ->assertSee('aria-label="24 h: 98,5 % verfügbar, 1 Ausfall"', false)
-            ->assertSee("title=\"11.11. 12:30 bis 13:00\n30 OK\"", false)
+            ->assertSee("data-tip=\"11.11. 12:30 bis 13:00\n30 OK\"", false)
             ->getContent();
 
         $this->assertSame(1, substr_count($html, 'data-bars24h'), 'only the monitor that sends bars');
@@ -225,7 +225,7 @@ class UptimeModuleTest extends FeatureTestCase
         $html = $this->get(route('apps.page', [$this->installed, 'status-pages']))->assertOk()
             ->assertSee('Öffentliche Adresse der Statusseiten')
             ->assertSee('href="https://status.kuhlmannit.de/status/familie"', false)
-            ->assertSee('target="_blank" rel="noopener" title="https://status.kuhlmannit.de/status/familie"', false)
+            ->assertSee('target="_blank" rel="noopener" data-tip="https://status.kuhlmannit.de/status/familie"', false)
             ->assertSee('x-on:click="$kopieren(\'https:\/\/status.kuhlmannit.de\/status\/familie\')"', false)
             ->assertSee('Nicht öffentlich: In der Seite „Öffentlich erreichbar“ einschalten.')
             ->assertSee('Noch nicht eingerichtet')

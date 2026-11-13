@@ -56,7 +56,7 @@
                                         @foreach ($x['timeline'] as $b)
                                             @php $failed = $b['total'] - $b['ok']; @endphp
                                             <i class="flex-1 rounded-sm {{ $cell($b) }}"
-                                                title="{{ Fmt::time($b['ts']) }} Uhr: {{ $b['total'] <= 0 ? 'keine Messung' : ($failed === 0 ? "alle {$b['total']} Prüfungen ok" : "{$failed} von {$b['total']} Prüfungen fehlgeschlagen") }}"></i>
+                                                data-tip="{{ Fmt::time($b['ts']) }} Uhr: {{ $b['total'] <= 0 ? 'keine Messung' : ($failed === 0 ? "alle {$b['total']} Prüfungen ok" : "{$failed} von {$b['total']} Prüfungen fehlgeschlagen") }}"></i>
                                         @endforeach
                                     </div>
                                 @endif

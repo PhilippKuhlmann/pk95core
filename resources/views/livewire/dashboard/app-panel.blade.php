@@ -40,7 +40,7 @@
                         <text x="{{ $l['x'] }}" y="{{ $c['height'] - 6 }}" text-anchor="middle" class="fill-current text-[11px]">{{ $l['text'] }}</text>
                     @endforeach
                     @foreach ($c['bars'] as $bar)
-                        <g><title>{{ $bar['title'] }}</title>
+                        <g data-tip="{{ $bar['title'] }}">
                             @foreach ($bar['segs'] as $s)<rect x="{{ $s['x'] }}" y="{{ $s['y'] }}" width="{{ $bar['bw'] }}" height="{{ $s['h'] }}" class="{{ $s['class'] }}" />@endforeach
                         </g>
                     @endforeach
@@ -56,8 +56,8 @@
             </div>
             @if ($f['hidden'])
                 {{-- the remembered hidden clients of Proxy → Zugriffe are left out here too --}}
-                <p class="mt-2 text-xs text-gray-500 dark:text-gray-400" title="{{ implode(', ', $f['hidden']) }}" data-hidden-clients>
-                    Ohne {{ count($f['hidden']) === 1 ? 'den ausgeblendeten Client' : count($f['hidden']).' ausgeblendete Clients' }}: {{ \Illuminate\Support\Str::limit(implode(', ', $f['hidden']), 60) }}
+                <p class="mt-2 text-xs text-gray-500 dark:text-gray-400" data-tip="{{ implode(', ', $f['hidden']) }}" data-hidden-clients>
+                    Ohne {{ count($f['hidden']) === 1 ? 'den ausgeblendeten Client' : count($f['hidden']).' ausgeblendete Clients' }}: <span aria-hidden="true">{{ \Illuminate\Support\Str::limit(implode(', ', $f['hidden']), 60) }}</span><span class="sr-only">{{ implode(', ', $f['hidden']) }}</span>
                 </p>
             @endif
             @if ($f['series'])
@@ -66,7 +66,7 @@
                         <text x="{{ $l['x'] }}" y="{{ $c['height'] - 6 }}" text-anchor="middle" class="fill-current text-[11px]">{{ $l['text'] }}</text>
                     @endforeach
                     @foreach ($c['bars'] as $bar)
-                        <g><title>{{ ProxyOverview::bucketLabel((int) $bar['b']['ts'], $f['bucketMs'], $bar['end']) }}&#10;{{ ProxyFmt::num($bar['b']['requests'] ?? 0) }} Anfragen</title>
+                        <g data-tip="{{ ProxyOverview::bucketLabel((int) $bar['b']['ts'], $f['bucketMs'], $bar['end']) }}&#10;{{ ProxyFmt::num($bar['b']['requests'] ?? 0) }} Anfragen">
                             @foreach ($bar['segs'] as $s)<rect x="{{ $s['x'] }}" y="{{ $s['y'] }}" width="{{ $s['w'] }}" height="{{ $s['h'] }}" class="{{ ProxyOverview::SERIES[$s['key']][1] }}" />@endforeach
                         </g>
                     @endforeach
@@ -83,10 +83,10 @@
                 <ul class="mt-3 space-y-1.5">
                     @foreach ($f['strips'] as $m)
                         <li class="flex flex-wrap items-center gap-x-3 gap-y-1">
-                            <span class="w-28 min-w-0 flex-1 truncate text-xs text-gray-700 dark:text-gray-200" title="{{ $m['name'] }}">{{ $m['name'] }}</span>
+                            <span class="w-28 min-w-0 flex-1 truncate text-xs text-gray-700 dark:text-gray-200" data-tip="{{ $m['name'] }}">{{ $m['name'] }}</span>
                             <span class="flex items-end gap-px" role="img" aria-label="{{ $m['name'] }}: {{ $m['strip']['label'] }}">
                                 @foreach ($m['strip']['bars'] as $bar)
-                                    <span @class(['h-4 w-1 shrink-0 rounded-sm', $bar['class'], 'max-sm:hidden' => $loop->index < intdiv($loop->count, 2)]) title="{{ $bar['title'] }}"></span>
+                                    <span @class(['h-4 w-1 shrink-0 rounded-sm', $bar['class'], 'max-sm:hidden' => $loop->index < intdiv($loop->count, 2)]) data-tip="{{ $bar['title'] }}"></span>
                                 @endforeach
                             </span>
                         </li>

@@ -13,7 +13,7 @@
     </style>
     <x-page-header title="Übersicht">
         <x-slot:sub>
-            @if ($d) Stand {{ Fmt::time($d['computed_at']) }} <span title="Lange Zeiträume werden seltener neu berechnet, um den Server zu schonen.">ⓘ</span> @endif
+            @if ($d) Stand {{ Fmt::time($d['computed_at']) }} <span tabindex="0" role="img" aria-label="Lange Zeiträume werden seltener neu berechnet, um den Server zu schonen." data-tip="Lange Zeiträume werden seltener neu berechnet, um den Server zu schonen." class="cursor-help rounded focus:outline-hidden focus-visible:ring-2 focus-visible:ring-cerulean-500">ⓘ</span> @endif
         </x-slot:sub>
         <div class="flex rounded-lg border border-gray-200 bg-white p-0.5 dark:border-gray-700 dark:bg-gray-800" role="group" aria-label="Zeitraum">
             @foreach (Overview::RANGES as $id => $label)
@@ -57,7 +57,8 @@
                 <div class="text-xs text-gray-500">{{ $hideBots ? 'ohne Bots' : 'davon '.Fmt::pct($pctBots).' Bots' }}</div></div>
             <div class="{{ $tile }}"><div class="text-xs text-gray-500">Besucher</div><div class="mt-1 text-2xl font-DINPro-bold">{{ Fmt::compact($d['visitors']) }}</div>
                 <div class="text-xs text-gray-500">verschiedene IP-Adressen</div></div>
-            <div class="{{ $tile }}" title="Download: von deinen Diensten zu den Besuchern. Upload: von den Besuchern zu deinen Diensten.">
+            <div class="{{ $tile }}" data-tip="Download: von deinen Diensten zu den Besuchern. Upload: von den Besuchern zu deinen Diensten.">
+                <span class="sr-only">Download: von deinen Diensten zu den Besuchern. Upload: von den Besuchern zu deinen Diensten.</span>
                 <div class="text-xs text-gray-500">Datenmenge</div>
                 {{-- one line each; number and unit never split --}}
                 <div class="mt-1 space-y-0.5">
@@ -104,11 +105,16 @@
                     <text x="{{ $l['x'] }}" y="{{ $c['height'] - 6 }}" text-anchor="middle" class="fill-current text-[11px]">{{ $l['text'] }}</text>
                 @endforeach
                 @foreach ($c['bars'] as $bar)
-                    @php $b = $bar['b']; @endphp
-                    <g class="group">
-                        <rect x="{{ $bar['band']['x'] }}" y="{{ $c['m']['top'] }}" width="{{ $bar['band']['w'] }}" height="{{ $c['plotH'] + 1 }}" class="fill-transparent group-hover:fill-gray-100 dark:group-hover:fill-gray-700/50">
-                            <title>{{ Overview::bucketLabel($b['ts'], $d['bucket_ms'], $bar['end']) }}&#10;{{ Fmt::num($b['requests']) }} gesamt&#10;@foreach (Overview::SERIES as $k => [$label]){{ Fmt::num($b[$k]) }} {{ $label }}&#10;@endforeach{{ Fmt::bytes($b['bytes']) }} Download</title>
-                        </rect>
+                    @php
+                        $b = $bar['b'];
+                        $tip = [Overview::bucketLabel($b['ts'], $d['bucket_ms'], $bar['end']), Fmt::num($b['requests']).' gesamt'];
+                        foreach (Overview::SERIES as $k => [$label]) {
+                            $tip[] = Fmt::num($b[$k]).' '.$label;
+                        }
+                        $tip[] = Fmt::bytes($b['bytes']).' Download';
+                    @endphp
+                    <g class="group" data-tip="{{ implode("\n", $tip) }}">
+                        <rect x="{{ $bar['band']['x'] }}" y="{{ $c['m']['top'] }}" width="{{ $bar['band']['w'] }}" height="{{ $c['plotH'] + 1 }}" class="fill-transparent group-hover:fill-gray-100 dark:group-hover:fill-gray-700/50" />
                         @foreach ($bar['segs'] as $s)
                             <rect x="{{ $s['x'] }}" y="{{ $s['y'] }}" width="{{ $s['w'] }}" height="{{ $s['h'] }}" rx="{{ $loop->last ? min(4, $s['w'] / 2) : 0 }}" class="{{ Overview::SERIES[$s['key']][1] }}" pointer-events="none" />
                         @endforeach
@@ -154,10 +160,8 @@
                             @endforeach
                             @foreach ($t['bars'] as $bar)
                                 @php $missing = $key === 'bytes_in' && $bar['end'] <= $d['upload_since']; @endphp
-                                <g class="group">
-                                    <rect x="{{ $bar['band']['x'] }}" y="{{ $t['m']['top'] }}" width="{{ $bar['band']['w'] }}" height="{{ $t['plotH'] + 1 }}" class="fill-transparent group-hover:fill-gray-100 dark:group-hover:fill-gray-700/50">
-                                        <title>{{ Overview::bucketLabel($bar['b']['ts'], $d['bucket_ms'], $bar['end']) }}&#10;{{ $missing ? '– noch nicht erfasst' : Fmt::bytes($bar['b'][$key]).' '.$title }}</title>
-                                    </rect>
+                                <g class="group" data-tip="{{ Overview::bucketLabel($bar['b']['ts'], $d['bucket_ms'], $bar['end']) }}&#10;{{ $missing ? '– noch nicht erfasst' : Fmt::bytes($bar['b'][$key]).' '.$title }}">
+                                    <rect x="{{ $bar['band']['x'] }}" y="{{ $t['m']['top'] }}" width="{{ $bar['band']['w'] }}" height="{{ $t['plotH'] + 1 }}" class="fill-transparent group-hover:fill-gray-100 dark:group-hover:fill-gray-700/50" />
                                     @foreach ($bar['segs'] as $s)
                                         <rect x="{{ $s['x'] }}" y="{{ $s['y'] }}" width="{{ min(16, $s['w']) }}" height="{{ $s['h'] }}" rx="{{ min(4, $s['w'] / 2) }}" class="fill-cerulean-500" pointer-events="none" />
                                     @endforeach

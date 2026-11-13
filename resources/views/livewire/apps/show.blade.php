@@ -11,7 +11,7 @@
                 <x-input.button type="button" wire:click="action('start')"><x-icon name="play" class="h-4 w-4" sw="2" />Starten</x-input.button>
             @endif
             <x-input.button type="button" color="gray" wire:click="action('reactivate')"
-                title="Image neu laden und Container neu erstellen (Daten bleiben)"><x-icon name="box" class="h-4 w-4" sw="2" />Neu erstellen</x-input.button>
+                data-tip="Image neu laden und Container neu erstellen (Daten bleiben)"><x-icon name="box" class="h-4 w-4" sw="2" />Neu erstellen</x-input.button>
         @endif
     </x-page-header>
 
@@ -126,7 +126,7 @@
                                         @if ($backup->status === 'done')
                                             · {{ \App\Services\Backups\BackupService::humanSize($backup->size) }}
                                         @elseif ($backup->status === 'failed')
-                                            · <span class="text-rose-600 dark:text-rose-400" title="{{ $backup->error }}">fehlgeschlagen</span>
+                                            · <span class="text-rose-600 dark:text-rose-400" data-tip="{{ $backup->error }}">fehlgeschlagen<span class="sr-only">: {{ $backup->error }}</span></span>
                                         @else
                                             · läuft …
                                         @endif

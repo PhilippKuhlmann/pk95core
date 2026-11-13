@@ -162,7 +162,7 @@
                             <tr wire:key="zone-{{ $z['id'] }}">
                                 <td class="px-4 py-3 align-top"><x-proxy.switch :on="$z['enabled']" :label="$z['name'].' aktiv'" wire:click="toggleZone({{ $z['id'] }})" /></td>
                                 <td class="px-4 py-3 align-top">
-                                    <button type="button" wire:click="showZone('{{ $z['id'] }}')" class="text-left font-mono text-cerulean-700 hover:underline dark:text-cerulean-300" title="Einträge dieser Zone zeigen">{{ Fmt::breakable($z['name']) }}</button>
+                                    <button type="button" wire:click="showZone('{{ $z['id'] }}')" class="text-left font-mono text-cerulean-700 hover:underline dark:text-cerulean-300" data-tip="Einträge dieser Zone zeigen">{{ Fmt::breakable($z['name']) }}</button>
                                     @if (Records::isPublicZone($z['name']))
                                         <div class="mt-1 max-w-md text-xs text-amber-800 dark:text-amber-200">Öffentliche Domain: Namen, die hier fehlen, sind im Netz nicht erreichbar, auch wenn es sie im Internet gibt.</div>
                                     @endif
@@ -234,18 +234,18 @@
                                 <span class="font-mono">{{ Fmt::breakable($r['name']) }}</span>
                                 <span class="block text-xs text-gray-500 dark:text-gray-400 xl:hidden">{{ (int) ($r['zone_id'] ?? 0) === 0 ? 'Einzeleintrag' : 'Zone '.$zoneLabel((int) $r['zone_id']) }}</span>
                                 @if ($core)
-                                    <span class="{{ $badge }} ml-1 bg-violet-100 text-violet-800 dark:bg-violet-900/70 dark:text-violet-100" title="Von PK95 Core für eine ausgerollte App angelegt">von Core</span>
+                                    <span class="{{ $badge }} ml-1 bg-violet-100 text-violet-800 dark:bg-violet-900/70 dark:text-violet-100" data-tip="Von PK95 Core für eine ausgerollte App angelegt">von Core<span class="sr-only">: für eine ausgerollte App angelegt</span></span>
                                 @endif
                             </td>
                             <td class="whitespace-nowrap px-4 py-3 align-top">
                                 <span class="{{ $badge }} bg-gray-100 font-mono text-gray-800 dark:bg-gray-700 dark:text-gray-100">{{ $r['type'] }}</span>
                                 @if (! empty($r['ptr']))
-                                    <span class="{{ $badge }} bg-cerulean-100 text-cerulean-800 dark:bg-cerulean-900 dark:text-cerulean-100" title="Rückwärtsauflösung eingeschaltet">+PTR</span>
+                                    <span class="{{ $badge }} bg-cerulean-100 text-cerulean-800 dark:bg-cerulean-900 dark:text-cerulean-100" data-tip="Rückwärtsauflösung eingeschaltet">+PTR<span class="sr-only">: Rückwärtsauflösung eingeschaltet</span></span>
                                 @endif
                             </td>
                             <td class="min-w-48 max-w-md px-4 py-3 align-top font-mono">
                                 @if ($r['type'] === 'TXT')
-                                    <span class="line-clamp-3 whitespace-pre-wrap break-words text-xs" title="{{ $r['value'] }}">{{ $r['value'] }}</span>
+                                    <span class="line-clamp-3 whitespace-pre-wrap break-words text-xs" data-tip="{{ $r['value'] }}">{{ $r['value'] }}</span>
                                 @else
                                     <span>{{ Fmt::breakable($r['value']) }}</span>
                                 @endif

@@ -12,9 +12,9 @@
                     <div class="flex items-baseline justify-between gap-3">
                         <div class="min-w-0 truncate">
                             @if (! empty($row['href']))
-                                <a href="{{ $row['href'] }}" wire:navigate title="{{ $row['label'] }}" class="text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $row['label'] }}</a>
+                                <a href="{{ $row['href'] }}" wire:navigate data-tip="{{ $row['label'] }}" class="text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $row['label'] }}</a>
                             @else
-                                <span class="text-gray-900 dark:text-gray-100" title="{{ $row['label'] }}">{{ $row['label'] }}</span>
+                                <span class="text-gray-900 dark:text-gray-100" data-tip="{{ $row['label'] }}">{{ $row['label'] }}</span>
                             @endif
                             @if (! empty($row['sub']))
                                 <span class="text-xs text-gray-500 dark:text-gray-400">{{ $row['sub'] }}</span>

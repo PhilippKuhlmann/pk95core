@@ -229,7 +229,7 @@
                             <td class="min-w-0 align-top md:px-3 md:py-3 xl:px-4">
                                 <div class="flex flex-col break-all md:break-normal">
                                     @foreach ($x['domains'] as $d)
-                                        <a href="{{ $logUrl($d) }}" wire:navigate title="Zugriffe ansehen" class="font-medium text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $d }}</a>
+                                        <a href="{{ $logUrl($d) }}" wire:navigate data-tip="Zugriffe ansehen" class="font-medium text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $d }}</a>
                                     @endforeach
                                 </div>
                                 <div class="mt-1 flex flex-wrap gap-1">
@@ -279,12 +279,12 @@
                                         @php $prefix = count($c['domains']) > 1 ? $d['domain'].': ' : ''; @endphp
                                         @if ($d['status'] === 'ok')
                                             @php $days = \App\Modules\Proxy\Certificates::daysLeft((int) $d['not_after']); @endphp
-                                            <div class="flex items-center gap-2" title="Ausgestellt von {{ $d['issuer'] ?? '' }}">
-                                                <span class="h-2 w-2 shrink-0 rounded-full {{ $dot($days < 14 ? 'warn' : 'good') }}"></span>{{ $prefix }}gültig bis {{ $date($d['not_after']) }}
+                                            <div class="flex items-center gap-2" data-tip="Ausgestellt von {{ $d['issuer'] ?? '' }}">
+                                                <span class="h-2 w-2 shrink-0 rounded-full {{ $dot($days < 14 ? 'warn' : 'good') }}"></span>{{ $prefix }}gültig bis {{ $date($d['not_after']) }}<span class="sr-only">, ausgestellt von {{ $d['issuer'] ?? '' }}</span>
                                             </div>
                                         @else
-                                            <div class="flex items-center gap-2" title="Caddy holt das Zertifikat noch. Der Hostname muss per DNS auf diesen Server zeigen und Port 80 muss aus dem Internet erreichbar sein.">
-                                                <span class="h-2 w-2 shrink-0 rounded-full {{ $dot('warn') }}"></span>{{ $prefix }}Zertifikat ausstehend
+                                            <div class="flex items-center gap-2" data-tip="Caddy holt das Zertifikat noch. Der Hostname muss per DNS auf diesen Server zeigen und Port 80 muss aus dem Internet erreichbar sein.">
+                                                <span class="h-2 w-2 shrink-0 rounded-full {{ $dot('warn') }}"></span>{{ $prefix }}Zertifikat ausstehend<span class="sr-only">. Caddy holt das Zertifikat noch. Der Hostname muss per DNS auf diesen Server zeigen und Port 80 muss aus dem Internet erreichbar sein.</span>
                                             </div>
                                         @endif
                                     @endforeach
@@ -299,7 +299,7 @@
                                 <div class="flex flex-wrap gap-2 md:flex-nowrap md:justify-end md:gap-1">
                                     @if ($x['kind'] === 'proxy')
                                         <x-input.button type="button" size="sm" :color="$x['maintenance'] ? 'blue' : 'gray'" wire:click="maintenance({{ $x['id'] }})" class="{{ $tap }}"
-                                            aria-pressed="{{ $x['maintenance'] ? 'true' : 'false' }}" title="{{ $x['maintenance'] ? 'Wartung beenden' : 'Wartung starten' }}">
+                                            aria-pressed="{{ $x['maintenance'] ? 'true' : 'false' }}" data-tip="{{ $x['maintenance'] ? 'Wartung beenden' : 'Wartung starten' }}">
                                             <x-icon name="warn" class="h-4 w-4" /><span class="sr-only">{{ $x['domains'][0] }}: </span><span class="md:sr-only">{{ $x['maintenance'] ? 'Wartung beenden' : 'Wartung starten' }}</span>
                                         </x-input.button>
                                     @endif

@@ -142,7 +142,7 @@
                     <div class="mt-1 flex gap-2">
                         <x-input.text id="f-vmid" feld="vmid" wire:model.live.debounce.500ms="v.vmid" inputmode="numeric" class="w-full min-w-0 font-mono" autocomplete="off" />
                         <x-input.button type="button" color="gray" size="feld" wire:click="suggestVmid" wire:loading.attr="disabled" wire:target="suggestVmid" :disabled="! $v['connection_id']"
-                            title="Freie VMID vorschlagen (aus dem VMID-Muster des Profils oder dem Bereich in den Einstellungen)">
+                            data-tip="Freie VMID vorschlagen (aus dem VMID-Muster des Profils oder dem Bereich in den Einstellungen)">
                             <x-icon name="sparkles" class="h-4 w-4" />Vorschlag
                         </x-input.button>
                     </div>
@@ -258,7 +258,7 @@
                         <div class="mt-1 flex gap-2">
                             <x-input.text id="f-ip" feld="ip" wire:model.live.debounce.500ms="v.ip" class="w-full min-w-0 font-mono" placeholder="10.10.250.53" autocomplete="off" />
                             <x-input.button type="button" color="gray" size="feld" wire:click="suggestIp" wire:loading.attr="disabled" wire:target="suggestIp" :disabled="! $currentProfile"
-                                title="{{ $currentProfile ? 'Nächste freie Adresse aus dem Pool des Profils' : 'Nur mit Netzwerkprofil' }}">
+                                data-tip="{{ $currentProfile ? 'Nächste freie Adresse aus dem Pool des Profils' : 'Nur mit Netzwerkprofil' }}">
                                 <x-icon name="sparkles" class="h-4 w-4" />Nächste freie IP
                             </x-input.button>
                         </div>

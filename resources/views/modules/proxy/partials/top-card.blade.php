@@ -19,12 +19,12 @@
                     <div class="flex items-baseline justify-between gap-3">
                         <div class="flex min-w-0 items-center gap-2">
                             @if ($url)
-                                <a href="{{ $url }}" wire:navigate title="{{ $it['key'] }}" class="truncate text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $topLabel($it['key']) }}</a>
+                                <a href="{{ $url }}" wire:navigate data-tip="{{ $it['key'] }}" class="truncate text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $topLabel($it['key']) }}</a>
                             @else
-                                <span class="truncate" title="{{ $it['key'] }}">{{ $topLabel($it['key']) }}</span>
+                                <span class="truncate" data-tip="{{ $it['key'] }}">{{ $topLabel($it['key']) }}</span>
                             @endif
                             @if ($topUnknown && $it['key'] !== '' && ! in_array($it['key'], $topUnknown, true))
-                                <span class="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300" title="Dieser Hostname ist nicht eingerichtet. Solche Anfragen erhalten eine 404.">unbekannt</span>
+                                <span class="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300" data-tip="Dieser Hostname ist nicht eingerichtet. Solche Anfragen erhalten eine 404.">unbekannt<span class="sr-only">: Dieser Hostname ist nicht eingerichtet. Solche Anfragen erhalten eine 404.</span></span>
                             @endif
                         </div>
                         <span class="shrink-0 tabular-nums text-gray-500">{{ \App\Modules\Proxy\Fmt::num($it['count']) }}</span>

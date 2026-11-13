@@ -3,7 +3,7 @@
     so this belongs exactly once on a page. Colours come from the caller.
 --}}
 <button id="theme-toggle" type="button"
-    title="Zwischen hellem und dunklem Erscheinungsbild wechseln"
+    data-tip="Zwischen hellem und dunklem Erscheinungsbild wechseln"
     aria-label="Zwischen hellem und dunklem Erscheinungsbild wechseln"
     {{ $attributes->merge(['class' => 'rounded-lg text-sm p-2.5 focus:outline-hidden focus:ring-1 focus:ring-gray-200 dark:focus:ring-gray-700']) }}>
     <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>

@@ -57,7 +57,7 @@
             <div class="font-DINPro-bold text-gray-900 dark:text-gray-100">Automatisch eingerichtete Apps</div>
             @if ($links->isNotEmpty())
                 <x-input.button type="button" size="sm" color="gray" wire:click="syncDns" wire:loading.attr="disabled" wire:target="syncDns"
-                    title="Fehlende lokale DNS-Einträge der Apps anlegen und auf die aktuelle LAN-IP setzen">DNS abgleichen</x-input.button>
+                    data-tip="Fehlende lokale DNS-Einträge der Apps anlegen und auf die aktuelle LAN-IP setzen">DNS abgleichen</x-input.button>
             @endif
         </div>
         @if ($links->isEmpty())

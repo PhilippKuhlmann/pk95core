@@ -42,9 +42,9 @@
                                     @if ($c->tls_mode === 'verify')
                                         <span class="inline-flex items-center gap-1 rounded bg-green-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-green-800 dark:bg-green-900 dark:text-green-100">CA-geprüft</span>
                                     @else
-                                        <span class="inline-flex items-center gap-1.5" title="{{ $c->fingerprint }}">
+                                        <span class="inline-flex items-center gap-1.5" data-tip="{{ $c->fingerprint }}">
                                             <span class="inline-flex items-center gap-1 rounded bg-cerulean-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-cerulean-800 dark:bg-cerulean-900 dark:text-cerulean-200">Fingerabdruck</span>
-                                            <span class="font-mono text-xs text-gray-600 dark:text-gray-300">{{ \Illuminate\Support\Str::limit((string) $c->fingerprint, 11, '…') }}</span>
+                                            <span class="font-mono text-xs text-gray-600 dark:text-gray-300" aria-hidden="true">{{ \Illuminate\Support\Str::limit((string) $c->fingerprint, 11, '…') }}</span><span class="sr-only">{{ $c->fingerprint }}</span>
                                         </span>
                                     @endif
                                 </td>
