@@ -150,6 +150,23 @@ class AccessLog extends Component
         }
     }
 
+    /** The multi-select (wire:model.live="hidden") changed the list: same rules as hideClient(). */
+    public function updatedHidden(): void
+    {
+        $names = self::clean((array) $this->hidden);
+        $comma = array_values(array_filter($names, fn ($n) => str_contains($n, ',')));
+        if ($comma) {
+            $this->dispatch('notice', kind: 'error', text: "„{$comma[0]}“ enthält ein Komma und lässt sich deshalb nicht ausblenden.");
+        }
+        if (count((array) $this->hidden) > self::MAX_HIDDEN) {
+            $this->dispatch('notice', kind: 'error', text: 'Höchstens '.self::MAX_HIDDEN.' Clients lassen sich ausblenden.');
+        }
+        $this->setHidden(array_values(array_diff($names, $comma)));
+        if (in_array($this->client, $this->hidden, true)) {
+            $this->client = '';
+        }
+    }
+
     public function showClient(string $name): void
     {
         $this->setHidden(array_values(array_diff($this->hidden, [$name])));
@@ -213,7 +230,11 @@ class AccessLog extends Component
             'clientNames' => collect($this->clients)->pluck('client')
                 ->merge(collect($rows)->pluck('client'))->map(fn ($c) => self::name((string) $c))->filter()->unique()
                 ->reject(fn ($c) => in_array($c, $this->hidden, true))->values()->all(),
-            'clientCounts' => collect($this->clients)->mapWithKeys(fn ($c) => [$c['client'] => $c['count']])->all(),
+            'clientCounts' => $counts = collect($this->clients)->mapWithKeys(fn ($c) => [$c['client'] => $c['count']])->all(),
+            // the multi-select also lists the hidden ones (to show them again)
+            'clientOptions' => collect($this->clients)->pluck('client')->merge(collect($rows)->pluck('client'))->merge($this->hidden)
+                ->map(fn ($c) => self::name((string) $c))->filter()->unique()->values()
+                ->map(fn ($c) => ['value' => $c, 'label' => $c, 'hint' => isset($counts[$c]) ? Fmt::num($counts[$c]) : null])->all(),
         ]);
     }
 

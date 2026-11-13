@@ -21,9 +21,7 @@
     <div class="mx-3 mt-2 flex flex-wrap items-center gap-2">
         <input type="search" wire:model.live.debounce.400ms="search" placeholder="Domain enthält …" aria-label="Domain" class="{{ $input }} w-56">
         <input type="search" wire:model.live.debounce.400ms="client" placeholder="Client (IP oder Name)" aria-label="Client" class="{{ $input }} w-52">
-        <select wire:model.live="status" aria-label="Status" class="{{ $input }}">
-            @foreach (QueryLog::FILTERS as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach
-        </select>
+        <x-input.combobox wire:model.live="status" label="Status" :options="QueryLog::FILTERS" placeholder="Alle Anfragen" class="w-full sm:w-48" />
         @if ($filtered)
             <button type="button" wire:click="resetFilters" class="text-sm text-cerulean-700 hover:underline dark:text-cerulean-300">Filter zurücksetzen</button>
         @endif

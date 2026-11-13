@@ -25,10 +25,7 @@
 
     {{-- filters below the header (like the DNS overview: title left, range right) --}}
     <div class="mx-3 mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <x-input.select wire:model.live="host" aria-label="Host" class="max-w-xs">
-            <option value="">Alle Hosts</option>
-            @foreach ($configured as $dm)<option value="{{ $dm }}">{{ $dm }}</option>@endforeach
-        </x-input.select>
+        <x-input.combobox wire:model.live="host" label="Host" :options="array_combine($configured, $configured)" placeholder="Alle Hosts" reset="Alle Hosts" :search="true" class="w-full sm:w-72" />
         <x-input.checkbox label="Bots ausblenden" wire:model.live="hideBots" />
     </div>
 

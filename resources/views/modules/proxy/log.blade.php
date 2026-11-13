@@ -17,30 +17,17 @@
                 {{ Fmt::flag($country) }} Land: {{ Fmt::country($country) }} ×
             </button>
         @endif
-        <select wire:model.live="host" aria-label="Host" class="{{ $input }} w-52">
-            <option value="">Alle Hosts</option>
-            @foreach ($domains as $dm)<option value="{{ $dm }}">{{ $dm }}</option>@endforeach
-        </select>
-        <select wire:model.live="status" aria-label="Status" class="{{ $input }}">
-            @foreach ($statuses as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach
-        </select>
+        <x-input.combobox wire:model.live="host" label="Host" :options="array_combine($domains, $domains)" placeholder="Alle Hosts" reset="Alle Hosts" :search="true" class="w-full sm:w-56" />
+        <x-input.combobox wire:model.live="status" label="Status" :options="array_diff_key($statuses, ['' => true])" placeholder="Alle Status" reset="Alle Status" class="w-full sm:w-44" />
         <input type="search" wire:model.live.debounce.300ms="ip" placeholder="IP-Adresse" aria-label="IP-Adresse" class="{{ $input }} w-40">
         <input type="search" wire:model.live.debounce.300ms="q" placeholder="Pfad enthält …" aria-label="Pfad" class="{{ $input }} w-48">
         <x-input.checkbox label="Bots ausblenden" wire:model.live="hideBots" />
         @if ($clientFilter)
-            {{-- picking a name hides it at once; the select goes back to its prompt --}}
-            <select aria-label="Client ausblenden" class="{{ $input }} w-48" data-client-hide
-                x-on:change="if ($event.target.value !== '') { $wire.hideClient($event.target.value); $event.target.value = '' }">
-                <option value="">Client ausblenden …</option>
-                @foreach ($clientNames as $name)
-                    <option value="{{ $name }}">{{ $name.(isset($clientCounts[$name]) ? ' ('.Fmt::num($clientCounts[$name]).')' : '') }}</option>
-                @endforeach
-            </select>
-            <select wire:model.live="client" aria-label="Nur Client" class="{{ $input }} w-44">
-                <option value="">Alle Clients</option>
-                @if ($client !== '' && ! in_array($client, $clientNames, true))<option value="{{ $client }}">{{ $client }}</option>@endif
-                @foreach ($clientNames as $name)<option value="{{ $name }}">Nur {{ $name }}</option>@endforeach
-            </select>
+            {{-- multi-select: checking a client hides it (wire:model.live="hidden" → updatedHidden) --}}
+            <x-input.combobox wire:model.live="hidden" label="Clients ausblenden" :options="$clientOptions" :multiple="true" :search="true"
+                placeholder="Clients ausblenden …" reset="Alle zeigen" many="Clients ausgeblendet" class="w-full sm:w-56" data-client-hide />
+            <x-input.combobox wire:model.live="client" label="Nur Client" :options="array_map(fn ($o) => ['label' => $o['value']] + $o, array_values(array_filter($clientOptions, fn ($o) => ! in_array($o['value'], $hidden, true))))"
+                placeholder="Alle Clients" reset="Alle Clients" :search="true" class="w-full sm:w-48" />
         @else
             <span class="text-xs text-gray-500 dark:text-gray-400" title="Die installierte Version von PK95 Proxy kann noch nicht nach Client filtern." data-client-filter-missing>
                 Clients ausblenden: braucht PK95 Proxy 1.3.0

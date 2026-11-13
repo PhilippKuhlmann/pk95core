@@ -171,8 +171,8 @@ class ProxyModuleTest extends FeatureTestCase
         $this->clientList = [['client' => 'Uptime-Monitor', 'count' => 2880], ['client' => 'Firefox', 'count' => 12]];
 
         $page = Livewire::test(AccessLog::class, ['installedApp' => $this->installed])
-            ->assertSee('Client ausblenden …')
-            ->assertSee('Uptime-Monitor (2.880)')
+            ->assertSee('Clients ausblenden …')
+            ->assertViewHas('clientOptions', fn ($o) => $o[0] === ['value' => 'Uptime-Monitor', 'label' => 'Uptime-Monitor', 'hint' => '2.880'])
             ->assertSee('aria-label="Client Firefox ausblenden"', false)
             // on phones the client column is hidden: the details carry the same actions
             ->call('toggle', 99)
@@ -199,9 +199,27 @@ class ProxyModuleTest extends FeatureTestCase
         $page->call('showClient', 'curl')->call('onlyClient', 'Firefox')->assertSee('Nur Client: Firefox');
         $this->assertStringContainsString('client=Firefox', last($this->requestQueries()));
 
-        $page->call('clearClient')->call('showAllClients')->assertSet('hidden', [])->assertDontSee('Alle zeigen');
+        $page->call('clearClient')->call('showAllClients')->assertSet('hidden', [])->assertDontSee('data-client-chips', false);
         $this->assertStringNotContainsString('client', last($this->requestQueries()));
         $this->assertSame([], Settings::get(AccessLog::HIDDEN_SETTING));
+    }
+
+    public function test_the_client_multi_select_binds_the_hidden_list(): void
+    {
+        $this->clientList = [['client' => 'Uptime-Monitor', 'count' => 2880], ['client' => 'Firefox', 'count' => 12]];
+
+        // wire:model.live="hidden" on the combobox: same rules as the row action
+        $page = Livewire::test(AccessLog::class, ['installedApp' => $this->installed])
+            ->set('hidden', ['Uptime-Monitor', 'Firefox'])
+            ->assertSee('2 Clients ausgeblendet');
+        $this->assertSame(['Uptime-Monitor', 'Firefox'], Settings::get(AccessLog::HIDDEN_SETTING));
+        $this->assertStringEndsWith('&exclude_client=Uptime-Monitor&exclude_client=Firefox', last($this->requestQueries()));
+        // hidden ones stay in the options, so they can be shown again
+        $page->assertViewHas('clientOptions', fn ($o) => collect($o)->pluck('value')->all() === ['Uptime-Monitor', 'Firefox']);
+
+        $page->set('hidden', ['Uptime-Monitor', 'curl, wget'])
+            ->assertDispatched('notice', kind: 'error', text: '„curl, wget“ enthält ein Komma und lässt sich deshalb nicht ausblenden.')
+            ->assertSet('hidden', ['Uptime-Monitor']);
     }
 
     public function test_hidden_clients_come_back_after_a_reload_and_the_url_wins(): void
