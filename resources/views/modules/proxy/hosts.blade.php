@@ -229,7 +229,20 @@
                             <td class="min-w-0 align-top md:px-3 md:py-3 xl:px-4">
                                 <div class="flex flex-col break-all md:break-normal">
                                     @foreach ($x['domains'] as $d)
-                                        <a href="{{ $logUrl($d) }}" wire:navigate data-tip="Zugriffe ansehen" class="font-medium text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $d }}</a>
+                                        <div class="flex items-center gap-1">
+                                            <a href="{{ $logUrl($d) }}" wire:navigate data-tip="Zugriffe ansehen" class="min-w-0 font-medium text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $d }}</a>
+                                            {{-- open the site itself; a wildcard has no single address --}}
+                                            @if ($open = Hosts::openUrl($d))
+                                                <a href="{{ $open }}" target="_blank" rel="noopener noreferrer" data-host-open
+                                                    data-tip="{{ $x['enabled'] ? $open.' in neuem Tab öffnen' : 'Host ist deaktiviert' }}"
+                                                    aria-label="{{ $open }} in neuem Tab öffnen{{ $x['enabled'] ? '' : ' (Host ist deaktiviert)' }}"
+                                                    @class(['inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md hover:bg-gray-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-cerulean-500 max-md:h-11 max-md:w-11 dark:hover:bg-gray-700',
+                                                        'text-gray-500 hover:text-cerulean-700 dark:text-gray-400 dark:hover:text-cerulean-300' => $x['enabled'],
+                                                        'text-gray-300 dark:text-gray-600' => ! $x['enabled']])>
+                                                    <x-icon name="external" class="h-4 w-4" sw="2" />
+                                                </a>
+                                            @endif
+                                        </div>
                                     @endforeach
                                 </div>
                                 <div class="mt-1 flex flex-wrap gap-1">

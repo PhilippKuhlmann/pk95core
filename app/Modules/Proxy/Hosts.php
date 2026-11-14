@@ -194,6 +194,17 @@ class Hosts extends Component
     ];
 
     /**
+     * Address to open a domain of a host in the browser, null for a wildcard (no single site).
+     * Always https: Caddy serves every PK95 Proxy host with TLS, allow_http only adds port 80.
+     */
+    public static function openUrl(string $domain): ?string
+    {
+        $domain = trim($domain);
+
+        return $domain === '' || str_contains($domain, '*') ? null : 'https://'.$domain;
+    }
+
+    /**
      * Host of the panel → form state (strings for inputs, as in the original dialog).
      *
      * @param  array<string, mixed>|null  $h
