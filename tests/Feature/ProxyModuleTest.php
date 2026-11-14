@@ -292,6 +292,34 @@ class ProxyModuleTest extends FeatureTestCase
         $this->assertStringContainsString('<span class="md:sr-only">Wartung starten</span>', $html);
     }
 
+    public function test_every_domain_can_be_opened_in_a_new_tab(): void
+    {
+        $this->hosts[3] = $this->host(3, ['www.example.de', 'example.de'], ['enabled' => false]);
+        $this->hosts[4] = $this->host(4, ['*.lab.example.de'], ['enabled' => true]);
+
+        $html = $this->get(route('apps.page', [$this->installed, 'hosts']))->assertOk()->getContent();
+
+        // one icon per domain, https, a new tab without opener or referrer
+        $this->assertSame(4, substr_count($html, 'data-host-open'), 'app, alt, www and example.de; not the wildcard');
+        $this->assertStringContainsString('<a href="https://app.example.de" target="_blank" rel="noopener noreferrer" data-host-open', $html);
+        $this->assertStringContainsString('data-tip="https://app.example.de in neuem Tab öffnen"', $html);
+        $this->assertStringContainsString('aria-label="https://app.example.de in neuem Tab öffnen"', $html);
+        $this->assertStringNotContainsString('https://*.lab.example.de', $html);
+        // the domain itself still leads to its access log
+        $this->assertStringContainsString('?host=app.example.de" wire:navigate data-tip="Zugriffe ansehen"', $html);
+        // a disabled host: muted icon, its own tip, still named for screen readers
+        $this->assertMatchesRegularExpression('/<a href="https:\/\/www\.example\.de" target="_blank" rel="noopener noreferrer" data-host-open\s+data-tip="Host ist deaktiviert"\s+aria-label="https:\/\/www\.example\.de in neuem Tab öffnen \(Host ist deaktiviert\)"\s+class="[^"]*text-gray-300/u', $html);
+        // touch size on the card
+        $this->assertStringContainsString('max-md:h-11 max-md:w-11', $html);
+    }
+
+    public function test_open_url_is_https_and_skips_wildcards(): void
+    {
+        $this->assertSame('https://app.example.de', Hosts::openUrl(' app.example.de '));
+        $this->assertNull(Hosts::openUrl('*.example.de'));
+        $this->assertNull(Hosts::openUrl(''));
+    }
+
     public function test_overview_header_filters_data_tile_and_legend(): void
     {
         $html = $this->get(route('apps.page', [$this->installed, 'overview']))->assertOk()
