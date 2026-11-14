@@ -5,11 +5,13 @@ namespace Tests\Feature;
 use App\Models\InstalledApp;
 use App\Modules\Proxy\AccessLog;
 use App\Modules\Proxy\Certificates;
+use App\Modules\Proxy\Daily;
 use App\Modules\Proxy\ErrorPages;
 use App\Modules\Proxy\Hosts;
 use App\Modules\Proxy\ProxyModule;
 use App\Modules\Proxy\Security;
 use App\Modules\Proxy\Streams;
+use App\Modules\Proxy\Views;
 use App\Support\Settings;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
@@ -36,6 +38,9 @@ class ProxyModuleTest extends FeatureTestCase
 
     /** @var array<string, mixed> replaces keys of the faked /api/stats answer */
     private array $statsOverride = [];
+
+    /** @var array<string, mixed>|null GET /api/hosts/daily (PK95 Proxy 1.4.0); null = older Proxy (404) */
+    private ?array $daily = null;
 
     protected function setUp(): void
     {
@@ -95,6 +100,7 @@ class ProxyModuleTest extends FeatureTestCase
 
         return match ($r->method().' '.$path) {
             'GET /api/hosts' => Http::response(array_values($this->hosts)),
+            'GET /api/hosts/daily' => $this->daily === null ? Http::response(['error' => 'nicht gefunden'], 404) : Http::response($this->daily),
             'GET /api/hosts/checks' => Http::response([['host_id' => 1, 'upstream_known' => true, 'upstream_up' => false, 'upstream_error' => 'Verbindung abgelehnt',
                 'domains' => [['domain' => 'app.example.de', 'status' => 'ok', 'not_after' => now()->getTimestamp() + 40 * 86400, 'issuer' => "Let's Encrypt"]]]]),
             'GET /api/access-lists' => Http::response([['id' => 1, 'name' => 'Intern', 'title' => '', 'mode' => 'any', 'allow' => ['10.0.0.0/8'], 'deny' => [],
@@ -318,6 +324,144 @@ class ProxyModuleTest extends FeatureTestCase
         $this->assertSame('https://app.example.de', Hosts::openUrl(' app.example.de '));
         $this->assertNull(Hosts::openUrl('*.example.de'));
         $this->assertNull(Hosts::openUrl(''));
+    }
+
+    // ---- page views per host and day (GET /api/hosts/daily, PK95 Proxy 1.4.0) ----------------
+
+    /** @return array<string, mixed> the panel's answer, exactly in its format */
+    private static function dailyFixture(): array
+    {
+        return json_decode((string) file_get_contents(base_path('tests/Fixtures/proxy/hosts-daily.json')), true);
+    }
+
+    /** @return list<string> */
+    private function dailyQueries(): array
+    {
+        return array_values(array_map(fn ($c) => $c['query'], array_filter($this->calls, fn ($c) => $c['path'] === '/api/hosts/daily')));
+    }
+
+    public function test_hosts_show_page_views_of_today_and_seven_days(): void
+    {
+        $this->daily = self::dailyFixture();
+
+        $html = $this->get(route('apps.page', [$this->installed, 'hosts']))->assertOk()->getContent();
+
+        // app.example.de: 100 today, 812 in 7 days, one bar per day with its tooltip
+        $this->assertMatchesRegularExpression('/>100<\/span> heute\s*<span[^>]*><span class="md:hidden">\/ <\/span><span class="tabular-nums">812<\/span> in 7 Tagen/', $html);
+        $this->assertStringContainsString('data-tip="14.11.: 100 Seitenaufrufe, 7 Besucher, 2.100 Zugriffe"', $html);
+        $this->assertStringContainsString("data-tip=\"13.11.: 120 Seitenaufrufe, 4 Besucher, 2.100 Zugriffe\nGeschätzt, vor Einführung der Seitenzählung\"", $html);
+        $this->assertStringContainsString('aria-label="Seitenaufrufe pro Tag: 08.11. 110, 09.11. 120, 10.11. 115', $html);
+        $this->assertSame(2, substr_count($html, 'data-daily-bars'), 'one strip per host');
+        // the header names what is left out; the card has its label
+        $this->assertStringContainsString('<span data-tip="Seitenaufrufe ohne Bots">Aufrufe</span>', $html);
+        $this->assertMatchesRegularExpression('/md:hidden[^"]*">Aufrufe</', $html);
+        // bots are always left out
+        $this->assertSame(['days=7&hide_bots=1'], $this->dailyQueries());
+        $this->assertStringNotContainsString('data-daily-missing', $html);
+    }
+
+    public function test_page_views_leave_out_the_hidden_clients_and_say_so(): void
+    {
+        $this->installed->update(['version' => '1.4.0']);
+        Settings::put(AccessLog::HIDDEN_SETTING, ['Uptime-Monitor', 'curl/8.0']);
+        $this->daily = self::dailyFixture();
+
+        $html = $this->get(route('apps.page', [$this->installed, 'hosts']))->assertOk()->getContent();
+        $views = $this->get(route('apps.page', [$this->installed, 'views']))->assertOk()->getContent();
+
+        $this->assertSame(['days=7&hide_bots=1&exclude_client=Uptime-Monitor&exclude_client=curl%2F8.0'], array_values(array_unique($this->dailyQueries())));
+        $this->assertStringContainsString('data-tip="Seitenaufrufe ohne Bots und ohne 2 ausgeblendete Clients: Uptime-Monitor, curl/8.0"', $html);
+        $this->assertMatchesRegularExpression('/Ohne Bots und ohne 2 ausgeblendete Clients\s*<span[^>]*>Uptime-Monitor, curl\/8\.0<\/span>/', $views);
+        $this->assertStringContainsString('ändern unter Zugriffe', $views);
+    }
+
+    public function test_an_older_proxy_says_page_views_need_1_4_0(): void
+    {
+        $this->get(route('apps.page', [$this->installed, 'hosts']))->assertOk()
+            ->assertSee('Aufrufe pro Tag: braucht PK95 Proxy 1.4.0');
+        $this->get(route('apps.page', [$this->installed, 'views']))->assertOk()
+            ->assertSee('Braucht PK95 Proxy 1.4.0')
+            ->assertDontSee('data-views-table', false);
+    }
+
+    public function test_views_page_is_a_heatmap_of_hosts_and_days(): void
+    {
+        $this->daily = self::dailyFixture();
+
+        $html = $this->get(route('apps.page', [$this->installed, 'views']))->assertOk()->getContent();
+
+        // most page views first; totals per host and per day, and in all
+        $this->assertTrue(strpos($html, '>app.example.de</a>') < strpos($html, '>doku.example.de</a>'));
+        $this->assertTrue(strpos($html, '>doku.example.de</a>') < strpos($html, '>alt.example.de</a>'));
+        $this->assertStringContainsString('<td class="px-2 py-2">105</td>', $html, '14.11.: 100 + 5 + 0');
+        $this->assertStringContainsString('<td class="px-3 py-2">847</td>', $html, '812 + 35 + 0');
+        // heatmap: the biggest cell is the strongest, an estimated day is italic with a tip
+        $this->assertMatchesRegularExpression('/class="[^"]*bg-cerulean-500 text-white[^"]*italic"\s+data-tip="11\.11\.: 130 Seitenaufrufe/', $html);
+        $this->assertStringContainsString('data-tip="Geschätzt, vor Einführung der Seitenzählung"', $html);
+        $this->assertStringContainsString('<span class="sr-only">, geschätzt, vor Einführung der Seitenzählung</span>', $html);
+        $this->assertStringContainsString('data-tip="08.11.: keine Aufrufe"', $html, 'doku.example.de had none that day');
+        // what is counted and since when
+        $this->assertStringContainsString('Ohne Bots.', $html);
+        $this->assertStringContainsString('Seitenaufrufe werden seit 14.11.2026 gezählt, frühere Tage sind geschätzt', $html);
+        $this->assertStringContainsString('<caption class="sr-only">Seitenaufrufe pro Host und Tag, letzte 7 Tage</caption>', $html);
+    }
+
+    public function test_views_switch_metric_range_sort_and_host(): void
+    {
+        $this->daily = self::dailyFixture();
+
+        $page = Livewire::test(Views::class, ['installedApp' => $this->installed])
+            ->call('setMetric', 'visitors')
+            ->assertSet('metric', 'visitors')
+            ->assertSee('<td class="px-3 py-2">53</td>', false); // 41 + 9 + 3 visitors
+
+        $this->assertInOrder($page->call('sortBy', 'host')->assertSet('dir', 'asc')->html(), ['>alt.example.de</a>', '>app.example.de</a>', '>doku.example.de</a>']);
+        $this->assertInOrder($page->call('sortBy', 'host')->assertSet('dir', 'desc')->html(), ['>doku.example.de</a>', '>app.example.de</a>', '>alt.example.de</a>']);
+        $this->assertInOrder($page->call('sortBy', '2026-11-13')->assertSet('sort', '2026-11-13')->html(), ['>app.example.de</a>', '>doku.example.de</a>']);
+
+        // the combobox picks one host
+        $page->set('host', 'doku.example.de')
+            ->assertSee('>doku.example.de</a>', false)
+            ->assertDontSee('>app.example.de</a>', false);
+
+        // 30 days are asked from the panel; unknown values fall back
+        $page->call('setDays', 30)->assertSet('days', 30);
+        $this->assertContains('days=30&hide_bots=1', $this->dailyQueries());
+        $page->call('setDays', 5)->assertSet('days', 7)
+            ->call('setMetric', 'bytes')->assertSet('metric', 'pages')
+            ->call('sortBy', 'x')->assertSet('sort', 'total');
+    }
+
+    /** @param list<string> $needles */
+    private function assertInOrder(string $html, array $needles): void
+    {
+        $at = -1;
+        foreach ($needles as $needle) {
+            $pos = strpos($html, $needle, $at + 1);
+            $this->assertNotFalse($pos, $needle.' after position '.$at);
+            $at = $pos;
+        }
+    }
+
+    public function test_daily_helpers(): void
+    {
+        $data = Daily::normalize(['hosts' => [
+            ['host' => 'a.example.de', 'series' => [['date' => '2026-11-14', 'pages' => 3, 'visitors' => 1, 'requests' => 9]]],
+            ['host' => 'b.example.de', 'series' => [['date' => '2026-11-13', 'pages' => 2, 'visitors' => 2, 'requests' => 4, 'estimated' => true]]],
+            ['host' => '', 'series' => []],
+        ]]);
+
+        // days come from the series when the answer has none; a total from the series too
+        $this->assertSame(['2026-11-13', '2026-11-14'], $data['days']);
+        $this->assertSame(['pages' => 3, 'visitors' => 1, 'requests' => 9, 'estimated' => false], $data['hosts']['a.example.de']['total']);
+        // a host with two domains: added up per day
+        $both = Daily::forDomains($data, ['a.example.de', 'b.example.de']);
+        $this->assertSame(['pages' => 5, 'visitors' => 3, 'requests' => 13, 'estimated' => true], $both['total']);
+        $this->assertSame(0, Daily::forDomains($data, ['c.example.de'])['total']['pages']);
+        // heatmap steps
+        $this->assertSame('', Daily::heat(0, 100));
+        $this->assertSame(Daily::HEAT[5], Daily::heat(100, 100));
+        $this->assertSame(Daily::HEAT[1], Daily::heat(1, 100));
     }
 
     public function test_overview_header_filters_data_tile_and_legend(): void
