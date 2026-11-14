@@ -148,6 +148,8 @@ class Hosts extends Component
             'listsWithUsers' => array_values(array_map(fn ($l) => (string) $l['id'], array_filter($lists, fn ($l) => ! empty($l['users'])))),
             'proxies' => array_values(array_filter($hosts, fn ($h) => $h['kind'] === 'proxy')),
             'loadError' => $error,
+            // page views per day (PK95 Proxy 1.4.0), summed over the domains of a host
+            'daily' => Daily::load($this->installedApp, 7),
         ]);
     }
 

@@ -1,0 +1,38 @@
+{
+    "days": ["2026-11-08", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14"],
+    "from": 1794178800000,
+    "to": 1794783600000,
+    "since_page_tracking": "2026-11-14",
+    "computed_at": 1794744000000,
+    "hosts": [
+        {
+            "host": "app.example.de",
+            "total": {"pages": 812, "visitors": 41, "requests": 15230},
+            "series": [
+                {"date": "2026-11-08", "pages": 110, "visitors": 6, "requests": 2000, "estimated": true},
+                {"date": "2026-11-09", "pages": 120, "visitors": 7, "requests": 2300, "estimated": true},
+                {"date": "2026-11-10", "pages": 115, "visitors": 5, "requests": 2100, "estimated": true},
+                {"date": "2026-11-11", "pages": 130, "visitors": 8, "requests": 2400, "estimated": true},
+                {"date": "2026-11-12", "pages": 117, "visitors": 4, "requests": 2230, "estimated": true},
+                {"date": "2026-11-13", "pages": 120, "visitors": 4, "requests": 2100, "estimated": true},
+                {"date": "2026-11-14", "pages": 100, "visitors": 7, "requests": 2100, "estimated": false}
+            ]
+        },
+        {
+            "host": "doku.example.de",
+            "total": {"pages": 35, "visitors": 9, "requests": 410},
+            "series": [
+                {"date": "2026-11-12", "pages": 10, "visitors": 3, "requests": 120, "estimated": true},
+                {"date": "2026-11-13", "pages": 20, "visitors": 4, "requests": 200, "estimated": true},
+                {"date": "2026-11-14", "pages": 5, "visitors": 2, "requests": 90, "estimated": false}
+            ]
+        },
+        {
+            "host": "alt.example.de",
+            "total": {"pages": 0, "visitors": 3, "requests": 12},
+            "series": [
+                {"date": "2026-11-14", "pages": 0, "visitors": 3, "requests": 12, "estimated": false}
+            ]
+        }
+    ]
+}

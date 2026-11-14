@@ -9,6 +9,9 @@
     // card view below md: small column labels and touch-sized (44 px) action buttons
     $cardLabel = 'mb-1 text-[11px] uppercase tracking-wide text-gray-500 md:hidden dark:text-gray-400';
     $tap = 'max-md:min-h-11 max-md:px-4 max-md:text-sm';
+    // page views per day (PK95 Proxy 1.4.0): what is left out is named in the column tip
+    $dailyOk = ! $daily['missing'] && $daily['error'] === null && $daily['days'] !== [];
+    $dailyNote = 'Seitenaufrufe ohne Bots'.($daily['hidden'] ? ' und ohne '.(count($daily['hidden']) === 1 ? 'den ausgeblendeten Client ' : count($daily['hidden']).' ausgeblendete Clients: ').implode(', ', $daily['hidden']) : '');
 @endphp
 
 <div wire:poll.20s>
@@ -185,6 +188,9 @@
             </button>
         @endforeach
     </div>
+    @if ($daily['missing'])
+        <p class="mx-3 -mt-1 mb-2 text-xs text-gray-500 dark:text-gray-400" data-daily-missing>Aufrufe pro Tag: braucht PK95 Proxy {{ \App\Modules\Proxy\Daily::MIN_VERSION }}</p>
+    @endif
 
     @if (! $shown && ! $loadError)
         <x-panel class="m-3">
@@ -198,12 +204,14 @@
         </x-panel>
     @elseif ($shown)
         {{-- One markup for both layouts: below md every row is a card (grid), from md on a table row. --}}
-        <x-panel class="m-3 overflow-x-auto" polster="keins">
+        <x-panel class="relative m-3 overflow-x-auto" polster="keins">
             <table class="block w-full text-left text-sm md:table">
                 <thead class="hidden border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500 md:table-header-group dark:border-gray-700 dark:text-gray-400">
                     <tr>
                         <th class="px-3 py-3 xl:px-4">Aktiv</th><th class="px-3 py-3 xl:px-4">Domains</th><th class="px-3 py-3 xl:px-4">Ziel</th>
-                        <th class="px-3 py-3 xl:px-4">Zertifikat</th><th class="hidden px-3 py-3 xl:table-cell xl:px-4">Zugriff</th><th class="px-3 py-3 xl:px-4"></th>
+                        <th class="px-3 py-3 xl:px-4">Zertifikat</th>
+                        <th class="px-3 py-3 xl:px-4"><span data-tip="{{ $dailyNote }}">Aufrufe</span><span class="sr-only"> ({{ $dailyNote }})</span></th>
+                        <th class="hidden px-3 py-3 xl:table-cell xl:px-4">Zugriff</th><th class="px-3 py-3 xl:px-4"></th>
                     </tr>
                 </thead>
                 <tbody class="block divide-y divide-gray-100 md:table-row-group dark:divide-gray-700">
@@ -301,6 +309,14 @@
                                             </div>
                                         @endif
                                     @endforeach
+                                @endif
+                            </td>
+                            <td class="col-span-2 align-top text-xs md:px-3 md:py-3 xl:px-4">
+                                <div class="{{ $cardLabel }}">Aufrufe</div>
+                                @if ($dailyOk)
+                                    @include('modules.proxy.partials.daily-cell', ['v' => \App\Modules\Proxy\Daily::forDomains($daily, $x['domains'])])
+                                @else
+                                    <span class="text-gray-500 dark:text-gray-400">–</span>
                                 @endif
                             </td>
                             <td class="col-span-2 align-top text-xs md:hidden md:px-3 md:py-3 xl:px-4 xl:table-cell">

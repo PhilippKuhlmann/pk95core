@@ -16,6 +16,7 @@ class ProxyModule extends Module
             'overview' => Overview::class,
             'log' => AccessLog::class,
             'hosts' => Hosts::class,
+            'views' => Views::class,
             'health' => Health::class,
             'streams' => Streams::class,
             'access-lists' => AccessLists::class,
