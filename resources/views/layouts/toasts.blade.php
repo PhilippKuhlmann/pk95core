@@ -3,7 +3,7 @@
     browser event "notice" ({kind, text}) dispatched by Livewire components.
     Success hides itself after 4 s; errors stay until closed.
 --}}
-<div class="pointer-events-none fixed bottom-4 right-4 z-50 flex w-full max-w-sm flex-col items-end gap-2">
+<div class="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-full max-w-sm flex-col items-end gap-2">
     <div x-data="toast('error', @js((string) session('error')))"
         x-on:notice.window="empfangen($event.detail)"
         x-show="show" x-cloak

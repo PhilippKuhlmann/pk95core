@@ -40,99 +40,82 @@
 
     {{-- zone form --}}
     @if ($zoneEditing !== null)
-        <x-panel class="m-3" wire:key="zone-form">
-            <form wire:submit="saveZone">
-                <div class="text-lg font-CoconPro text-gray-900 dark:text-gray-100">{{ $zoneEditing === 'new' ? 'Zone hinzufügen' : 'Zone bearbeiten' }}</div>
-                <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">Für alle Namen in einer aktiven Zone antwortet PK95 DNS allein: Was hier nicht eingetragen ist, gibt es im Netz nicht. Vorhandene Einzeleinträge unter dem Zonennamen wandern beim Anlegen in die Zone.</p>
-                <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[2fr_1fr_2fr]">
-                    <x-field label="Zonenname" for="z-name" feld="zoneForm.name" hilfe="Etwa home.lan oder für Rückwärtsauflösung 1.168.192.in-addr.arpa.">
-                        <x-input.text id="z-name" feld="zoneForm.name" wire:model.live.debounce.500ms="zoneForm.name" placeholder="home.lan" class="mt-1 w-full font-mono text-sm" />
-                    </x-field>
-                    <x-field label="TTL (Sekunden)" for="z-ttl" feld="zoneForm.ttl" hilfe="Für SOA, NS und negative Antworten. 0 bis 604800.">
-                        <x-input.text id="z-ttl" feld="zoneForm.ttl" inputmode="numeric" wire:model="zoneForm.ttl" class="mt-1 w-full tabular-nums" />
-                    </x-field>
-                    <x-field label="Primärer Nameserver" for="z-ns" feld="zoneForm.primary_ns" hilfe="Name im SOA- und NS-Eintrag. Leer: ns.<Zone>.">
-                        <x-input.text id="z-ns" feld="zoneForm.primary_ns" wire:model="zoneForm.primary_ns"
-                            placeholder="{{ 'ns.'.(trim($zoneForm['name']) !== '' ? strtolower(trim($zoneForm['name'])) : 'home.lan') }}" class="mt-1 w-full font-mono text-sm" />
-                    </x-field>
-                </div>
-                @if (Records::isPublicZone($zoneForm['name']))
-                    <x-callout title="Öffentliche Domain" ton="gelb" class="mt-4">
-                        {{ strtolower(trim($zoneForm['name'])) }} gibt es im Internet. Solange die Zone aktiv ist, beantwortet PK95 DNS alle Namen darunter selbst. Namen, die nur im öffentlichen DNS stehen (etwa www oder mail), sind im Netz dann nicht mehr erreichbar. Für einzelne Namen reichen Einträge ohne Zone.
-                    </x-callout>
-                @endif
-                <x-input.checkbox label="Aktiv" hilfe="Eine ausgeschaltete Zone beantwortet nichts; ihre Namen gehen dann wie gewohnt an die Upstreams." wire:model="zoneForm.enabled" />
-                <div class="mt-6 flex justify-end gap-2">
-                    <x-input.button type="button" color="gray" wire:click="cancel">Abbrechen</x-input.button>
-                    <x-input.button type="submit" wire:loading.attr="disabled">Speichern</x-input.button>
-                </div>
-            </form>
-        </x-panel>
+        <x-modal wire:key="zone-form" submit="saveZone">
+            <x-slot:title>{{ $zoneEditing === 'new' ? 'Zone hinzufügen' : 'Zone bearbeiten' }}</x-slot:title>
+            <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">Für alle Namen in einer aktiven Zone antwortet PK95 DNS allein: Was hier nicht eingetragen ist, gibt es im Netz nicht. Vorhandene Einzeleinträge unter dem Zonennamen wandern beim Anlegen in die Zone.</p>
+            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[2fr_1fr_2fr]">
+                <x-field label="Zonenname" for="z-name" feld="zoneForm.name" hilfe="Etwa home.lan oder für Rückwärtsauflösung 1.168.192.in-addr.arpa.">
+                    <x-input.text id="z-name" feld="zoneForm.name" wire:model.live.debounce.500ms="zoneForm.name" placeholder="home.lan" class="mt-1 w-full font-mono text-sm" />
+                </x-field>
+                <x-field label="TTL (Sekunden)" for="z-ttl" feld="zoneForm.ttl" hilfe="Für SOA, NS und negative Antworten. 0 bis 604800.">
+                    <x-input.text id="z-ttl" feld="zoneForm.ttl" inputmode="numeric" wire:model="zoneForm.ttl" class="mt-1 w-full tabular-nums" />
+                </x-field>
+                <x-field label="Primärer Nameserver" for="z-ns" feld="zoneForm.primary_ns" hilfe="Name im SOA- und NS-Eintrag. Leer: ns.<Zone>.">
+                    <x-input.text id="z-ns" feld="zoneForm.primary_ns" wire:model="zoneForm.primary_ns"
+                        placeholder="{{ 'ns.'.(trim($zoneForm['name']) !== '' ? strtolower(trim($zoneForm['name'])) : 'home.lan') }}" class="mt-1 w-full font-mono text-sm" />
+                </x-field>
+            </div>
+            @if (Records::isPublicZone($zoneForm['name']))
+                <x-callout title="Öffentliche Domain" ton="gelb" class="mt-4">
+                    {{ strtolower(trim($zoneForm['name'])) }} gibt es im Internet. Solange die Zone aktiv ist, beantwortet PK95 DNS alle Namen darunter selbst. Namen, die nur im öffentlichen DNS stehen (etwa www oder mail), sind im Netz dann nicht mehr erreichbar. Für einzelne Namen reichen Einträge ohne Zone.
+                </x-callout>
+            @endif
+            <x-input.checkbox label="Aktiv" hilfe="Eine ausgeschaltete Zone beantwortet nichts; ihre Namen gehen dann wie gewohnt an die Upstreams." wire:model="zoneForm.enabled" />
+        </x-modal>
     @endif
 
     {{-- record form --}}
     @if ($editing !== null)
-        <x-panel class="m-3" wire:key="record-form">
-            <form wire:submit="save">
-                <div class="flex flex-wrap items-center gap-2 text-lg font-CoconPro text-gray-900 dark:text-gray-100">
-                    {{ $editing === 'new' ? 'Eintrag hinzufügen' : 'Eintrag bearbeiten' }}
-                    @if (($form['managed_by'] ?? '') === 'core')
-                        <span class="{{ $badge }} bg-violet-100 font-sans text-violet-800 dark:bg-violet-900/70 dark:text-violet-100">von Core</span>
-                    @endif
-                </div>
-                @if (($form['managed_by'] ?? '') === 'core')
-                    <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">PK95 Core hat diesen Eintrag für eine ausgerollte App angelegt und setzt ihn auf die neue LAN-IP, wenn sie sich ändert.</p>
+        <x-modal wire:key="record-form" submit="save">
+            <x-slot:title><span class="flex flex-wrap items-center gap-2">{{ $editing === 'new' ? 'Eintrag hinzufügen' : 'Eintrag bearbeiten' }} @if (($form['managed_by'] ?? '') === 'core')<span class="{{ $badge }} bg-violet-100 font-sans text-violet-800 dark:bg-violet-900/70 dark:text-violet-100">von Core</span>@endif</span></x-slot:title>
+            @if (($form['managed_by'] ?? '') === 'core')
+                <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">PK95 Core hat diesen Eintrag für eine ausgerollte App angelegt und setzt ihn auf die neue LAN-IP, wenn sie sich ändert.</p>
+            @endif
+            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[1fr_2fr_1fr]">
+                <x-field label="Typ" for="r-type" feld="form.type">
+                    <x-input.select id="r-type" feld="form.type" wire:model.live="form.type" class="mt-1">
+                        @foreach (Records::TYPE_LABELS as $t => $l)<option value="{{ $t }}">{{ $l }}</option>@endforeach
+                    </x-input.select>
+                </x-field>
+                <x-field label="Name" for="r-name" feld="form.name" :hilfe="$nameHelp">
+                    <x-input.text id="r-name" feld="form.name" wire:model="form.name" placeholder="{{ $type === 'SRV' ? '_ldap._tcp.home.lan' : ($type === 'PTR' ? '10.1.168.192.in-addr.arpa' : 'nas.home.lan') }}" class="mt-1 w-full font-mono text-sm" />
+                </x-field>
+                <x-field label="TTL (Sekunden)" for="r-ttl" feld="form.ttl" hilfe="Wie lange Geräte die Antwort zwischenspeichern. Standard 300.">
+                    <x-input.text id="r-ttl" feld="form.ttl" inputmode="numeric" wire:model="form.ttl" class="mt-1 w-full tabular-nums" />
+                </x-field>
+            </div>
+
+            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4">
+                @if (in_array($type, ['MX', 'SRV'], true))
+                    <x-field label="Priorität" for="r-prio" feld="form.priority" hilfe="Kleinere Zahl wird zuerst genutzt.">
+                        <x-input.text id="r-prio" feld="form.priority" inputmode="numeric" wire:model="form.priority" class="mt-1 w-full tabular-nums" />
+                    </x-field>
                 @endif
-                <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[1fr_2fr_1fr]">
-                    <x-field label="Typ" for="r-type" feld="form.type">
-                        <x-input.select id="r-type" feld="form.type" wire:model.live="form.type" class="mt-1">
-                            @foreach (Records::TYPE_LABELS as $t => $l)<option value="{{ $t }}">{{ $l }}</option>@endforeach
-                        </x-input.select>
+                @if ($type === 'SRV')
+                    <x-field label="Gewicht" for="r-weight" feld="form.weight" hilfe="Verteilung bei gleicher Priorität.">
+                        <x-input.text id="r-weight" feld="form.weight" inputmode="numeric" wire:model="form.weight" class="mt-1 w-full tabular-nums" />
                     </x-field>
-                    <x-field label="Name" for="r-name" feld="form.name" :hilfe="$nameHelp">
-                        <x-input.text id="r-name" feld="form.name" wire:model="form.name" placeholder="{{ $type === 'SRV' ? '_ldap._tcp.home.lan' : ($type === 'PTR' ? '10.1.168.192.in-addr.arpa' : 'nas.home.lan') }}" class="mt-1 w-full font-mono text-sm" />
+                    <x-field label="Port" for="r-port" feld="form.port" hilfe="1 bis 65535.">
+                        <x-input.text id="r-port" feld="form.port" inputmode="numeric" wire:model="form.port" placeholder="389" class="mt-1 w-full tabular-nums" />
                     </x-field>
-                    <x-field label="TTL (Sekunden)" for="r-ttl" feld="form.ttl" hilfe="Wie lange Geräte die Antwort zwischenspeichern. Standard 300.">
-                        <x-input.text id="r-ttl" feld="form.ttl" inputmode="numeric" wire:model="form.ttl" class="mt-1 w-full tabular-nums" />
-                    </x-field>
-                </div>
+                @endif
+                <x-field :label="$type === 'TXT' ? 'Text' : ($type === 'A' || $type === 'AAAA' ? 'Adresse' : 'Ziel')" for="r-value" feld="form.value" :hilfe="$valueHelp[$type] ?? null"
+                    :class="match ($type) { 'MX' => 'md:col-span-3', 'SRV' => 'md:col-span-1', default => 'md:col-span-4' }">
+                    @if ($type === 'TXT')
+                        <x-input.textarea id="r-value" feld="form.value" rows="3" maxlength="4000" wire:model="form.value" class="mt-1" placeholder="v=spf1 mx -all" />
+                    @else
+                        <x-input.text id="r-value" feld="form.value" wire:model="form.value" placeholder="{{ $placeholder[$type] ?? '' }}" class="mt-1 w-full font-mono text-sm" />
+                    @endif
+                </x-field>
+            </div>
 
-                <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4">
-                    @if (in_array($type, ['MX', 'SRV'], true))
-                        <x-field label="Priorität" for="r-prio" feld="form.priority" hilfe="Kleinere Zahl wird zuerst genutzt.">
-                            <x-input.text id="r-prio" feld="form.priority" inputmode="numeric" wire:model="form.priority" class="mt-1 w-full tabular-nums" />
-                        </x-field>
-                    @endif
-                    @if ($type === 'SRV')
-                        <x-field label="Gewicht" for="r-weight" feld="form.weight" hilfe="Verteilung bei gleicher Priorität.">
-                            <x-input.text id="r-weight" feld="form.weight" inputmode="numeric" wire:model="form.weight" class="mt-1 w-full tabular-nums" />
-                        </x-field>
-                        <x-field label="Port" for="r-port" feld="form.port" hilfe="1 bis 65535.">
-                            <x-input.text id="r-port" feld="form.port" inputmode="numeric" wire:model="form.port" placeholder="389" class="mt-1 w-full tabular-nums" />
-                        </x-field>
-                    @endif
-                    <x-field :label="$type === 'TXT' ? 'Text' : ($type === 'A' || $type === 'AAAA' ? 'Adresse' : 'Ziel')" for="r-value" feld="form.value" :hilfe="$valueHelp[$type] ?? null"
-                        :class="match ($type) { 'MX' => 'md:col-span-3', 'SRV' => 'md:col-span-1', default => 'md:col-span-4' }">
-                        @if ($type === 'TXT')
-                            <x-input.textarea id="r-value" feld="form.value" rows="3" maxlength="4000" wire:model="form.value" class="mt-1" placeholder="v=spf1 mx -all" />
-                        @else
-                            <x-input.text id="r-value" feld="form.value" wire:model="form.value" placeholder="{{ $placeholder[$type] ?? '' }}" class="mt-1 w-full font-mono text-sm" />
-                        @endif
-                    </x-field>
-                </div>
-
-                <div class="mt-2 flex flex-col gap-1">
-                    @if (in_array($type, ['A', 'AAAA'], true))
-                        <x-input.checkbox label="Rückwärtsauflösung (PTR)" hilfe="PK95 DNS beantwortet auch die Frage, welcher Name zu dieser Adresse gehört. Ein eigener PTR-Eintrag für die Adresse hat Vorrang." wire:model="form.ptr" />
-                    @endif
-                    <x-input.checkbox label="Aktiv" wire:model="form.enabled" />
-                </div>
-                <div class="mt-6 flex justify-end gap-2">
-                    <x-input.button type="button" color="gray" wire:click="cancel">Abbrechen</x-input.button>
-                    <x-input.button type="submit" wire:loading.attr="disabled">Speichern</x-input.button>
-                </div>
-            </form>
-        </x-panel>
+            <div class="mt-2 flex flex-col gap-1">
+                @if (in_array($type, ['A', 'AAAA'], true))
+                    <x-input.checkbox label="Rückwärtsauflösung (PTR)" hilfe="PK95 DNS beantwortet auch die Frage, welcher Name zu dieser Adresse gehört. Ein eigener PTR-Eintrag für die Adresse hat Vorrang." wire:model="form.ptr" />
+                @endif
+                <x-input.checkbox label="Aktiv" wire:model="form.enabled" />
+            </div>
+        </x-modal>
     @endif
 
     {{-- zones --}}

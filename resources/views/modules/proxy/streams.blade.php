@@ -18,56 +18,49 @@
     @endif
 
     @if ($editing !== null)
-        <x-panel class="m-3" wire:key="stream-form">
-            <form wire:submit="save">
-                <div class="text-lg font-CoconPro text-gray-900 dark:text-gray-100">{{ $editing === 'new' ? 'Stream hinzufügen' : 'Stream bearbeiten' }}</div>
-                <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4">
-                    <x-field label="Name" for="s-name" class="md:col-span-2">
-                        <x-input.text id="s-name" maxlength="60" wire:model="form.name" placeholder="Minecraft" class="mt-1 w-full" />
-                    </x-field>
-                    <x-field label="Port auf diesem Server" for="s-port">
-                        <x-input.text id="s-port" type="number" min="1" max="65535" wire:model="form.listen_port" placeholder="25565" class="mt-1 w-full" />
-                    </x-field>
-                    <x-field label="Protokoll" for="s-proto">
-                        <x-input.select id="s-proto" wire:model="form.protocol" class="mt-1">
-                            @foreach (Streams::PROTOS as $k => $label)<option value="{{ $k }}">{{ $label }}</option>@endforeach
-                        </x-input.select>
-                    </x-field>
-                    <x-field label="Ziel" for="s-target" class="md:col-span-3">
-                        <x-input.text id="s-target" wire:model="form.target_host" placeholder="10.10.250.50" class="mt-1 w-full font-mono" />
-                    </x-field>
-                    <x-field label="Ziel-Port" for="s-tport">
-                        <x-input.text id="s-tport" type="number" min="1" max="65535" wire:model="form.target_port" placeholder="25565" class="mt-1 w-full" />
-                    </x-field>
-                </div>
+        <x-modal wire:key="stream-form" submit="save">
+            <x-slot:title>{{ $editing === 'new' ? 'Stream hinzufügen' : 'Stream bearbeiten' }}</x-slot:title>
+            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4">
+                <x-field label="Name" for="s-name" class="md:col-span-2">
+                    <x-input.text id="s-name" maxlength="60" wire:model="form.name" placeholder="Minecraft" class="mt-1 w-full" />
+                </x-field>
+                <x-field label="Port auf diesem Server" for="s-port">
+                    <x-input.text id="s-port" type="number" min="1" max="65535" wire:model="form.listen_port" placeholder="25565" class="mt-1 w-full" />
+                </x-field>
+                <x-field label="Protokoll" for="s-proto">
+                    <x-input.select id="s-proto" wire:model="form.protocol" class="mt-1">
+                        @foreach (Streams::PROTOS as $k => $label)<option value="{{ $k }}">{{ $label }}</option>@endforeach
+                    </x-input.select>
+                </x-field>
+                <x-field label="Ziel" for="s-target" class="md:col-span-3">
+                    <x-input.text id="s-target" wire:model="form.target_host" placeholder="10.10.250.50" class="mt-1 w-full font-mono" />
+                </x-field>
+                <x-field label="Ziel-Port" for="s-tport">
+                    <x-input.text id="s-tport" type="number" min="1" max="65535" wire:model="form.target_port" placeholder="25565" class="mt-1 w-full" />
+                </x-field>
+            </div>
 
-                <x-form-section title="Zugriff" />
-                <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <x-field label="Erreichbarkeit" for="s-access" :hilfe="Streams::ACCESS_HINTS[$access] ?? null">
-                        <x-input.select id="s-access" wire:model.live="form.access_mode" class="mt-1">
-                            @foreach (Streams::ACCESS as $k => $label)<option value="{{ $k }}">{{ $label }}</option>@endforeach
-                        </x-input.select>
+            <x-form-section title="Zugriff" />
+            <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <x-field label="Erreichbarkeit" for="s-access" :hilfe="Streams::ACCESS_HINTS[$access] ?? null">
+                    <x-input.select id="s-access" wire:model.live="form.access_mode" class="mt-1">
+                        @foreach (Streams::ACCESS as $k => $label)<option value="{{ $k }}">{{ $label }}</option>@endforeach
+                    </x-input.select>
+                </x-field>
+                @if ($access === 'custom')
+                    <x-field label="Erlaubte IP-Adressen und Bereiche" for="s-allow">
+                        <x-input.textarea id="s-allow" rows="2" wire:model="form.ip_allow" placeholder="203.0.113.7" class="mt-1" />
                     </x-field>
-                    @if ($access === 'custom')
-                        <x-field label="Erlaubte IP-Adressen und Bereiche" for="s-allow">
-                            <x-input.textarea id="s-allow" rows="2" wire:model="form.ip_allow" placeholder="203.0.113.7" class="mt-1" />
-                        </x-field>
-                    @endif
-                </div>
+                @endif
+            </div>
 
-                <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <x-field label="Notiz" for="s-notes">
-                        <x-input.text id="s-notes" maxlength="500" wire:model="form.notes" class="mt-1 w-full" />
-                    </x-field>
-                </div>
-                <x-input.checkbox label="Aktiv" wire:model="form.enabled" />
-
-                <div class="mt-6 flex justify-end gap-2">
-                    <x-input.button type="button" color="gray" wire:click="cancel">Abbrechen</x-input.button>
-                    <x-input.button type="submit" wire:loading.attr="disabled">Speichern</x-input.button>
-                </div>
-            </form>
-        </x-panel>
+            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <x-field label="Notiz" for="s-notes">
+                    <x-input.text id="s-notes" maxlength="500" wire:model="form.notes" class="mt-1 w-full" />
+                </x-field>
+            </div>
+            <x-input.checkbox label="Aktiv" wire:model="form.enabled" />
+        </x-modal>
     @endif
 
     @if (! $streams && ! $loadError)

@@ -27,155 +27,148 @@
     @endif
 
     @if ($editing !== null)
-        <x-panel class="m-3" wire:key="host-form">
-            <form wire:submit="save">
-                <div class="text-lg font-CoconPro text-gray-900 dark:text-gray-100">{{ $editing === 'new' ? 'Host hinzufügen' : 'Host bearbeiten' }}</div>
+        <x-modal wire:key="host-form" submit="save">
+            <x-slot:title>{{ $editing === 'new' ? 'Host hinzufügen' : 'Host bearbeiten' }}</x-slot:title>
 
-                <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <x-field label="Art" for="h-kind" :hilfe="Hosts::KIND_HINTS[$kind] ?? null">
-                        <x-input.select id="h-kind" wire:model.live="form.kind" class="mt-1">
-                            @foreach (Hosts::KINDS as $k => $label)
-                                <option value="{{ $k }}">{{ $label }}</option>
+            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                <x-field label="Art" for="h-kind" :hilfe="Hosts::KIND_HINTS[$kind] ?? null">
+                    <x-input.select id="h-kind" wire:model.live="form.kind" class="mt-1">
+                        @foreach (Hosts::KINDS as $k => $label)
+                            <option value="{{ $k }}">{{ $label }}</option>
+                        @endforeach
+                    </x-input.select>
+                </x-field>
+                <x-field label="Domains" for="h-domains" hilfe="Eine pro Zeile. Der Name muss per DNS auf diesen Server zeigen." class="md:col-span-2">
+                    <x-input.textarea id="h-domains" rows="2" wire:model="form.domains" placeholder="app.example.de" class="mt-1" />
+                </x-field>
+            </div>
+
+            @if ($kind === 'proxy')
+                <x-form-section title="Ziel" />
+                <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-6">
+                    <x-field label="Protokoll" for="h-scheme">
+                        <x-input.select id="h-scheme" wire:model.live="form.scheme" class="mt-1"><option value="http">http</option><option value="https">https</option></x-input.select>
+                    </x-field>
+                    <x-field label="Ziel-Host" for="h-host" class="md:col-span-3">
+                        <x-input.text id="h-host" wire:model="form.upstream_host" placeholder="10.10.250.20" class="mt-1 w-full font-mono" />
+                    </x-field>
+                    <x-field label="Port" for="h-port" class="md:col-span-2">
+                        <x-input.text id="h-port" type="number" min="1" max="65535" wire:model="form.upstream_port" placeholder="8080" class="mt-1 w-full" />
+                    </x-field>
+                </div>
+                @if (($form['scheme'] ?? 'http') === 'https')
+                    <x-input.checkbox label="Zertifikat des Ziels nicht prüfen (für selbstsignierte Zertifikate)" wire:model="form.skip_verify" />
+                @endif
+            @elseif ($kind === 'redirect')
+                <x-form-section title="Weiterleitung" />
+                <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <x-field label="Ziel-Adresse" for="h-rurl" class="md:col-span-2">
+                        <x-input.text id="h-rurl" wire:model="form.redirect_url" placeholder="https://neue-domain.de" class="mt-1 w-full font-mono" />
+                    </x-field>
+                    <x-field label="Status" for="h-rcode" hilfe="Browser merken sich 301 und 308 sehr lange. Nimm 302, solange du nicht ganz sicher bist.">
+                        <x-input.select id="h-rcode" wire:model="form.redirect_code" class="mt-1">
+                            <option value="302">302: vorübergehend</option>
+                            <option value="301">301: dauerhaft</option>
+                            <option value="307">307: vorübergehend, Methode bleibt</option>
+                            <option value="308">308: dauerhaft, Methode bleibt</option>
+                        </x-input.select>
+                    </x-field>
+                </div>
+                <x-input.checkbox label="Pfad und Abfrage an die Ziel-Adresse anhängen" wire:model="form.redirect_keep_path" />
+            @elseif ($kind === 'status')
+                <x-form-section title="Statusseite" />
+                <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <x-field label="Titel der Seite" for="h-stitle">
+                        <x-input.text id="h-stitle" maxlength="80" wire:model="form.status_title" placeholder="Status" class="mt-1 w-full" />
+                    </x-field>
+                    <x-field label="Angezeigte Dienste" class="md:col-span-2" hilfe="Besucher sehen die Domain und den Zustand, nie das Ziel oder interne Adressen.">
+                        @if ($proxies)
+                            <div class="mt-1 grid max-h-56 grid-cols-1 gap-x-4 overflow-y-auto rounded-lg border border-gray-200 p-2 sm:grid-cols-2 dark:border-gray-700">
+                                @foreach ($proxies as $p)
+                                    <x-input.checkbox :label="$p['domains'][0].($p['enabled'] ? '' : ' (deaktiviert)')" value="{{ $p['id'] }}" wire:model="form.status_hosts" />
+                                @endforeach
+                            </div>
+                        @else
+                            <p class="mt-1 text-sm text-gray-500">Es gibt noch keinen Reverse Proxy.</p>
+                        @endif
+                    </x-field>
+                </div>
+            @endif
+
+            <div class="mt-4">
+                <x-input.checkbox label="Aktiv (Caddy holt dann sofort das Zertifikat)" wire:model="form.enabled" />
+            </div>
+
+            @if ($kind === 'proxy')
+                <x-form-section title="Wartung" />
+                <x-input.checkbox label="Wartungsseite statt des Dienstes anzeigen" hilfe="Während der Wartung gibt es keine Prüfung und keine Ausfallmeldungen." wire:model.live="form.maintenance" />
+                @if (! empty($form['maintenance']))
+                    <div class="mt-2 grid grid-cols-1 gap-3 pl-6">
+                        <x-input.checkbox label="Aus internen Netzen weiter normal erreichbar" wire:model="form.maintenance_bypass" />
+                        <x-field label="Text für diesen Host" for="h-mtext" hilfe="Leer lassen für den Text von der Seite Fehlerseiten.">
+                            <x-input.textarea id="h-mtext" rows="2" maxlength="1000" wire:model="form.maintenance_text" placeholder="Zum Beispiel: Wir sind gegen 18 Uhr wieder da." class="mt-1 font-sans text-sm" />
+                        </x-field>
+                    </div>
+                @endif
+            @endif
+
+            <x-form-section title="Zugriff" />
+            @if (! in_array($kind, ['redirect', 'dead'], true))
+                <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <x-field label="Zugriffsliste" for="h-al" hilfe="Ohne Liste kann jeder mit dem Link den Dienst aufrufen. Listen, auch „Intern“ mit deinen internen Netzen, bearbeitest du unter Zugriffslisten.">
+                        <x-input.select id="h-al" wire:model.live="form.access_list_id" class="mt-1">
+                            <option value="0">Keine: öffentlich erreichbar</option>
+                            @foreach ($lists as $l)
+                                <option value="{{ $l['id'] }}">{{ $l['name'] }}</option>
                             @endforeach
                         </x-input.select>
                     </x-field>
-                    <x-field label="Domains" for="h-domains" hilfe="Eine pro Zeile. Der Name muss per DNS auf diesen Server zeigen." class="md:col-span-2">
-                        <x-input.textarea id="h-domains" rows="2" wire:model="form.domains" placeholder="app.example.de" class="mt-1" />
-                    </x-field>
                 </div>
-
-                @if ($kind === 'proxy')
-                    <x-form-section title="Ziel" />
-                    <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-6">
-                        <x-field label="Protokoll" for="h-scheme">
-                            <x-input.select id="h-scheme" wire:model.live="form.scheme" class="mt-1"><option value="http">http</option><option value="https">https</option></x-input.select>
-                        </x-field>
-                        <x-field label="Ziel-Host" for="h-host" class="md:col-span-3">
-                            <x-input.text id="h-host" wire:model="form.upstream_host" placeholder="10.10.250.20" class="mt-1 w-full font-mono" />
-                        </x-field>
-                        <x-field label="Port" for="h-port" class="md:col-span-2">
-                            <x-input.text id="h-port" type="number" min="1" max="65535" wire:model="form.upstream_port" placeholder="8080" class="mt-1 w-full" />
-                        </x-field>
-                    </div>
-                    @if (($form['scheme'] ?? 'http') === 'https')
-                        <x-input.checkbox label="Zertifikat des Ziels nicht prüfen (für selbstsignierte Zertifikate)" wire:model="form.skip_verify" />
-                    @endif
-                @elseif ($kind === 'redirect')
-                    <x-form-section title="Weiterleitung" />
-                    <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
-                        <x-field label="Ziel-Adresse" for="h-rurl" class="md:col-span-2">
-                            <x-input.text id="h-rurl" wire:model="form.redirect_url" placeholder="https://neue-domain.de" class="mt-1 w-full font-mono" />
-                        </x-field>
-                        <x-field label="Status" for="h-rcode" hilfe="Browser merken sich 301 und 308 sehr lange. Nimm 302, solange du nicht ganz sicher bist.">
-                            <x-input.select id="h-rcode" wire:model="form.redirect_code" class="mt-1">
-                                <option value="302">302: vorübergehend</option>
-                                <option value="301">301: dauerhaft</option>
-                                <option value="307">307: vorübergehend, Methode bleibt</option>
-                                <option value="308">308: dauerhaft, Methode bleibt</option>
-                            </x-input.select>
-                        </x-field>
-                    </div>
-                    <x-input.checkbox label="Pfad und Abfrage an die Ziel-Adresse anhängen" wire:model="form.redirect_keep_path" />
-                @elseif ($kind === 'status')
-                    <x-form-section title="Statusseite" />
-                    <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
-                        <x-field label="Titel der Seite" for="h-stitle">
-                            <x-input.text id="h-stitle" maxlength="80" wire:model="form.status_title" placeholder="Status" class="mt-1 w-full" />
-                        </x-field>
-                        <x-field label="Angezeigte Dienste" class="md:col-span-2" hilfe="Besucher sehen die Domain und den Zustand, nie das Ziel oder interne Adressen.">
-                            @if ($proxies)
-                                <div class="mt-1 grid max-h-56 grid-cols-1 gap-x-4 overflow-y-auto rounded-lg border border-gray-200 p-2 sm:grid-cols-2 dark:border-gray-700">
-                                    @foreach ($proxies as $p)
-                                        <x-input.checkbox :label="$p['domains'][0].($p['enabled'] ? '' : ' (deaktiviert)')" value="{{ $p['id'] }}" wire:model="form.status_hosts" />
-                                    @endforeach
-                                </div>
-                            @else
-                                <p class="mt-1 text-sm text-gray-500">Es gibt noch keinen Reverse Proxy.</p>
-                            @endif
-                        </x-field>
-                    </div>
+                @if (in_array((string) ($form['access_list_id'] ?? '0'), $listsWithUsers, true))
+                    <x-callout title="Hinweis" class="mt-3">Apps und Schnittstellen können sich auf der Login-Seite nicht anmelden. Sie brauchen eine erlaubte IP-Adresse mit „Eine Bedingung genügt“.</x-callout>
                 @endif
-
-                <div class="mt-4">
-                    <x-input.checkbox label="Aktiv (Caddy holt dann sofort das Zertifikat)" wire:model="form.enabled" />
+            @endif
+            @if ($kind === 'proxy')
+                <div class="mt-2">
+                    <x-input.checkbox label="Häufige Angriffe blockieren (Block Common Exploits)" wire:model="form.block_exploits"
+                        hilfe="Antwortet mit 403 auf typische SQL- und Datei-Injection, bekannte Angriffs- und Spam-Muster und einige Werkzeuge, Regeln wie in Nginx Proxy Manager. Dazu auf .git, .env und wp-config.php. Das kann selten auch echte Anfragen treffen, etwa eine unkodierte Adresse wie ?redirect=http://…" />
                 </div>
+            @endif
 
-                @if ($kind === 'proxy')
-                    <x-form-section title="Wartung" />
-                    <x-input.checkbox label="Wartungsseite statt des Dienstes anzeigen" hilfe="Während der Wartung gibt es keine Prüfung und keine Ausfallmeldungen." wire:model.live="form.maintenance" />
-                    @if (! empty($form['maintenance']))
-                        <div class="mt-2 grid grid-cols-1 gap-3 pl-6">
-                            <x-input.checkbox label="Aus internen Netzen weiter normal erreichbar" wire:model="form.maintenance_bypass" />
-                            <x-field label="Text für diesen Host" for="h-mtext" hilfe="Leer lassen für den Text von der Seite Fehlerseiten.">
-                                <x-input.textarea id="h-mtext" rows="2" maxlength="1000" wire:model="form.maintenance_text" placeholder="Zum Beispiel: Wir sind gegen 18 Uhr wieder da." class="mt-1 font-sans text-sm" />
-                            </x-field>
-                        </div>
-                    @endif
-                @endif
+            <x-form-section title="Verschlüsselung" />
+            <div class="mt-2 flex flex-col gap-1">
+                <x-input.checkbox label="HTTPS erzwingen" wire:model.live="form.force_https"
+                    :hilfe="empty($form['force_https']) ? 'Ohne HTTPS-Zwang ist der Dienst auch unverschlüsselt über Port 80 erreichbar. Nur für alte Geräte sinnvoll, die kein HTTPS können.' : null" />
+                <x-input.checkbox label="HSTS senden (Browser erzwingen ein Jahr lang HTTPS)" wire:model="form.hsts" :disabled="empty($form['force_https'])" />
+            </div>
+            <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <x-field label="TLS-Mindestversion" for="h-tls">
+                    <x-input.select id="h-tls" wire:model="form.tls_min" class="mt-1">
+                        <option value="1.2">TLS 1.2: passt für fast alle Geräte</option>
+                        <option value="1.3">TLS 1.3: nur aktuelle Geräte</option>
+                    </x-input.select>
+                </x-field>
+            </div>
+            <x-input.checkbox label="An BSI TR-02102-2 (2026-01) ausrichten" wire:model="form.tls_bsi"
+                hilfe="TLS 1.2 nur noch mit AES-GCM und Forward Secrecy, Schlüsseleinigung nur mit den Kurven P-256, P-384 und P-521. Dadurch entfällt die quantensichere Schlüsseleinigung, die Browser sonst nutzen, weil das BSI sie noch nicht empfiehlt. Volle Konformität ist nicht möglich: TLS 1.3 bietet weiter auch ChaCha20 an, das lässt sich in Caddy nicht abschalten." />
 
-                <x-form-section title="Zugriff" />
-                @if (! in_array($kind, ['redirect', 'dead'], true))
-                    <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <x-field label="Zugriffsliste" for="h-al" hilfe="Ohne Liste kann jeder mit dem Link den Dienst aufrufen. Listen, auch „Intern“ mit deinen internen Netzen, bearbeitest du unter Zugriffslisten.">
-                            <x-input.select id="h-al" wire:model.live="form.access_list_id" class="mt-1">
-                                <option value="0">Keine: öffentlich erreichbar</option>
-                                @foreach ($lists as $l)
-                                    <option value="{{ $l['id'] }}">{{ $l['name'] }}</option>
-                                @endforeach
-                            </x-input.select>
-                        </x-field>
-                    </div>
-                    @if (in_array((string) ($form['access_list_id'] ?? '0'), $listsWithUsers, true))
-                        <x-callout title="Hinweis" class="mt-3">Apps und Schnittstellen können sich auf der Login-Seite nicht anmelden. Sie brauchen eine erlaubte IP-Adresse mit „Eine Bedingung genügt“.</x-callout>
-                    @endif
-                @endif
-                @if ($kind === 'proxy')
-                    <div class="mt-2">
-                        <x-input.checkbox label="Häufige Angriffe blockieren (Block Common Exploits)" wire:model="form.block_exploits"
-                            hilfe="Antwortet mit 403 auf typische SQL- und Datei-Injection, bekannte Angriffs- und Spam-Muster und einige Werkzeuge, Regeln wie in Nginx Proxy Manager. Dazu auf .git, .env und wp-config.php. Das kann selten auch echte Anfragen treffen, etwa eine unkodierte Adresse wie ?redirect=http://…" />
-                    </div>
-                @endif
-
-                <x-form-section title="Verschlüsselung" />
-                <div class="mt-2 flex flex-col gap-1">
-                    <x-input.checkbox label="HTTPS erzwingen" wire:model.live="form.force_https"
-                        :hilfe="empty($form['force_https']) ? 'Ohne HTTPS-Zwang ist der Dienst auch unverschlüsselt über Port 80 erreichbar. Nur für alte Geräte sinnvoll, die kein HTTPS können.' : null" />
-                    <x-input.checkbox label="HSTS senden (Browser erzwingen ein Jahr lang HTTPS)" wire:model="form.hsts" :disabled="empty($form['force_https'])" />
-                </div>
-                <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <x-field label="TLS-Mindestversion" for="h-tls">
-                        <x-input.select id="h-tls" wire:model="form.tls_min" class="mt-1">
-                            <option value="1.2">TLS 1.2: passt für fast alle Geräte</option>
-                            <option value="1.3">TLS 1.3: nur aktuelle Geräte</option>
-                        </x-input.select>
-                    </x-field>
-                </div>
-                <x-input.checkbox label="An BSI TR-02102-2 (2026-01) ausrichten" wire:model="form.tls_bsi"
-                    hilfe="TLS 1.2 nur noch mit AES-GCM und Forward Secrecy, Schlüsseleinigung nur mit den Kurven P-256, P-384 und P-521. Dadurch entfällt die quantensichere Schlüsseleinigung, die Browser sonst nutzen, weil das BSI sie noch nicht empfiehlt. Volle Konformität ist nicht möglich: TLS 1.3 bietet weiter auch ChaCha20 an, das lässt sich in Caddy nicht abschalten." />
-
-                <x-form-section title="Erweitert" />
-                <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <x-field label="Sicherheits-Header" for="h-sec" hilfe="Header, die die Anwendung selbst sendet, bleiben unverändert. „Streng“ verhindert das Einbetten in andere Seiten, zum Beispiel in ein Home-Assistant-Dashboard.">
-                        <x-input.select id="h-sec" wire:model="form.security_headers" class="mt-1">
-                            <option value="off">Aus</option>
-                            <option value="basic">Standard: sicher für fast alle Anwendungen</option>
-                            <option value="strict">Streng: auch gegen Einbetten, ohne Kamera und Standort</option>
-                        </x-input.select>
-                    </x-field>
-                    <x-field label="Notiz" for="h-notes">
-                        <x-input.text id="h-notes" maxlength="500" wire:model="form.notes" class="mt-1 w-full" />
-                    </x-field>
-                </div>
-                @if ($kind === 'proxy')
-                    <x-input.checkbox label="Host-Header auf das Ziel setzen (nötig bei manchen externen Diensten)" wire:model="form.upstream_host_header" />
-                @endif
-
-                <div class="mt-6 flex justify-end gap-2">
-                    <x-input.button type="button" color="gray" wire:click="cancel">Abbrechen</x-input.button>
-                    <x-input.button type="submit" wire:loading.attr="disabled">Speichern</x-input.button>
-                </div>
-            </form>
-        </x-panel>
+            <x-form-section title="Erweitert" />
+            <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <x-field label="Sicherheits-Header" for="h-sec" hilfe="Header, die die Anwendung selbst sendet, bleiben unverändert. „Streng“ verhindert das Einbetten in andere Seiten, zum Beispiel in ein Home-Assistant-Dashboard.">
+                    <x-input.select id="h-sec" wire:model="form.security_headers" class="mt-1">
+                        <option value="off">Aus</option>
+                        <option value="basic">Standard: sicher für fast alle Anwendungen</option>
+                        <option value="strict">Streng: auch gegen Einbetten, ohne Kamera und Standort</option>
+                    </x-input.select>
+                </x-field>
+                <x-field label="Notiz" for="h-notes">
+                    <x-input.text id="h-notes" maxlength="500" wire:model="form.notes" class="mt-1 w-full" />
+                </x-field>
+            </div>
+            @if ($kind === 'proxy')
+                <x-input.checkbox label="Host-Header auf das Ziel setzen (nötig bei manchen externen Diensten)" wire:model="form.upstream_host_header" />
+            @endif
+        </x-modal>
     @endif
 
     <div class="m-3 flex flex-wrap gap-1" role="group" aria-label="Art">

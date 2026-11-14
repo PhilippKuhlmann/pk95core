@@ -245,13 +245,14 @@ document.addEventListener('alpine:init', () => {
     // $store.confirm.ask({ title, text, button, tone: 'red'|'blue', ok: () => $wire.delete(1) })
     // or on a classic form: <form data-confirm="Text" data-confirm-title="…" data-confirm-button="…">
     Alpine.store('confirm', {
-        open: false, title: '', text: '', button: 'Löschen', tone: 'red', onOk: null,
+        open: false, title: '', text: '', button: 'Löschen', tone: 'red', onOk: null, from: null,
         ask(opts) {
             this.title = opts.title || 'Wirklich fortfahren?';
             this.text = opts.text || '';
             this.button = opts.button || 'Bestätigen';
             this.tone = opts.tone || 'red';
             this.onOk = opts.ok || null;
+            this.from = document.activeElement;
             this.open = true;
             setTimeout(() => document.getElementById('confirm-cancel')?.focus(), 30);
         },
@@ -259,10 +260,89 @@ document.addEventListener('alpine:init', () => {
             const fn = this.onOk;
             this.open = false;
             this.onOk = null;
+            this.from = null;
             if (fn) fn();
         },
-        cancel() { this.open = false; this.onOk = null; },
+        // back to where the question came from (a button, or a field of an open form dialog)
+        cancel() {
+            const from = this.from;
+            this.open = false;
+            this.onOk = null;
+            this.from = null;
+            if (from?.isConnected) setTimeout(() => from.focus(), 0);
+        },
     });
+
+    // ---- modal: form dialog of a Livewire page (x-modal) ---------------------------------------
+    // The page decides whether it is open (renders it or not). Here: focus into the first field,
+    // keep Tab inside, back to the opening button afterwards; Esc, the backdrop and Abbrechen ask
+    // before unsaved changes are thrown away; the page behind does not scroll.
+    let modalsOpen = 0;
+    Alpine.data('modal', (cfg) => ({
+        dirty: false,
+        shown: false,
+        returnTo: null,
+        returnSel: null,
+        init() {
+            const a = document.activeElement;
+            if (a && a !== document.body && !this.$root.contains(a)) {
+                this.returnTo = a;
+                // the button may be replaced by a re-render: find it again by its action
+                const click = a.getAttribute('wire:click');
+                this.returnSel = click ? `[wire\\:click="${click.replace(/["\\]/g, '\\$&')}"]` : null;
+            }
+            if (modalsOpen++ === 0) document.documentElement.classList.add('overflow-hidden');
+            this.$nextTick(() => {
+                this.shown = true;
+                this.focusFirst();
+            });
+        },
+        destroy() {
+            modalsOpen = Math.max(0, modalsOpen - 1);
+            if (modalsOpen === 0) document.documentElement.classList.remove('overflow-hidden');
+            const [back, sel] = [this.returnTo, this.returnSel];
+            setTimeout(() => {
+                const el = back?.isConnected ? back : (sel ? document.querySelector(sel) : null);
+                el?.focus();
+            }, 30);
+        },
+        focusables() {
+            return [...this.$refs.panel.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+                .filter((el) => el.getClientRects().length > 0);
+        },
+        focusFirst() {
+            const fields = [...this.$refs.body.querySelectorAll('input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), button[role=combobox]')]
+                .filter((el) => el.getClientRects().length > 0);
+            (fields[0] ?? this.focusables()[0])?.focus();
+        },
+        trap(e) {
+            const list = this.focusables();
+            if (!list.length) return;
+            const [first, last] = [list[0], list[list.length - 1]];
+            if (!this.$refs.panel.contains(document.activeElement)) {
+                e.preventDefault();
+                first.focus();
+            } else if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        },
+        requestClose() {
+            const confirm = Alpine.store('confirm');
+            if (confirm.open) return;
+            if (!this.dirty) {
+                this.$wire.call(cfg.close);
+                return;
+            }
+            confirm.ask({
+                title: 'Änderungen verwerfen?', text: 'Was du in diesem Formular geändert hast, wird nicht gespeichert.',
+                button: 'Verwerfen', ok: () => this.$wire.call(cfg.close),
+            });
+        },
+    }));
     document.addEventListener('submit', (ev) => {
         const form = ev.target;
         if (form.dataset && form.dataset.confirm !== undefined && form.dataset.confirmed !== '1') {

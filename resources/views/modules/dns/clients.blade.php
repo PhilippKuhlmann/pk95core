@@ -17,59 +17,52 @@
     @endif
 
     @if ($editing !== null)
-        <x-panel class="m-3" wire:key="client-form">
-            <form wire:submit="save">
-                <div class="text-lg font-CoconPro text-gray-900 dark:text-gray-100">{{ $editing === 'new' ? 'Client hinzufügen' : 'Client bearbeiten' }}</div>
-                <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <x-field label="Name" for="c-name" feld="form.name">
-                        <x-input.text id="c-name" feld="form.name" maxlength="80" wire:model="form.name" placeholder="Kinder-Tablet" class="mt-1 w-full" />
-                    </x-field>
-                    <x-field label="IP-Adressen und Netze" for="c-ids" feld="form.ids" hilfe="Eine Angabe pro Zeile, etwa 192.168.1.40 oder 192.168.50.0/24. Höchstens 50.">
-                        <x-input.textarea id="c-ids" feld="form.ids" rows="3" wire:model="form.ids" placeholder="192.168.1.40" class="mt-1" />
-                    </x-field>
+        <x-modal wire:key="client-form" submit="save">
+            <x-slot:title>{{ $editing === 'new' ? 'Client hinzufügen' : 'Client bearbeiten' }}</x-slot:title>
+            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <x-field label="Name" for="c-name" feld="form.name">
+                    <x-input.text id="c-name" feld="form.name" maxlength="80" wire:model="form.name" placeholder="Kinder-Tablet" class="mt-1 w-full" />
+                </x-field>
+                <x-field label="IP-Adressen und Netze" for="c-ids" feld="form.ids" hilfe="Eine Angabe pro Zeile, etwa 192.168.1.40 oder 192.168.50.0/24. Höchstens 50.">
+                    <x-input.textarea id="c-ids" feld="form.ids" rows="3" wire:model="form.ids" placeholder="192.168.1.40" class="mt-1" />
+                </x-field>
+            </div>
+
+            <x-form-section title="Filter und SafeSearch" />
+            <x-input.checkbox label="Globale Einstellungen verwenden" hilfe="Filter und SafeSearch wie unter Einstellungen." wire:model.live="form.use_global_settings" />
+            @unless ($form['use_global_settings'])
+                <div class="mt-2 flex flex-col gap-1 border-l-2 border-gray-200 pl-4 dark:border-gray-700">
+                    <x-input.checkbox label="Filtern" hilfe="Aus: Für diesen Client wird nichts blockiert." wire:model="form.filtering_enabled" />
+                    <x-input.checkbox label="SafeSearch erzwingen" wire:model.live="form.safesearch.enabled" />
+                    @if ($form['safesearch']['enabled'])
+                        <div class="ml-6 flex flex-wrap gap-x-5">
+                            @foreach (Fmt::ENGINES as $key => $label)
+                                <x-input.checkbox :label="$label" wire:model="form.safesearch.{{ $key }}" />
+                            @endforeach
+                        </div>
+                    @endif
+                    <x-input.fehler feld="form.safesearch" />
                 </div>
+            @endunless
 
-                <x-form-section title="Filter und SafeSearch" />
-                <x-input.checkbox label="Globale Einstellungen verwenden" hilfe="Filter und SafeSearch wie unter Einstellungen." wire:model.live="form.use_global_settings" />
-                @unless ($form['use_global_settings'])
-                    <div class="mt-2 flex flex-col gap-1 border-l-2 border-gray-200 pl-4 dark:border-gray-700">
-                        <x-input.checkbox label="Filtern" hilfe="Aus: Für diesen Client wird nichts blockiert." wire:model="form.filtering_enabled" />
-                        <x-input.checkbox label="SafeSearch erzwingen" wire:model.live="form.safesearch.enabled" />
-                        @if ($form['safesearch']['enabled'])
-                            <div class="ml-6 flex flex-wrap gap-x-5">
-                                @foreach (Fmt::ENGINES as $key => $label)
-                                    <x-input.checkbox :label="$label" wire:model="form.safesearch.{{ $key }}" />
-                                @endforeach
-                            </div>
-                        @endif
-                        <x-input.fehler feld="form.safesearch" />
-                    </div>
-                @endunless
-
-                <x-form-section title="Blockierte Dienste" />
-                <x-input.checkbox label="Global blockierte Dienste verwenden" wire:model.live="form.use_global_services" />
-                @unless ($form['use_global_services'])
-                    <div class="mt-2 grid grid-cols-1 gap-4 border-l-2 border-gray-200 pl-4 sm:grid-cols-2 xl:grid-cols-4 dark:border-gray-700">
-                        @foreach ($serviceGroups as $group => $services)
-                            <div wire:key="cg-{{ $group }}">
-                                <div class="text-xs font-semibold uppercase tracking-wide {{ $muted }}">{{ Fmt::GROUPS[$group] }}</div>
-                                @foreach ($services as $s)
-                                    <label class="mt-1 flex items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
-                                        <input type="checkbox" value="{{ $s['id'] }}" wire:model="form.blocked_services" class="rounded border-gray-300 text-rose-600 focus:ring-rose-500 dark:border-gray-600 dark:bg-gray-700">{{ $s['name'] }}
-                                    </label>
-                                @endforeach
-                            </div>
-                        @endforeach
-                    </div>
-                    <x-input.fehler feld="form.blocked_services" />
-                @endunless
-
-                <div class="mt-6 flex justify-end gap-2">
-                    <x-input.button type="button" color="gray" wire:click="cancel">Abbrechen</x-input.button>
-                    <x-input.button type="submit" wire:loading.attr="disabled">Speichern</x-input.button>
+            <x-form-section title="Blockierte Dienste" />
+            <x-input.checkbox label="Global blockierte Dienste verwenden" wire:model.live="form.use_global_services" />
+            @unless ($form['use_global_services'])
+                <div class="mt-2 grid grid-cols-1 gap-4 border-l-2 border-gray-200 pl-4 sm:grid-cols-2 xl:grid-cols-4 dark:border-gray-700">
+                    @foreach ($serviceGroups as $group => $services)
+                        <div wire:key="cg-{{ $group }}">
+                            <div class="text-xs font-semibold uppercase tracking-wide {{ $muted }}">{{ Fmt::GROUPS[$group] }}</div>
+                            @foreach ($services as $s)
+                                <label class="mt-1 flex items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
+                                    <input type="checkbox" value="{{ $s['id'] }}" wire:model="form.blocked_services" class="rounded border-gray-300 text-rose-600 focus:ring-rose-500 dark:border-gray-600 dark:bg-gray-700">{{ $s['name'] }}
+                                </label>
+                            @endforeach
+                        </div>
+                    @endforeach
                 </div>
-            </form>
-        </x-panel>
+                <x-input.fehler feld="form.blocked_services" />
+            @endunless
+        </x-modal>
     @endif
 
     @if ($clients)

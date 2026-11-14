@@ -34,108 +34,101 @@
 
     {{-- create / edit --}}
     @if ($editing !== null)
-        <x-panel class="m-3" wire:key="monitor-form">
-            <form wire:submit="save">
-                <div class="text-lg font-CoconPro text-gray-900 dark:text-gray-100">{{ $editing === 'new' ? 'Neuer Monitor' : 'Monitor bearbeiten' }}</div>
+        <x-modal wire:key="monitor-form" submit="save">
+            <x-slot:title>{{ $editing === 'new' ? 'Neuer Monitor' : 'Monitor bearbeiten' }}</x-slot:title>
 
-                <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <x-field label="Name" for="m-name" feld="form.name" required>
-                        <x-input.text id="m-name" feld="form.name" wire:model="form.name" class="mt-1 w-full" />
-                    </x-field>
-                    <x-field label="Gruppe" for="m-group" feld="form.group" hilfe="Leer = ohne Gruppe">
-                        <x-input.text id="m-group" feld="form.group" wire:model="form.group" class="mt-1 w-full" />
-                    </x-field>
-                    <x-field label="Typ" for="m-type" feld="form.type">
-                        <x-input.select id="m-type" feld="form.type" wire:model.live="form.type" class="mt-1" :disabled="$editing !== 'new'">
-                            @foreach ($types as $key => $label)
-                                <option value="{{ $key }}">{{ $label }}</option>
-                            @endforeach
-                        </x-input.select>
-                    </x-field>
-                </div>
+            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                <x-field label="Name" for="m-name" feld="form.name" required>
+                    <x-input.text id="m-name" feld="form.name" wire:model="form.name" class="mt-1 w-full" />
+                </x-field>
+                <x-field label="Gruppe" for="m-group" feld="form.group" hilfe="Leer = ohne Gruppe">
+                    <x-input.text id="m-group" feld="form.group" wire:model="form.group" class="mt-1 w-full" />
+                </x-field>
+                <x-field label="Typ" for="m-type" feld="form.type">
+                    <x-input.select id="m-type" feld="form.type" wire:model.live="form.type" class="mt-1" :disabled="$editing !== 'new'">
+                        @foreach ($types as $key => $label)
+                            <option value="{{ $key }}">{{ $label }}</option>
+                        @endforeach
+                    </x-input.select>
+                </x-field>
+            </div>
 
-                <x-form-section title="Ziel" />
-                <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
-                    @switch($form['type'] ?? 'http')
-                        @case('http')
-                            <x-field label="URL" for="m-url" feld="form.url" class="md:col-span-2" required>
-                                <x-input.text id="m-url" feld="form.url" wire:model="form.url" class="mt-1 w-full font-mono" />
+            <x-form-section title="Ziel" />
+            <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
+                @switch($form['type'] ?? 'http')
+                    @case('http')
+                        <x-field label="URL" for="m-url" feld="form.url" class="md:col-span-2" required>
+                            <x-input.text id="m-url" feld="form.url" wire:model="form.url" class="mt-1 w-full font-mono" />
+                        </x-field>
+                        <x-field label="Methode" for="m-method" feld="form.method">
+                            <x-input.select id="m-method" wire:model="form.method" class="mt-1"><option>GET</option><option>HEAD</option></x-input.select>
+                        </x-field>
+                        <x-field label="Erwartete Statuscodes" for="m-acc" feld="form.acceptedStatus" hilfe="z. B. 200-299,301">
+                            <x-input.text id="m-acc" feld="form.acceptedStatus" wire:model="form.acceptedStatus" class="mt-1 w-full font-mono" />
+                        </x-field>
+                        <x-field label="Suchwort" for="m-kw" feld="form.keyword" hilfe="Optional: muss in der Antwort vorkommen">
+                            <x-input.text id="m-kw" feld="form.keyword" wire:model="form.keyword" class="mt-1 w-full" />
+                        </x-field>
+                        <x-field label="Zertifikatswarnung (Tage)" for="m-cwd" feld="form.certWarnDays" hilfe="0 = aus">
+                            <x-input.text id="m-cwd" type="number" feld="form.certWarnDays" wire:model="form.certWarnDays" class="mt-1 w-full" />
+                        </x-field>
+                        <div class="flex flex-col gap-1 md:col-span-3">
+                            <x-input.checkbox label="Weiterleitungen folgen" wire:model="form.followRedirects" />
+                            <x-input.checkbox label="Suchwort darf NICHT vorkommen" wire:model="form.keywordInverted" />
+                            <x-input.checkbox label="Ungültige Zertifikate akzeptieren" wire:model="form.ignoreTlsErrors" />
+                        </div>
+                        @break
+                    @case('push')
+                        <x-field label="Kulanzzeit (Sekunden)" for="m-grace" feld="form.graceSeconds" hilfe="Zusätzlich zum Intervall, bevor der Monitor als ausgefallen gilt">
+                            <x-input.text id="m-grace" type="number" feld="form.graceSeconds" wire:model="form.graceSeconds" class="mt-1 w-full" />
+                        </x-field>
+                        @break
+                    @default
+                        <x-field label="Host" for="m-host" feld="form.host" required>
+                            <x-input.text id="m-host" feld="form.host" wire:model="form.host" class="mt-1 w-full font-mono" />
+                        </x-field>
+                        @if (in_array($form['type'], ['tcp', 'certificate'], true))
+                            <x-field label="Port" for="m-port" feld="form.port">
+                                <x-input.text id="m-port" type="number" feld="form.port" wire:model="form.port" class="mt-1 w-full" />
                             </x-field>
-                            <x-field label="Methode" for="m-method" feld="form.method">
-                                <x-input.select id="m-method" wire:model="form.method" class="mt-1"><option>GET</option><option>HEAD</option></x-input.select>
+                        @endif
+                        @if ($form['type'] === 'certificate')
+                            <x-field label="Warnen ab (Tage)" for="m-wd" feld="form.warnDays">
+                                <x-input.text id="m-wd" type="number" feld="form.warnDays" wire:model="form.warnDays" class="mt-1 w-full" />
                             </x-field>
-                            <x-field label="Erwartete Statuscodes" for="m-acc" feld="form.acceptedStatus" hilfe="z. B. 200-299,301">
-                                <x-input.text id="m-acc" feld="form.acceptedStatus" wire:model="form.acceptedStatus" class="mt-1 w-full font-mono" />
+                        @endif
+                        @if ($form['type'] === 'dns')
+                            <x-field label="Eintragstyp" for="m-rt" feld="form.recordType">
+                                <x-input.select id="m-rt" wire:model="form.recordType" class="mt-1">
+                                    @foreach (['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS'] as $rt)<option>{{ $rt }}</option>@endforeach
+                                </x-input.select>
                             </x-field>
-                            <x-field label="Suchwort" for="m-kw" feld="form.keyword" hilfe="Optional: muss in der Antwort vorkommen">
-                                <x-input.text id="m-kw" feld="form.keyword" wire:model="form.keyword" class="mt-1 w-full" />
+                            <x-field label="Erwarteter Wert" for="m-exp" feld="form.expected" hilfe="Optional">
+                                <x-input.text id="m-exp" feld="form.expected" wire:model="form.expected" class="mt-1 w-full font-mono" />
                             </x-field>
-                            <x-field label="Zertifikatswarnung (Tage)" for="m-cwd" feld="form.certWarnDays" hilfe="0 = aus">
-                                <x-input.text id="m-cwd" type="number" feld="form.certWarnDays" wire:model="form.certWarnDays" class="mt-1 w-full" />
+                            <x-field label="Resolver" for="m-res" feld="form.resolver" hilfe="Optional, IP-Adresse">
+                                <x-input.text id="m-res" feld="form.resolver" wire:model="form.resolver" class="mt-1 w-full font-mono" />
                             </x-field>
-                            <div class="flex flex-col gap-1 md:col-span-3">
-                                <x-input.checkbox label="Weiterleitungen folgen" wire:model="form.followRedirects" />
-                                <x-input.checkbox label="Suchwort darf NICHT vorkommen" wire:model="form.keywordInverted" />
-                                <x-input.checkbox label="Ungültige Zertifikate akzeptieren" wire:model="form.ignoreTlsErrors" />
-                            </div>
-                            @break
-                        @case('push')
-                            <x-field label="Kulanzzeit (Sekunden)" for="m-grace" feld="form.graceSeconds" hilfe="Zusätzlich zum Intervall, bevor der Monitor als ausgefallen gilt">
-                                <x-input.text id="m-grace" type="number" feld="form.graceSeconds" wire:model="form.graceSeconds" class="mt-1 w-full" />
-                            </x-field>
-                            @break
-                        @default
-                            <x-field label="Host" for="m-host" feld="form.host" required>
-                                <x-input.text id="m-host" feld="form.host" wire:model="form.host" class="mt-1 w-full font-mono" />
-                            </x-field>
-                            @if (in_array($form['type'], ['tcp', 'certificate'], true))
-                                <x-field label="Port" for="m-port" feld="form.port">
-                                    <x-input.text id="m-port" type="number" feld="form.port" wire:model="form.port" class="mt-1 w-full" />
-                                </x-field>
-                            @endif
-                            @if ($form['type'] === 'certificate')
-                                <x-field label="Warnen ab (Tage)" for="m-wd" feld="form.warnDays">
-                                    <x-input.text id="m-wd" type="number" feld="form.warnDays" wire:model="form.warnDays" class="mt-1 w-full" />
-                                </x-field>
-                            @endif
-                            @if ($form['type'] === 'dns')
-                                <x-field label="Eintragstyp" for="m-rt" feld="form.recordType">
-                                    <x-input.select id="m-rt" wire:model="form.recordType" class="mt-1">
-                                        @foreach (['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS'] as $rt)<option>{{ $rt }}</option>@endforeach
-                                    </x-input.select>
-                                </x-field>
-                                <x-field label="Erwarteter Wert" for="m-exp" feld="form.expected" hilfe="Optional">
-                                    <x-input.text id="m-exp" feld="form.expected" wire:model="form.expected" class="mt-1 w-full font-mono" />
-                                </x-field>
-                                <x-field label="Resolver" for="m-res" feld="form.resolver" hilfe="Optional, IP-Adresse">
-                                    <x-input.text id="m-res" feld="form.resolver" wire:model="form.resolver" class="mt-1 w-full font-mono" />
-                                </x-field>
-                            @endif
-                    @endswitch
-                </div>
+                        @endif
+                @endswitch
+            </div>
 
-                <x-form-section title="Prüfung" />
-                <div class="mt-3 grid grid-cols-2 gap-4 md:grid-cols-4">
-                    <x-field label="Intervall (s)" for="m-int" feld="form.intervalSeconds">
-                        <x-input.text id="m-int" type="number" feld="form.intervalSeconds" wire:model="form.intervalSeconds" class="mt-1 w-full" />
-                    </x-field>
-                    <x-field label="Zeitlimit (s)" for="m-to" feld="form.timeoutSeconds">
-                        <x-input.text id="m-to" type="number" feld="form.timeoutSeconds" wire:model="form.timeoutSeconds" class="mt-1 w-full" />
-                    </x-field>
-                    <x-field label="Wiederholungen" for="m-ret" feld="form.retries">
-                        <x-input.text id="m-ret" type="number" feld="form.retries" wire:model="form.retries" class="mt-1 w-full" />
-                    </x-field>
-                    <x-field label="Wiederholen nach (s)" for="m-ri" feld="form.retryIntervalSeconds">
-                        <x-input.text id="m-ri" type="number" feld="form.retryIntervalSeconds" wire:model="form.retryIntervalSeconds" class="mt-1 w-full" />
-                    </x-field>
-                </div>
-
-                <div class="mt-6 flex justify-end gap-2">
-                    <x-input.button type="button" color="gray" wire:click="cancel">Abbrechen</x-input.button>
-                    <x-input.button wire:loading.attr="disabled">Speichern</x-input.button>
-                </div>
-            </form>
-        </x-panel>
+            <x-form-section title="Prüfung" />
+            <div class="mt-3 grid grid-cols-2 gap-4 md:grid-cols-4">
+                <x-field label="Intervall (s)" for="m-int" feld="form.intervalSeconds">
+                    <x-input.text id="m-int" type="number" feld="form.intervalSeconds" wire:model="form.intervalSeconds" class="mt-1 w-full" />
+                </x-field>
+                <x-field label="Zeitlimit (s)" for="m-to" feld="form.timeoutSeconds">
+                    <x-input.text id="m-to" type="number" feld="form.timeoutSeconds" wire:model="form.timeoutSeconds" class="mt-1 w-full" />
+                </x-field>
+                <x-field label="Wiederholungen" for="m-ret" feld="form.retries">
+                    <x-input.text id="m-ret" type="number" feld="form.retries" wire:model="form.retries" class="mt-1 w-full" />
+                </x-field>
+                <x-field label="Wiederholen nach (s)" for="m-ri" feld="form.retryIntervalSeconds">
+                    <x-input.text id="m-ri" type="number" feld="form.retryIntervalSeconds" wire:model="form.retryIntervalSeconds" class="mt-1 w-full" />
+                </x-field>
+            </div>
+        </x-modal>
     @endif
 
     @if (! $loadError && $total === 0 && $editing === null)

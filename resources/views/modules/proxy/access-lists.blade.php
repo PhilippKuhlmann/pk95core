@@ -18,75 +18,68 @@
     @endif
 
     @if ($editing !== null)
-        <x-panel class="m-3" wire:key="al-form">
-            <form wire:submit="save">
-                <div class="text-lg font-CoconPro text-gray-900 dark:text-gray-100">{{ $editing === 'new' ? 'Zugriffsliste hinzufügen' : 'Zugriffsliste bearbeiten' }}</div>
+        <x-modal wire:key="al-form" submit="save">
+            <x-slot:title>{{ $editing === 'new' ? 'Zugriffsliste hinzufügen' : 'Zugriffsliste bearbeiten' }}</x-slot:title>
 
-                @if ($internal)
-                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Diese Netze gelten überall als intern: für Hosts mit dieser Liste, für Streams mit „Nur intern“ und für die Wartungs-Ausnahme. Außerdem werden sie nie automatisch gesperrt.</p>
-                @else
-                    <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <x-field label="Name" for="al-name">
-                            <x-input.text id="al-name" maxlength="60" wire:model="form.name" placeholder="Familie" class="mt-1 w-full" />
-                        </x-field>
-                    </div>
-
-                    <x-form-section title="Bedingung" />
-                    <div class="mt-2 flex flex-col gap-1 text-sm text-gray-700 dark:text-gray-300">
-                        <label class="inline-flex items-center gap-2"><input type="radio" value="all" wire:model="form.mode" class="border-gray-300 text-cerulean-600 focus:ring-cerulean-500 dark:border-gray-600 dark:bg-gray-700">Beides nötig: erlaubte IP-Adresse und Anmeldung</label>
-                        <label class="inline-flex items-center gap-2"><input type="radio" value="any" wire:model="form.mode" class="border-gray-300 text-cerulean-600 focus:ring-cerulean-500 dark:border-gray-600 dark:bg-gray-700">Eine Bedingung genügt: erlaubte IP-Adresse oder Anmeldung</label>
-                        <x-input.hilfe>Gesperrte Adressen kommen nie durch. Steht bei „Beides nötig“ keine erlaubte Adresse in der Liste, reicht die Anmeldung von überall.</x-input.hilfe>
-                    </div>
-
-                    <x-form-section title="Benutzer">
-                        <x-input.button type="button" size="sm" color="gray" wire:click="addUser"><x-icon name="plus" class="h-3.5 w-3.5" />Benutzer hinzufügen</x-input.button>
-                    </x-form-section>
-                    <div class="mt-3 flex flex-col gap-2">
-                        @foreach ($form['users'] ?? [] as $i => $u)
-                            <div class="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]" wire:key="al-user-{{ $i }}">
-                                <x-input.text wire:model="form.users.{{ $i }}.username" aria-label="Benutzername" autocomplete="off" maxlength="64" placeholder="Benutzername" class="w-full" />
-                                <x-input.text type="password" wire:model="form.users.{{ $i }}.password" aria-label="Passwort" autocomplete="new-password" maxlength="72"
-                                    placeholder="{{ $u['new'] ? 'Passwort, mindestens 8 Zeichen' : 'Unverändert lassen' }}" class="w-full" />
-                                <x-input.button type="button" size="feld" color="gray" wire:click="removeUser({{ $i }})">Entfernen</x-input.button>
-                            </div>
-                        @endforeach
-                        <x-input.hilfe>Passwörter werden mit bcrypt gespeichert. Ein neues Passwort beendet die Sitzungen des Benutzers. Ohne Benutzer gibt es keine Login-Seite, dann zählen nur die IP-Regeln.</x-input.hilfe>
-                    </div>
-                @endif
-
-                <x-form-section title="IP-Regeln" />
-                <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <x-field :label="$internal ? 'Interne Netze' : 'Erlaubt'" for="al-allow">
-                        <x-input.textarea id="al-allow" rows="3" wire:model="form.allow" placeholder="192.168.1.0/24" class="mt-1" />
+            @if ($internal)
+                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Diese Netze gelten überall als intern: für Hosts mit dieser Liste, für Streams mit „Nur intern“ und für die Wartungs-Ausnahme. Außerdem werden sie nie automatisch gesperrt.</p>
+            @else
+                <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <x-field label="Name" for="al-name">
+                        <x-input.text id="al-name" maxlength="60" wire:model="form.name" placeholder="Familie" class="mt-1 w-full" />
                     </x-field>
-                    @unless ($internal)
-                        <x-field label="Gesperrt" for="al-deny">
-                            <x-input.textarea id="al-deny" rows="3" wire:model="form.deny" placeholder="203.0.113.7" class="mt-1" />
-                        </x-field>
-                    @endunless
                 </div>
-                <x-input.hilfe>Eine Angabe pro Zeile, einzelne Adressen oder Bereiche wie 192.168.1.0/24.</x-input.hilfe>
 
+                <x-form-section title="Bedingung" />
+                <div class="mt-2 flex flex-col gap-1 text-sm text-gray-700 dark:text-gray-300">
+                    <label class="inline-flex items-center gap-2"><input type="radio" value="all" wire:model="form.mode" class="border-gray-300 text-cerulean-600 focus:ring-cerulean-500 dark:border-gray-600 dark:bg-gray-700">Beides nötig: erlaubte IP-Adresse und Anmeldung</label>
+                    <label class="inline-flex items-center gap-2"><input type="radio" value="any" wire:model="form.mode" class="border-gray-300 text-cerulean-600 focus:ring-cerulean-500 dark:border-gray-600 dark:bg-gray-700">Eine Bedingung genügt: erlaubte IP-Adresse oder Anmeldung</label>
+                    <x-input.hilfe>Gesperrte Adressen kommen nie durch. Steht bei „Beides nötig“ keine erlaubte Adresse in der Liste, reicht die Anmeldung von überall.</x-input.hilfe>
+                </div>
+
+                <x-form-section title="Benutzer">
+                    <x-input.button type="button" size="sm" color="gray" wire:click="addUser"><x-icon name="plus" class="h-3.5 w-3.5" />Benutzer hinzufügen</x-input.button>
+                </x-form-section>
+                <div class="mt-3 flex flex-col gap-2">
+                    @foreach ($form['users'] ?? [] as $i => $u)
+                        <div class="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]" wire:key="al-user-{{ $i }}">
+                            <x-input.text wire:model="form.users.{{ $i }}.username" aria-label="Benutzername" autocomplete="off" maxlength="64" placeholder="Benutzername" class="w-full" />
+                            <x-input.text type="password" wire:model="form.users.{{ $i }}.password" aria-label="Passwort" autocomplete="new-password" maxlength="72"
+                                placeholder="{{ $u['new'] ? 'Passwort, mindestens 8 Zeichen' : 'Unverändert lassen' }}" class="w-full" />
+                            <x-input.button type="button" size="feld" color="gray" wire:click="removeUser({{ $i }})">Entfernen</x-input.button>
+                        </div>
+                    @endforeach
+                    <x-input.hilfe>Passwörter werden mit bcrypt gespeichert. Ein neues Passwort beendet die Sitzungen des Benutzers. Ohne Benutzer gibt es keine Login-Seite, dann zählen nur die IP-Regeln.</x-input.hilfe>
+                </div>
+            @endif
+
+            <x-form-section title="IP-Regeln" />
+            <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <x-field :label="$internal ? 'Interne Netze' : 'Erlaubt'" for="al-allow">
+                    <x-input.textarea id="al-allow" rows="3" wire:model="form.allow" placeholder="192.168.1.0/24" class="mt-1" />
+                </x-field>
                 @unless ($internal)
-                    <x-form-section title="Login-Seite" />
-                    <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <x-field label="Titel" for="al-title">
-                            <x-input.text id="al-title" maxlength="80" wire:model="form.title" placeholder="Anmeldung" class="mt-1 w-full" />
-                        </x-field>
-                        <x-field label="Anmeldung gilt für" for="al-hours">
-                            <x-input.select id="al-hours" wire:model="form.session_hours" class="mt-1">
-                                @foreach ($hours as $v => $label)<option value="{{ $v }}">{{ $label }}</option>@endforeach
-                            </x-input.select>
-                        </x-field>
-                    </div>
+                    <x-field label="Gesperrt" for="al-deny">
+                        <x-input.textarea id="al-deny" rows="3" wire:model="form.deny" placeholder="203.0.113.7" class="mt-1" />
+                    </x-field>
                 @endunless
+            </div>
+            <x-input.hilfe>Eine Angabe pro Zeile, einzelne Adressen oder Bereiche wie 192.168.1.0/24.</x-input.hilfe>
 
-                <div class="mt-6 flex justify-end gap-2">
-                    <x-input.button type="button" color="gray" wire:click="cancel">Abbrechen</x-input.button>
-                    <x-input.button type="submit" wire:loading.attr="disabled">Speichern</x-input.button>
+            @unless ($internal)
+                <x-form-section title="Login-Seite" />
+                <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <x-field label="Titel" for="al-title">
+                        <x-input.text id="al-title" maxlength="80" wire:model="form.title" placeholder="Anmeldung" class="mt-1 w-full" />
+                    </x-field>
+                    <x-field label="Anmeldung gilt für" for="al-hours">
+                        <x-input.select id="al-hours" wire:model="form.session_hours" class="mt-1">
+                            @foreach ($hours as $v => $label)<option value="{{ $v }}">{{ $label }}</option>@endforeach
+                        </x-input.select>
+                    </x-field>
                 </div>
-            </form>
-        </x-panel>
+            @endunless
+        </x-modal>
     @endif
 
     @if (! $lists && ! $loadError)

@@ -59,56 +59,49 @@
     @endif
 
     @if ($editing !== null)
-        <x-panel class="m-3" wire:key="page-form">
-            <form wire:submit="save">
-                <div class="text-lg font-CoconPro text-gray-900 dark:text-gray-100">{{ $editing === 'new' ? 'Neue Statusseite' : 'Statusseite bearbeiten' }}</div>
+        <x-modal wire:key="page-form" submit="save">
+            <x-slot:title>{{ $editing === 'new' ? 'Neue Statusseite' : 'Statusseite bearbeiten' }}</x-slot:title>
 
-                <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <x-field label="Titel" for="p-title" feld="form.title" required>
-                        <x-input.text id="p-title" feld="form.title" wire:model="form.title" class="mt-1 w-full" />
-                    </x-field>
-                    <x-field label="Adresse" for="p-slug" feld="form.slug" hilfe="/status/… – Kleinbuchstaben, Ziffern, Bindestriche" required>
-                        <x-input.text id="p-slug" feld="form.slug" wire:model="form.slug" class="mt-1 w-full font-mono" />
-                    </x-field>
-                    <x-field label="Zeitraum der Balken" for="p-range" feld="form.range">
-                        <x-input.select id="p-range" wire:model="form.range" class="mt-1">
-                            @foreach ($ranges as $key => $label)
-                                <option value="{{ $key }}">{{ $label }}</option>
-                            @endforeach
-                        </x-input.select>
-                    </x-field>
-                    <x-field label="Beschreibung" for="p-desc" feld="form.description" class="md:col-span-3">
-                        <x-input.text id="p-desc" feld="form.description" wire:model="form.description" class="mt-1 w-full" />
-                    </x-field>
-                    <div class="md:col-span-3">
-                        <x-input.checkbox label="Öffentlich erreichbar" wire:model="form.enabled" />
-                    </div>
-                </div>
-
-                <x-form-section title="Monitore auf der Seite" />
-                <x-input.fehler feld="form.monitors" class="mt-2" />
-                @if ($monitors->isEmpty())
-                    <div class="mt-3 text-sm text-gray-500 dark:text-gray-400">Noch keine Monitore vorhanden.</div>
-                @else
-                    <div class="mt-3 divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700">
-                        @foreach ($monitors as $m)
-                            <div class="grid grid-cols-1 items-center gap-2 px-3 py-2 md:grid-cols-[1fr_1fr_1fr]" wire:key="pm-{{ $m['id'] }}">
-                                <x-input.checkbox :label="$m['name']" wire:model.live="form.monitors.{{ $m['id'] }}.selected" />
-                                @if (! empty($form['monitors'][$m['id']]['selected']))
-                                    <x-input.text wire:model="form.monitors.{{ $m['id'] }}.publicName" placeholder="Anzeigename" class="w-full text-sm" />
-                                    <x-input.text wire:model="form.monitors.{{ $m['id'] }}.group" placeholder="Gruppe (optional)" class="w-full text-sm" />
-                                @endif
-                            </div>
+            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                <x-field label="Titel" for="p-title" feld="form.title" required>
+                    <x-input.text id="p-title" feld="form.title" wire:model="form.title" class="mt-1 w-full" />
+                </x-field>
+                <x-field label="Adresse" for="p-slug" feld="form.slug" hilfe="/status/… – Kleinbuchstaben, Ziffern, Bindestriche" required>
+                    <x-input.text id="p-slug" feld="form.slug" wire:model="form.slug" class="mt-1 w-full font-mono" />
+                </x-field>
+                <x-field label="Zeitraum der Balken" for="p-range" feld="form.range">
+                    <x-input.select id="p-range" wire:model="form.range" class="mt-1">
+                        @foreach ($ranges as $key => $label)
+                            <option value="{{ $key }}">{{ $label }}</option>
                         @endforeach
-                    </div>
-                @endif
-
-                <div class="mt-6 flex justify-end gap-2">
-                    <x-input.button type="button" color="gray" wire:click="cancel">Abbrechen</x-input.button>
-                    <x-input.button wire:loading.attr="disabled">Speichern</x-input.button>
+                    </x-input.select>
+                </x-field>
+                <x-field label="Beschreibung" for="p-desc" feld="form.description" class="md:col-span-3">
+                    <x-input.text id="p-desc" feld="form.description" wire:model="form.description" class="mt-1 w-full" />
+                </x-field>
+                <div class="md:col-span-3">
+                    <x-input.checkbox label="Öffentlich erreichbar" wire:model="form.enabled" />
                 </div>
-            </form>
-        </x-panel>
+            </div>
+
+            <x-form-section title="Monitore auf der Seite" />
+            <x-input.fehler feld="form.monitors" class="mt-2" />
+            @if ($monitors->isEmpty())
+                <div class="mt-3 text-sm text-gray-500 dark:text-gray-400">Noch keine Monitore vorhanden.</div>
+            @else
+                <div class="mt-3 divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700">
+                    @foreach ($monitors as $m)
+                        <div class="grid grid-cols-1 items-center gap-2 px-3 py-2 md:grid-cols-[1fr_1fr_1fr]" wire:key="pm-{{ $m['id'] }}">
+                            <x-input.checkbox :label="$m['name']" wire:model.live="form.monitors.{{ $m['id'] }}.selected" />
+                            @if (! empty($form['monitors'][$m['id']]['selected']))
+                                <x-input.text wire:model="form.monitors.{{ $m['id'] }}.publicName" placeholder="Anzeigename" class="w-full text-sm" />
+                                <x-input.text wire:model="form.monitors.{{ $m['id'] }}.group" placeholder="Gruppe (optional)" class="w-full text-sm" />
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+        </x-modal>
     @endif
 
     @if (! $loadError && ! $pages && $editing === null)

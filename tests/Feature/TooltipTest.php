@@ -12,7 +12,7 @@ use Symfony\Component\Finder\Finder;
 class TooltipTest extends FeatureTestCase
 {
     /** Components whose `title` is a prop (heading), not an HTML attribute. */
-    private const TITLE_PROPS = ['x-page-header', 'x-callout', 'x-form-section', 'x-dashboard-tile', 'x-layouts::app', 'x-layouts::guest', 'x-layouts.app'];
+    private const TITLE_PROPS = ['x-page-header', 'x-modal', 'x-callout', 'x-form-section', 'x-dashboard-tile', 'x-layouts::app', 'x-layouts::guest', 'x-layouts.app'];
 
     public function test_no_view_uses_a_native_title_tooltip(): void
     {
