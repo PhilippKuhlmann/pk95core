@@ -8,7 +8,7 @@
 --}}
 <div x-data x-show="$store.confirm.open" x-cloak
     x-on:keydown.escape.window="$store.confirm.cancel()"
-    class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    class="fixed inset-0 z-[60] flex items-center justify-center p-4">
 
     <div x-show="$store.confirm.open" x-transition.opacity.duration.150ms
         x-on:click="$store.confirm.cancel()" aria-hidden="true"

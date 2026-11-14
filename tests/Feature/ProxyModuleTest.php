@@ -535,6 +535,29 @@ class ProxyModuleTest extends FeatureTestCase
         $this->assertSame(0, $posts()[1]['body']['access_list_id']);
     }
 
+    public function test_host_form_is_a_dialog_that_stays_open_on_errors(): void
+    {
+        $page = Livewire::test(Hosts::class, ['installedApp' => $this->installed])
+            ->assertDontSee('data-modal', false);
+
+        // "Bearbeiten" opens the form as a dialog over the list, wherever one scrolled to
+        $page->call('edit', 1)
+            ->assertSee('role="dialog" aria-modal="true"', false)
+            ->assertSee('Host bearbeiten')
+            ->assertSee('wire:submit="save"', false);
+        $page->call('cancel')->assertDontSee('data-modal', false);
+
+        // a rejected save keeps the dialog open with the panel's message; saving closes it
+        $page->call('create')->set('form.domains', '')->call('save')
+            ->assertDispatched('notice', kind: 'error', text: 'Mindestens eine Domain angeben')
+            ->assertSee('Host hinzufügen')
+            ->assertSee('data-modal', false);
+        $page->set('form.domains', 'neu.example.de')->set('form.upstream_host', '10.0.0.7')->call('save')
+            ->assertSet('editing', null)
+            ->assertDispatched('notice', kind: 'success', text: 'Gespeichert und in Caddy übernommen.')
+            ->assertDontSee('data-modal', false);
+    }
+
     public function test_switches_put_the_whole_host_back(): void
     {
         Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('toggle', 2)->call('maintenance', 1);
