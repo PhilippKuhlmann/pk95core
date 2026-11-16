@@ -525,6 +525,7 @@ class ProxyModuleTest extends FeatureTestCase
         Livewire::test(Views::class, ['installedApp' => $this->installed])
             ->call('showVisitors', 'app.example.de', '2026-11-13')
             ->assertSee('Seitenaufrufe an diesem Tag geschätzt')
+            ->assertSee('„Nur Seitenaufrufe“ listet hier nur Besucher mit geschätzten Seitenaufrufen.')
             ->assertSee('Braucht PK95 Proxy 1.5.0')
             ->assertDontSee('data-visitors-summary', false)
             ->call('showVisitors', 'app.example.de', 'gestern')
@@ -564,6 +565,49 @@ class ProxyModuleTest extends FeatureTestCase
         $this->installed->update(['version' => '1.5.0']);
         Livewire::test(AccessLog::class, ['installedApp' => $this->installed->fresh()])->set('day', '2026-11-14')
             ->assertDontSee('Tagesfilter braucht', false);
+        // a build without a version number: unknown, so no hint
+        $this->installed->update(['version' => 'dev']);
+        Livewire::test(AccessLog::class, ['installedApp' => $this->installed->fresh()])->set('day', '2026-11-14')
+            ->assertDontSee('Tagesfilter braucht', false);
+    }
+
+    public function test_names_without_a_host_of_their_own_are_a_group_at_the_end(): void
+    {
+        $daily = self::dailyFixture();
+        $add = function (string $host, string $type, int $pages) use (&$daily): void {
+            $daily['hosts'][] = ['host' => $host, 'host_type' => $type,
+                'total' => ['pages' => $pages, 'visitors' => 2, 'requests' => 50],
+                'series' => [['date' => '2026-11-14', 'pages' => $pages, 'visitors' => 2, 'requests' => 50, 'estimated' => false]]];
+        };
+        $add('', 'none', 900);
+        $add('old.example.de', 'unknown', 7);
+        $add('203.0.113.9', 'ip', 4);
+        $this->daily = $daily;
+        $visitors = self::visitorsFixture();
+        $this->visitors = ['host' => '', 'host_type' => 'none', 'total_visitors' => 1234, 'visitors_truncated' => true] + $visitors;
+
+        $html = $this->get(route('apps.page', [$this->installed, 'views']))->assertOk()->getContent();
+
+        // even with the most page views they come after the configured hosts, marked as what they are
+        $this->assertInOrder($html, ['>app.example.de</a>', '>alt.example.de</a>', 'data-other-hosts', 'ohne Host-Header', '>old.example.de</a>', '>203.0.113.9</a>']);
+        $this->assertSame(1, substr_count($html, '>ohne Host / direkte IP</span>'), 'the empty host names itself');
+        $this->assertStringContainsString('data-host-type="unknown">unbekannter Name</span>', $html);
+        // no Host header: no link to a host filter, but its numbers open the visitors
+        $this->assertStringNotContainsString('?host=" wire:navigate', $html);
+        $this->assertStringContainsString("wire:click=\"showVisitors('', '2026-11-14')\"", $html);
+        // and it is no choice in the host search
+        $this->assertStringNotContainsString('{&quot;value&quot;:&quot;&quot;', $html);
+
+        $dialog = Livewire::test(Views::class, ['installedApp' => $this->installed])
+            ->call('showVisitors', '', '2026-11-14')
+            ->assertSet('visitHost', '')
+            ->assertSee('ohne Host-Header · Sa 14.11.')
+            ->assertSee('Kein eingerichteter Host.')
+            ->assertSee('Gezeigt werden die 4 Besucher mit den meisten Aufrufen, insgesamt waren es 1.234.')
+            ->html();
+        // host and date are required by the panel: an empty host is sent as host=
+        $this->assertStringStartsWith('host=&date=2026-11-14&hide_bots=1&pages_only=1', $this->visitorQueries()[0]);
+        $this->assertStringContainsString('?ip=91.97.75.147&amp;day=2026-11-14', $dialog);
     }
 
     public function test_visitor_helpers(): void

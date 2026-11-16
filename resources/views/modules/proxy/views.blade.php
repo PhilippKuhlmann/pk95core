@@ -84,10 +84,26 @@
                 </thead>
                 <tbody>
                     @foreach ($rows as $r)
+                        @if ($r['type'] !== 'configured' && ($loop->first || $rows[$loop->index - 1]['type'] === 'configured'))
+                            {{-- no host of its own: directly on the IP, without Host header, names without host --}}
+                            <tr wire:key="views-other">
+                                <th scope="colgroup" colspan="{{ count($dates) + 2 }}" class="border-b border-gray-200 bg-gray-50 px-3 pb-1.5 pt-3 text-left text-xs font-medium text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400" data-other-hosts>
+                                    <span class="sticky left-3 inline-block max-w-[min(48rem,calc(100vw-3.5rem))] whitespace-normal">Ohne eingerichteten Host: direkt auf die IP, ohne Host-Header oder ein Name, für den kein Host eingerichtet ist</span>
+                                </th>
+                            </tr>
+                        @endif
                         <tr wire:key="views-{{ md5($r['host']) }}">
                             <th scope="row" class="{{ $sticky }} max-w-40 truncate border-b border-gray-100 px-3 py-1.5 text-left font-medium sm:max-w-64 dark:border-gray-700/60">
-                                <a href="{{ $logUrl }}?host={{ urlencode($r['host']) }}" wire:navigate data-tip="{{ $r['host'] }}: Zugriffe ansehen"
-                                    class="text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $r['host'] }}</a>
+                                @if ($r['host'] === '')
+                                    <span class="italic text-gray-600 dark:text-gray-300">{{ Daily::hostLabel('') }}</span>
+                                @else
+                                    <a href="{{ $logUrl }}?host={{ urlencode($r['host']) }}" wire:navigate data-tip="{{ $r['host'] }}: Zugriffe ansehen"
+                                        class="text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $r['host'] }}</a>
+                                @endif
+                                {{-- the empty host names itself ("ohne Host-Header"), the others get what they are --}}
+                                @if ($r['host'] !== '' && isset(Daily::HOST_TYPE_LABELS[$r['type']]))
+                                    <span class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-normal text-gray-600 max-sm:ml-0 max-sm:mt-0.5 max-sm:block max-sm:w-fit dark:bg-gray-700 dark:text-gray-300" data-host-type="{{ $r['type'] }}">{{ Daily::HOST_TYPE_LABELS[$r['type']] }}</span>
+                                @endif
                             </th>
                             @foreach ($r['values'] as $day => $n)
                                 @php $p = $r['series'][$day] ?? null; @endphp

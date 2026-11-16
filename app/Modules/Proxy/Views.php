@@ -42,7 +42,8 @@ class Views extends Component
 
     public function showVisitors(string $host, string $date): void
     {
-        if (trim($host) === '' || preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) !== 1) {
+        // an empty host is valid: the requests without Host header
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) !== 1) {
             return;
         }
         [$this->visitHost, $this->visitDate, $this->visitAll] = [mb_substr(trim($host), 0, 253), $date, false];
@@ -108,7 +109,7 @@ class Views extends Component
             foreach ($days as $day) {
                 $values[$day] = (int) ($h['series'][$day][$metric] ?? 0);
             }
-            $rows[] = ['host' => $name, 'values' => $values, 'total' => (int) $h['total'][$metric], 'series' => $h['series']];
+            $rows[] = ['host' => (string) $name, 'type' => $h['type'] ?? 'configured', 'values' => $values, 'total' => (int) $h['total'][$metric], 'series' => $h['series']];
         }
         $sort = $this->sort;
         usort($rows, fn ($a, $b) => match ($sort) {
@@ -119,11 +120,13 @@ class Views extends Component
         if ($this->dir === 'desc') {
             $rows = array_reverse($rows);
         }
+        // direct IP, no Host header and unknown names form their own group at the end
+        $rows = [...array_filter($rows, fn ($r) => $r['type'] === 'configured'), ...array_filter($rows, fn ($r) => $r['type'] !== 'configured')];
 
         $byDay = array_combine($days, $days) ?: [];
         $dayTotals = array_map(fn ($day) => array_sum(array_map(fn ($r) => $r['values'][$day], $rows)), $byDay);
         $estimated = array_map(fn ($day) => collect($data['hosts'])->contains(fn ($h) => $h['series'][$day]['estimated'] ?? false), $byDay);
-        $hostNames = array_keys($data['hosts']);
+        $hostNames = array_values(array_filter(array_map('strval', array_keys($data['hosts'])), fn ($n) => $n !== ''));
         natcasesort($hostNames);
         if ($this->host !== '' && ! in_array($this->host, $hostNames, true)) {
             $hostNames[] = $this->host;
@@ -134,6 +137,7 @@ class Views extends Component
             $visit = Visitors::load($this->installedApp, $this->visitHost, $this->visitDate, ! $this->visitAll);
             $visit['names'] = Visitors::names(array_column($visit['visitors'], 'ip'));
             $visit['own'] = Visitors::ownPublicIp();
+            $visit['host_type'] ??= $data['hosts'][$this->visitHost]['type'] ?? null;
             // the panel may not know the day as estimated yet; the table does
             $visit['estimated'] = $visit['estimated'] || ($data['hosts'][$this->visitHost]['series'][$this->visitDate]['estimated'] ?? false);
         }

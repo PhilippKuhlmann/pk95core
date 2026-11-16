@@ -1,10 +1,14 @@
 {
     "host": "app.example.de",
+    "host_type": "configured",
     "date": "2026-11-14",
     "from": 1794610800000,
     "to": 1794697200000,
     "estimated": false,
     "computed_at": 1794688200000,
+    "pages_only": true,
+    "total_visitors": 4,
+    "visitors_truncated": false,
     "visitors": [
         {
             "ip": "91.97.75.147",

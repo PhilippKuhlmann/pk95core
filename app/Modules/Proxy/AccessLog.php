@@ -6,6 +6,7 @@ use App\Http\Support\Format;
 use App\Models\InstalledApp;
 use App\Modules\Concerns\TalksToApp;
 use App\Services\Apps\AppException;
+use App\Services\Updates\UpdateService;
 use App\Support\Settings;
 use Illuminate\Support\Carbon;
 use Livewire\Attributes\Locked;
@@ -269,8 +270,8 @@ class AccessLog extends Component
             'statuses' => $statuses,
             'more' => count($rows) >= $this->limit && $this->limit < 500,
             'loadError' => $error,
-            // the day filter needs PK95 Proxy 1.5.0; an older one would show every day
-            'dayUnsupported' => $this->day !== '' && $this->installedApp->version && version_compare(ltrim($this->installedApp->version, 'v'), self::DAY_FILTER, '<'),
+            // the day filter needs PK95 Proxy 1.5.0; an older one would show every day (a dev build: unknown, no hint)
+            'dayUnsupported' => $this->day !== '' && UpdateService::isVersion((string) $this->installedApp->version) && version_compare(ltrim($this->installedApp->version, 'v'), self::DAY_FILTER, '<'),
             'clientFilter' => $filter,
             // names to pick: the panel's list, plus the clients of the rows on screen
             'clientNames' => collect($this->clients)->pluck('client')

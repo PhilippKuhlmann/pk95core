@@ -7,6 +7,7 @@
     "hosts": [
         {
             "host": "app.example.de",
+            "host_type": "configured",
             "total": {"pages": 812, "visitors": 41, "requests": 15230},
             "series": [
                 {"date": "2026-11-08", "pages": 110, "visitors": 6, "requests": 2000, "estimated": true},
@@ -20,6 +21,7 @@
         },
         {
             "host": "doku.example.de",
+            "host_type": "configured",
             "total": {"pages": 35, "visitors": 9, "requests": 410},
             "series": [
                 {"date": "2026-11-12", "pages": 10, "visitors": 3, "requests": 120, "estimated": true},
@@ -29,6 +31,7 @@
         },
         {
             "host": "alt.example.de",
+            "host_type": "configured",
             "total": {"pages": 0, "visitors": 3, "requests": 12},
             "series": [
                 {"date": "2026-11-14", "pages": 0, "visitors": 3, "requests": 12, "estimated": false}
