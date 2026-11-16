@@ -24,6 +24,11 @@ final class Daily
 
     public const ESTIMATED = 'geschätzt, vor Einführung der Seitenzählung';
 
+    /** host_type (PK95 Proxy 1.5.0): a domain of a host, directly on an IP, without Host header, a name without host */
+    public const HOST_TYPES = ['configured', 'ip', 'none', 'unknown'];
+
+    public const HOST_TYPE_LABELS = ['ip' => 'ohne Host / direkte IP', 'none' => 'ohne Host / direkte IP', 'unknown' => 'unbekannter Name'];
+
     /** cell background by intensity 0..5 (heatmap), readable text on every step */
     public const HEAT = [
         '',
@@ -90,10 +95,12 @@ final class Daily
         $isDate = fn ($d) => is_string($d) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) === 1;
         $hosts = [];
         foreach ((array) ($json['hosts'] ?? []) as $h) {
-            $name = is_array($h) ? trim((string) ($h['host'] ?? '')) : '';
-            if ($name === '') {
+            if (! is_array($h)) {
                 continue;
             }
+            // an empty name is real: requests without Host header
+            $name = trim((string) ($h['host'] ?? ''));
+            $type = in_array($h['host_type'] ?? null, self::HOST_TYPES, true) ? $h['host_type'] : ($name === '' ? 'none' : 'configured');
             $series = [];
             foreach ((array) ($h['series'] ?? []) as $p) {
                 if (is_array($p) && $isDate($p['date'] ?? null)) {
@@ -103,6 +110,7 @@ final class Daily
             $hosts[$name] = [
                 'total' => is_array($h['total'] ?? null) ? self::point($h['total']) : self::sum($series),
                 'series' => $series,
+                'type' => $type,
             ];
         }
         $days = array_values(array_filter((array) ($json['days'] ?? []), $isDate));
@@ -146,6 +154,12 @@ final class Daily
     {
         return self::label($day).': '.Fmt::num($p['pages']).' Seitenaufrufe, '.Fmt::num($p['visitors']).' Besucher, '
             .Fmt::num($p['requests']).' Zugriffe'.($p['estimated'] ? "\n".ucfirst(self::ESTIMATED) : '');
+    }
+
+    /** Shown name of a host; requests without Host header have none. */
+    public static function hostLabel(string $host): string
+    {
+        return $host === '' ? 'ohne Host-Header' : $host;
     }
 
     /** "14.11." */

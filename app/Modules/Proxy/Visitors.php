@@ -51,7 +51,7 @@ final class Visitors
      */
     private static function fetch(InstalledApp $app, string $query): array
     {
-        $empty = ['missing' => false, 'error' => null, 'estimated' => false, 'computed_at' => null, 'visitors' => []];
+        $empty = ['missing' => false, 'error' => null, 'estimated' => false, 'computed_at' => null, 'visitors' => [], 'total_visitors' => null, 'visitors_truncated' => false, 'host_type' => null];
         try {
             $response = $app->client()->get('/api/hosts/visitors', $query);
         } catch (AppException $e) {
@@ -110,6 +110,10 @@ final class Visitors
             'estimated' => (bool) ($json['estimated'] ?? false),
             'computed_at' => is_numeric($json['computed_at'] ?? null) ? (int) $json['computed_at'] : null,
             'visitors' => $visitors,
+            // more than the panel lists (it sends the top 200)
+            'total_visitors' => is_numeric($json['total_visitors'] ?? null) ? (int) $json['total_visitors'] : null,
+            'visitors_truncated' => (bool) ($json['visitors_truncated'] ?? false),
+            'host_type' => in_array($json['host_type'] ?? null, Daily::HOST_TYPES, true) ? $json['host_type'] : null,
         ];
     }
 

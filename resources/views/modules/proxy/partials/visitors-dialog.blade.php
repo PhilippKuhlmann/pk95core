@@ -17,7 +17,14 @@
 @endphp
 
 <x-modal wire:key="visitors-dialog" submit="" close="closeVisitors" size="2xl">
-    <x-slot:title>{{ $visitHost }} · {{ Daily::weekday($visitDate) }} {{ Daily::label($visitDate) }}</x-slot:title>
+    <x-slot:title>{{ Daily::hostLabel($visitHost) }} · {{ Daily::weekday($visitDate) }} {{ Daily::label($visitDate) }}</x-slot:title>
+
+    @isset(Daily::HOST_TYPE_LABELS[$visit['host_type']])
+        <p class="mb-3 text-xs text-gray-500 dark:text-gray-400" data-visit-host-type>
+            <span class="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-600 dark:bg-gray-700 dark:text-gray-300">{{ Daily::HOST_TYPE_LABELS[$visit['host_type']] }}</span>
+            Kein eingerichteter Host.
+        </p>
+    @endisset
 
     <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex rounded-lg border border-gray-200 bg-white p-0.5 dark:border-gray-700 dark:bg-gray-800" role="group" aria-label="Was gezählt wird">
@@ -39,6 +46,9 @@
     @if ($visit['estimated'])
         <x-callout title="Seitenaufrufe an diesem Tag geschätzt" class="mt-3" data-visitors-estimated>
             Die Seitenzählung lief an diesem Tag noch nicht vollständig. Seitenaufrufe sind geschätzt, Zugriffe und Pfade sind genau.
+            @unless ($visitAll)
+                „Nur Seitenaufrufe“ listet hier nur Besucher mit geschätzten Seitenaufrufen. Die Besucherzahl in der Tabelle zählt alle Zugriffe, die Liste kann deshalb kürzer sein.
+            @endunless
         </x-callout>
     @endif
 
@@ -48,6 +58,10 @@
         </x-callout>
     @elseif ($visit['error'] !== null)
         <x-callout title="Besucher konnten nicht geladen werden" ton="gelb" class="mt-3">{{ $visit['error'] }}</x-callout>
+    @elseif ($visit['visitors_truncated'])
+        <p class="mt-3 text-xs text-amber-700 dark:text-amber-300" data-visitors-truncated>Gezeigt werden die {{ Fmt::num(count($people)) }} Besucher mit den meisten Aufrufen, insgesamt waren es {{ Fmt::num($visit['total_visitors'] ?? count($people)) }}.</p>
+    @endif
+    @if ($visit['missing'] || $visit['error'] !== null)
     @elseif (! $people)
         <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">An diesem Tag gab es keine Besucher{{ $visitAll ? '' : ' mit Seitenaufrufen' }}.</p>
     @else
@@ -110,7 +124,7 @@
                             <p class="mt-2 text-xs text-amber-700 dark:text-amber-300" data-paths-truncated>Gekürzt: Nicht alle Aufrufe dieses Besuchers sind aufgeführt. Alle zeigt „In Zugriffe öffnen“.</p>
                         @endif
                         <div class="mt-3 flex flex-wrap gap-2">
-                            <x-input.linkbutton :href="$logUrl.'?'.http_build_query(['host' => $visitHost, 'ip' => $v['ip'], 'day' => $visitDate])" wire:navigate color="gray" size="sm" class="max-sm:min-h-11">In Zugriffe öffnen</x-input.linkbutton>
+                            <x-input.linkbutton :href="$logUrl.'?'.http_build_query(array_filter(['host' => $visitHost, 'ip' => $v['ip'], 'day' => $visitDate], fn ($x) => $x !== ''))" wire:navigate color="gray" size="sm" class="max-sm:min-h-11">In Zugriffe öffnen</x-input.linkbutton>
                             @foreach ($v['clients'] as $c)
                                 <x-input.button type="button" size="sm" color="gray" wire:click="hideClient({{ Js::from($c) }})" class="max-sm:min-h-11">Client „{{ $c }}“ ausblenden</x-input.button>
                             @endforeach
