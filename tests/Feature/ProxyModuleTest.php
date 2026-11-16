@@ -565,6 +565,10 @@ class ProxyModuleTest extends FeatureTestCase
         $this->installed->update(['version' => '1.5.0']);
         Livewire::test(AccessLog::class, ['installedApp' => $this->installed->fresh()])->set('day', '2026-11-14')
             ->assertDontSee('Tagesfilter braucht', false);
+        // a build without a version number: unknown, so no hint
+        $this->installed->update(['version' => 'dev']);
+        Livewire::test(AccessLog::class, ['installedApp' => $this->installed->fresh()])->set('day', '2026-11-14')
+            ->assertDontSee('Tagesfilter braucht', false);
     }
 
     public function test_names_without_a_host_of_their_own_are_a_group_at_the_end(): void
