@@ -47,6 +47,12 @@ class ProxyModuleTest extends FeatureTestCase
     /** @var array<string, mixed>|null GET /api/hosts/visitors (PK95 Proxy 1.5.0); null = older Proxy (404) */
     private ?array $visitors = null;
 
+    /** @var array<string, mixed> more guard fields in the faked /api/security answer (e.g. repeat_hits of Proxy 1.6.0) */
+    private array $guardExtra = [];
+
+    /** @var list<array<string, mixed>> more bans in the faked /api/security answer */
+    private array $extraBans = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -105,6 +111,8 @@ class ProxyModuleTest extends FeatureTestCase
 
         return match ($r->method().' '.$path) {
             'GET /api/hosts' => Http::response(array_values($this->hosts)),
+            // the panel answers with the saved rules (here: what was sent)
+            'PUT /api/security/guard' => Http::response($r->data()),
             'GET /api/hosts/daily' => $this->daily === null ? Http::response(['error' => 'nicht gefunden'], 404) : Http::response($this->daily),
             'GET /api/hosts/visitors' => $this->visitors === null ? Http::response(['error' => 'nicht gefunden'], 404) : Http::response($this->visitors),
             'GET /api/hosts/checks' => Http::response([['host_id' => 1, 'upstream_known' => true, 'upstream_up' => false, 'upstream_error' => 'Verbindung abgelehnt',
@@ -147,9 +155,9 @@ class ProxyModuleTest extends FeatureTestCase
             'GET /api/security' => Http::response(['mode' => 'block', 'blocked' => ['CN'], 'allowed' => [], 'queued' => false, 'running' => '',
                 'firewall' => ['mode' => 'block', 'countries' => ['CN'], 'networks' => 1200, 'applied_at' => $now, 'dropped' => 55],
                 'guard' => ['enabled' => true, 'window_minutes' => 10, 'scan_hits' => 3, 'not_found' => 30, 'auth_fails' => 10, 'unknown_hosts' => 5,
-                    'ban_hours' => 24, 'exempt' => [], 'notify' => false],
+                    'ban_hours' => 24, 'exempt' => [], 'notify' => false] + $this->guardExtra,
                 'bans' => [['ip' => '203.0.113.9', 'country' => 'NL', 'reason' => 'scan', 'strikes' => 2, 'detail' => '/.env', 'host' => 'app.example.de',
-                    'created_at' => $now, 'expires_at' => 0]], 'bans_total' => 1, 'ban_status' => ['applied_at' => $now, 'dropped' => 9],
+                    'created_at' => $now, 'expires_at' => 0], ...$this->extraBans], 'bans_total' => 1, 'ban_status' => ['applied_at' => $now, 'dropped' => 9],
                 'hide_server' => false, 'blocklist_networks' => 0]),
             'PUT /api/security/countries' => Http::response(['ok' => true]),
             'DELETE /api/security/bans' => Http::response(['ok' => true]),
@@ -608,6 +616,48 @@ class ProxyModuleTest extends FeatureTestCase
         // host and date are required by the panel: an empty host is sent as host=
         $this->assertStringStartsWith('host=&date=2026-11-14&hide_bots=1&pages_only=1', $this->visitorQueries()[0]);
         $this->assertStringContainsString('?ip=91.97.75.147&amp;day=2026-11-14', $dialog);
+    }
+
+    // ---- automatic bans: the repeat rule of PK95 Proxy 1.6.0 -------------------------------------
+
+    /** @return list<array<string, mixed>> bodies of PUT /api/security/guard */
+    private function guardPuts(): array
+    {
+        return array_values(array_map(fn ($c) => $c['body'], array_filter($this->calls, fn ($c) => $c['method'] === 'PUT' && $c['path'] === '/api/security/guard')));
+    }
+
+    public function test_an_older_proxy_gets_no_repeat_rule(): void
+    {
+        $this->get(route('apps.page', [$this->installed, 'security']))->assertOk()
+            ->assertDontSee('id="g-repeat_hits"', false)
+            // scans count on redirects to the login too (Proxy 1.6.0, text only)
+            ->assertSee('Etwa /.env oder /.git/config, auch bei Weiterleitungen auf das Login.');
+
+        // the panel keeps fields that are not sent: Core sends only what the panel knows
+        Livewire::test(Security::class, ['installedApp' => $this->installed])->call('saveGuard')
+            ->assertDispatched('notice', kind: 'success', text: 'Gespeichert.');
+        $this->assertArrayNotHasKey('repeat_hits', $this->guardPuts()[0]);
+        $this->assertSame(3, $this->guardPuts()[0]['scan_hits']);
+    }
+
+    public function test_the_repeat_rule_with_proxy_1_6_and_its_bans(): void
+    {
+        $this->guardExtra = ['repeat_hits' => 30];
+        $this->extraBans = [['ip' => '198.51.100.4', 'country' => 'DE', 'reason' => 'repeat', 'strikes' => 1, 'detail' => '30× /accounts/login/ in 52 s',
+            'host' => 'app.example.de', 'created_at' => 1_794_600_000_000, 'expires_at' => 0]];
+
+        $this->get(route('apps.page', [$this->installed, 'security']))->assertOk()
+            ->assertSee('id="g-repeat_hits"', false)
+            ->assertSeeInOrder(['Wiederholungen', 'Dieselbe Seite oder Anmeldung immer wieder, bei mindestens zwei Dritteln der Seitenaufrufe.'])
+            // the ban list names the new reason with the panel's detail
+            ->assertSeeInOrder(['198.51.100.4', 'Wiederholung', '30× /accounts/login/ in 52 s']);
+
+        Livewire::test(Security::class, ['installedApp' => $this->installed])
+            ->assertSet('guard.repeat_hits', '30')
+            ->set('guard.repeat_hits', '45')
+            ->call('saveGuard')
+            ->assertSet('guard.repeat_hits', '45');
+        $this->assertSame(45, $this->guardPuts()[0]['repeat_hits']);
     }
 
     public function test_visitor_helpers(): void

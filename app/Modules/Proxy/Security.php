@@ -45,16 +45,23 @@ class Security extends Component
 
     public ?string $loadError = null;
 
-    public const REASONS = ['scan' => 'Scan', 'auth' => 'Anmeldefehler', 'not_found' => 'Nicht gefunden', 'unknown_hosts' => 'Unbekannte Hosts', 'manual' => 'Von Hand'];
+    public const REASONS = ['scan' => 'Scan', 'auth' => 'Anmeldefehler', 'not_found' => 'Nicht gefunden', 'unknown_hosts' => 'Unbekannte Hosts', 'repeat' => 'Wiederholung', 'manual' => 'Von Hand'];
 
     public const THRESHOLDS = [
-        'scan_hits' => ['Scan-Pfade', 'Etwa /.env oder /.git/config. Kein normaler Besucher ruft das auf.', 0, 100],
+        'scan_hits' => ['Scan-Pfade', 'Etwa /.env oder /.git/config, auch bei Weiterleitungen auf das Login. Kein normaler Besucher ruft das auf.', 0, 100],
         'auth_fails' => ['Anmeldefehler', 'Status 401 und 403, bei mindestens zwei Dritteln der Anfragen.', 0, 1000],
         'not_found' => ['Nicht gefundene Seiten', 'Verschiedene Pfade mit 404, bei mindestens zwei Dritteln der Anfragen.', 0, 1000],
+        'repeat_hits' => ['Wiederholungen', 'Dieselbe Seite oder Anmeldung immer wieder, bei mindestens zwei Dritteln der Seitenaufrufe.', 0, 1000],
         'unknown_hosts' => ['Unbekannte Hostnamen', 'Durchprobieren von Subdomains, die hier nicht eingerichtet sind.', 0, 100],
         'window_minutes' => ['Zeitfenster (Minuten)', 'In dieser Zeit müssen die Werte erreicht werden.', 1, 120],
         'ban_hours' => ['Sperrdauer (Stunden)', 'Für die erste Sperre einer Adresse.', 1, 8760],
     ];
+
+    /**
+     * Rules newer panels know (repeat_hits: PK95 Proxy 1.6.0). Shown and sent only when the
+     * panel's answer has them: it keeps fields that are not sent as they are.
+     */
+    public const OPTIONAL = ['repeat_hits'];
 
     public function mount(): void
     {
@@ -91,6 +98,9 @@ class Security extends Component
         $g = $this->guard;
         $body = ['enabled' => ! empty($g['enabled']), 'notify' => ! empty($g['notify']), 'exempt' => Streams::lines((string) ($g['exempt'] ?? ''))];
         foreach (array_keys(self::THRESHOLDS) as $key) {
+            if (in_array($key, self::OPTIONAL, true) && ! array_key_exists($key, $g)) {
+                continue;
+            }
             $body[$key] = (int) ($g[$key] ?? 0);
         }
         $response = $this->appRequest(fn ($api) => $api->put('/api/security/guard', $body));
@@ -242,6 +252,9 @@ class Security extends Component
     {
         $this->guard = ['enabled' => (bool) $g['enabled'], 'notify' => (bool) $g['notify'], 'exempt' => implode("\n", $g['exempt'] ?? [])];
         foreach (array_keys(self::THRESHOLDS) as $key) {
+            if (in_array($key, self::OPTIONAL, true) && ! array_key_exists($key, $g)) {
+                continue;
+            }
             $this->guard[$key] = (string) ($g[$key] ?? 0);
         }
     }

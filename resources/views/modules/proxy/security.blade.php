@@ -223,6 +223,8 @@
                 <x-input.checkbox label="Automatisch sperren" wire:model="guard.enabled" />
                 <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     @foreach (Security::THRESHOLDS as $key => [$label, $hint, $min, $max])
+                        {{-- rules of newer panels only when the panel knows them --}}
+                        @continue(in_array($key, Security::OPTIONAL, true) && ! array_key_exists($key, $guard))
                         <x-field :label="$label" for="g-{{ $key }}" :hilfe="$hint">
                             <x-input.text id="g-{{ $key }}" type="number" min="{{ $min }}" max="{{ $max }}" wire:model="guard.{{ $key }}" class="mt-1 w-32" />
                         </x-field>
