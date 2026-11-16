@@ -1,0 +1,151 @@
+{
+    "host": "app.example.de",
+    "date": "2026-11-14",
+    "from": 1794610800000,
+    "to": 1794697200000,
+    "estimated": false,
+    "computed_at": 1794688200000,
+    "visitors": [
+        {
+            "ip": "91.97.75.147",
+            "country": "DE",
+            "clients": [
+                "Chrome"
+            ],
+            "is_bot": false,
+            "pages": 3,
+            "requests": 40,
+            "first": 1794640443000,
+            "last": 1794641500000,
+            "paths": [
+                {
+                    "ts": 1794640443000,
+                    "method": "GET",
+                    "path": "/login",
+                    "status": 200,
+                    "client": "Chrome",
+                    "referer": ""
+                },
+                {
+                    "ts": 1794640510000,
+                    "method": "POST",
+                    "path": "/login",
+                    "status": 302,
+                    "client": "Chrome",
+                    "referer": "https://app.example.de/login"
+                },
+                {
+                    "ts": 1794641500000,
+                    "method": "GET",
+                    "path": "/dashboard",
+                    "status": 200,
+                    "client": "Chrome",
+                    "referer": ""
+                }
+            ],
+            "paths_truncated": false
+        },
+        {
+            "ip": "10.10.10.134",
+            "country": "LAN",
+            "clients": [
+                "Safari",
+                "Firefox"
+            ],
+            "is_bot": false,
+            "pages": 9,
+            "requests": 60,
+            "first": 1794636131000,
+            "last": 1794681900000,
+            "paths": [
+                {
+                    "ts": 1794636131000,
+                    "method": "GET",
+                    "path": "/",
+                    "status": 200,
+                    "client": "Safari",
+                    "referer": ""
+                },
+                {
+                    "ts": 1794654600000,
+                    "method": "GET",
+                    "path": "/docs/setup",
+                    "status": 200,
+                    "client": "Firefox",
+                    "referer": ""
+                },
+                {
+                    "ts": 1794681900000,
+                    "method": "GET",
+                    "path": "/docs/backup?x=1",
+                    "status": 304,
+                    "client": "Safari",
+                    "referer": ""
+                }
+            ],
+            "paths_truncated": false
+        },
+        {
+            "ip": "203.0.113.50",
+            "country": "DE",
+            "clients": [
+                "Firefox"
+            ],
+            "is_bot": false,
+            "pages": 1,
+            "requests": 4,
+            "first": 1794682800000,
+            "last": 1794682802000,
+            "paths": [
+                {
+                    "ts": 1794682800000,
+                    "method": "GET",
+                    "path": "/",
+                    "status": 200,
+                    "client": "Firefox",
+                    "referer": ""
+                }
+            ],
+            "paths_truncated": false
+        },
+        {
+            "ip": "185.220.101.7",
+            "country": "NL",
+            "clients": [
+                "curl/8.0"
+            ],
+            "is_bot": false,
+            "pages": 0,
+            "requests": 120,
+            "first": 1794622320000,
+            "last": 1794622499000,
+            "paths": [
+                {
+                    "ts": 1794622320000,
+                    "method": "GET",
+                    "path": "/wp-login.php",
+                    "status": 404,
+                    "client": "curl/8.0",
+                    "referer": ""
+                },
+                {
+                    "ts": 1794622321000,
+                    "method": "GET",
+                    "path": "/.env",
+                    "status": 404,
+                    "client": "curl/8.0",
+                    "referer": ""
+                },
+                {
+                    "ts": 1794622322000,
+                    "method": "POST",
+                    "path": "/xmlrpc.php",
+                    "status": 404,
+                    "client": "curl/8.0",
+                    "referer": ""
+                }
+            ],
+            "paths_truncated": true
+        }
+    ]
+}

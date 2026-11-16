@@ -32,6 +32,35 @@ class Views extends Component
     #[Url]
     public string $dir = 'desc';
 
+    /** the visitors dialog: host and day of the clicked number, null = closed */
+    public ?string $visitHost = null;
+
+    public ?string $visitDate = null;
+
+    /** all requests instead of page views only */
+    public bool $visitAll = false;
+
+    public function showVisitors(string $host, string $date): void
+    {
+        if (trim($host) === '' || preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) !== 1) {
+            return;
+        }
+        [$this->visitHost, $this->visitDate, $this->visitAll] = [mb_substr(trim($host), 0, 253), $date, false];
+    }
+
+    public function closeVisitors(): void
+    {
+        [$this->visitHost, $this->visitDate] = [null, null];
+    }
+
+    /** "Client ausblenden" in the dialog: into the remembered list of Proxy → Zugriffe. */
+    public function hideClient(string $name): void
+    {
+        $error = AccessLog::hideRemembered($name);
+        $this->dispatch('notice', kind: $error ? 'error' : 'success',
+            text: $error ?? "„{$name}“ ist ausgeblendet, auch in den Zugriffen und Aufrufen.");
+    }
+
     public function mount(): void
     {
         $this->check();
@@ -100,7 +129,17 @@ class Views extends Component
             $hostNames[] = $this->host;
         }
 
+        $visit = null;
+        if ($this->visitHost !== null && $this->visitDate !== null) {
+            $visit = Visitors::load($this->installedApp, $this->visitHost, $this->visitDate, ! $this->visitAll);
+            $visit['names'] = Visitors::names(array_column($visit['visitors'], 'ip'));
+            $visit['own'] = Visitors::ownPublicIp();
+            // the panel may not know the day as estimated yet; the table does
+            $visit['estimated'] = $visit['estimated'] || ($data['hosts'][$this->visitHost]['series'][$this->visitDate]['estimated'] ?? false);
+        }
+
         return view('modules.proxy.views', [
+            'visit' => $visit,
             'data' => $data,
             'dates' => $days,
             'rows' => $rows,

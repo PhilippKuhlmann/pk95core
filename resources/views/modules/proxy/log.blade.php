@@ -17,6 +17,14 @@
                 {{ Fmt::flag($country) }} Land: {{ Fmt::country($country) }} ×
             </button>
         @endif
+        @if ($day)
+            <button type="button" wire:click="clearDay" data-tip="Filter entfernen" data-day-filter class="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-700 hover:border-rose-300 hover:bg-rose-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-rose-800 dark:hover:bg-rose-950">
+                Tag: {{ \App\Modules\Proxy\Daily::weekday($day) }} {{ \App\Modules\Proxy\Daily::label($day) }} ×
+            </button>
+            @if ($dayUnsupported)
+                <span class="text-xs text-amber-700 dark:text-amber-300" data-day-unsupported>Tagesfilter braucht PK95 Proxy {{ \App\Modules\Proxy\AccessLog::DAY_FILTER }}, gezeigt werden alle Tage.</span>
+            @endif
+        @endif
         <x-input.combobox wire:model.live="host" label="Host" :options="array_combine($domains, $domains)" placeholder="Alle Hosts" reset="Alle Hosts" :search="true" class="w-full sm:w-56" />
         <x-input.combobox wire:model.live="status" label="Status" :options="array_diff_key($statuses, ['' => true])" placeholder="Alle Status" reset="Alle Status" class="w-full sm:w-44" />
         <input type="search" wire:model.live.debounce.300ms="ip" placeholder="IP-Adresse" aria-label="IP-Adresse" class="{{ $input }} w-40">

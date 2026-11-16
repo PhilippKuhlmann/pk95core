@@ -51,6 +51,19 @@ class ModalTest extends FeatureTestCase
         $this->assertStringContainsString('>Zone</h2>', $a);
     }
 
+    public function test_without_submit_it_is_a_dialog_to_look_at(): void
+    {
+        $html = Blade::render('<x-modal wire:key="visitors-dialog" submit="" close="closeVisitors" title="Besucher"><button>x</button></x-modal>');
+
+        // no form, no question about unsaved changes (a switch inside is no change), only "Schließen"
+        $this->assertStringNotContainsString('<form', $html);
+        $this->assertStringNotContainsString('dirty = true', $html);
+        $this->assertStringNotContainsString('type="submit"', $html);
+        $this->assertMatchesRegularExpression('/x-on:click="requestClose\(\)"[^>]*>\s*Schließen/', $html);
+        $this->assertStringNotContainsString('Abbrechen', $html);
+        $this->assertStringContainsString(str_replace('"', chr(92).'u0022', '{"close":"closeVisitors"}'), $html);
+    }
+
     public function test_no_page_shows_its_form_as_a_panel_above_the_list(): void
     {
         $found = [];

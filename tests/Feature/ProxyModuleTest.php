@@ -12,11 +12,13 @@ use App\Modules\Proxy\ProxyModule;
 use App\Modules\Proxy\Security;
 use App\Modules\Proxy\Streams;
 use App\Modules\Proxy\Views;
+use App\Modules\Proxy\Visitors;
 use App\Support\Settings;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Js;
 use Livewire\Livewire;
 
 /**
@@ -41,6 +43,9 @@ class ProxyModuleTest extends FeatureTestCase
 
     /** @var array<string, mixed>|null GET /api/hosts/daily (PK95 Proxy 1.4.0); null = older Proxy (404) */
     private ?array $daily = null;
+
+    /** @var array<string, mixed>|null GET /api/hosts/visitors (PK95 Proxy 1.5.0); null = older Proxy (404) */
+    private ?array $visitors = null;
 
     protected function setUp(): void
     {
@@ -101,6 +106,7 @@ class ProxyModuleTest extends FeatureTestCase
         return match ($r->method().' '.$path) {
             'GET /api/hosts' => Http::response(array_values($this->hosts)),
             'GET /api/hosts/daily' => $this->daily === null ? Http::response(['error' => 'nicht gefunden'], 404) : Http::response($this->daily),
+            'GET /api/hosts/visitors' => $this->visitors === null ? Http::response(['error' => 'nicht gefunden'], 404) : Http::response($this->visitors),
             'GET /api/hosts/checks' => Http::response([['host_id' => 1, 'upstream_known' => true, 'upstream_up' => false, 'upstream_error' => 'Verbindung abgelehnt',
                 'domains' => [['domain' => 'app.example.de', 'status' => 'ok', 'not_after' => now()->getTimestamp() + 40 * 86400, 'issuer' => "Let's Encrypt"]]]]),
             'GET /api/access-lists' => Http::response([['id' => 1, 'name' => 'Intern', 'title' => '', 'mode' => 'any', 'allow' => ['10.0.0.0/8'], 'deny' => [],
@@ -396,7 +402,7 @@ class ProxyModuleTest extends FeatureTestCase
         $this->assertStringContainsString('<td class="px-2 py-2">105</td>', $html, '14.11.: 100 + 5 + 0');
         $this->assertStringContainsString('<td class="px-3 py-2">847</td>', $html, '812 + 35 + 0');
         // heatmap: the biggest cell is the strongest, an estimated day is italic with a tip
-        $this->assertMatchesRegularExpression('/class="[^"]*bg-cerulean-500 text-white[^"]*italic"\s+data-tip="11\.11\.: 130 Seitenaufrufe/', $html);
+        $this->assertMatchesRegularExpression('/class="[^"]*bg-cerulean-500 text-white[^"]*italic"\s*>.*?data-tip="11\.11\.: 130 Seitenaufrufe/s', $html);
         $this->assertStringContainsString('data-tip="Geschätzt, vor Einführung der Seitenzählung"', $html);
         $this->assertStringContainsString('<span class="sr-only">, geschätzt, vor Einführung der Seitenzählung</span>', $html);
         $this->assertStringContainsString('data-tip="08.11.: keine Aufrufe"', $html, 'doku.example.de had none that day');
@@ -441,6 +447,139 @@ class ProxyModuleTest extends FeatureTestCase
             $this->assertNotFalse($pos, $needle.' after position '.$at);
             $at = $pos;
         }
+    }
+
+    // ---- who visited a host on a day (GET /api/hosts/visitors, PK95 Proxy 1.5.0) -------------
+
+    /** @return array<string, mixed> the panel's answer, exactly in its format */
+    private static function visitorsFixture(): array
+    {
+        return json_decode((string) file_get_contents(base_path('tests/Fixtures/proxy/hosts-visitors.json')), true);
+    }
+
+    /** @return list<string> */
+    private function visitorQueries(): array
+    {
+        return array_values(array_map(fn ($c) => $c['query'], array_filter($this->calls, fn ($c) => $c['path'] === '/api/hosts/visitors')));
+    }
+
+    public function test_a_number_opens_who_visited_that_host_on_that_day(): void
+    {
+        $this->daily = self::dailyFixture();
+        $this->visitors = self::visitorsFixture();
+        Settings::put('automation_public_ip', '203.0.113.50');
+        // PK95 DNS knows the LAN address: its client name wins over the reverse DNS name
+        InstalledApp::factory()->create(['app_id' => 'dns', 'version' => '1.0.0', 'status' => InstalledApp::RUNNING]);
+        Http::fake(['host.docker.internal:8053/*' => Http::response([
+            'clients' => [['id' => 1, 'name' => 'mac', 'ids' => ['10.10.10.134']]],
+            'recent' => [['ip' => '10.10.10.134', 'hostname' => 'macbook.fritz.box', 'name' => '', 'client_id' => null]],
+        ])]);
+
+        // every number is a button with its tooltip
+        $html = $this->get(route('apps.page', [$this->installed, 'views']))->assertOk()->getContent();
+        $this->assertStringContainsString("wire:click=\"showVisitors('app.example.de', '2026-11-14')\" data-visitors-cell", $html);
+        $this->assertStringContainsString('data-tip="14.11.: 100 Seitenaufrufe, 7 Besucher, 2.100 Zugriffe&#10;Besucher anzeigen"', $html);
+        $this->assertStringContainsString('aria-label="app.example.de, 14.11.: 100 Seitenaufrufe. Besucher anzeigen"', $html);
+
+        $page = Livewire::test(Views::class, ['installedApp' => $this->installed])
+            ->call('showVisitors', 'app.example.de', '2026-11-14')
+            ->assertSee('role="dialog" aria-modal="true"', false)
+            ->assertSee('app.example.de · Sa 14.11.')
+            ->assertSee('4 Besucher · 13 Seitenaufrufe · 224 Zugriffe');
+        $dialog = $page->html();
+
+        // most page views first; LAN name from PK95 DNS, country, own public IP, clients and time span
+        $this->assertInOrder($dialog, ['>10.10.10.134<', '>91.97.75.147<', '>203.0.113.50<', '>185.220.101.7<']);
+        $this->assertStringContainsString('data-ip-name>· mac</span>', $dialog);
+        $this->assertStringContainsString('Lokales Netz', $dialog);
+        $this->assertStringContainsString('Niederlande', $dialog);
+        $this->assertSame(1, substr_count($dialog, 'eigene öffentliche IP'));
+        $this->assertStringContainsString('Safari, Firefox · 07:02:11–19:45:00 Uhr', $dialog);
+        // the paths, oldest first, with method, status and client; a hint when the list is cut
+        $this->assertInOrder($dialog, ['/wp-login.php', '/.env', '/xmlrpc.php']);
+        $this->assertSame(1, substr_count($dialog, 'data-paths-truncated'));
+        // observations, no verdicts: only at the scanner
+        $this->assertSame(3, substr_count($dialog, 'data-visitor-hint'));
+        $this->assertStringContainsString('>Viele Zugriffe, wenige Seiten</span>', $dialog);
+        $this->assertStringContainsString('>Nur Fehlerstatus</span>', $dialog);
+        $this->assertStringContainsString('>Typische Scanner-Pfade</span>', $dialog);
+        // open the requests of that visitor on that day; hide a client
+        $this->assertStringContainsString('?host=app.example.de&amp;ip=91.97.75.147&amp;day=2026-11-14', $dialog);
+        $this->assertStringContainsString('wire:click="hideClient('.Js::from('curl/8.0').')"', $dialog);
+        $this->assertStringNotContainsString('data-visitors-estimated', $dialog);
+
+        // page views only, then all requests; bots always out
+        $page->set('visitAll', true);
+        $this->assertSame([
+            'host=app.example.de&date=2026-11-14&hide_bots=1&pages_only=1',
+            'host=app.example.de&date=2026-11-14&hide_bots=1&pages_only=0',
+        ], array_values(array_unique($this->visitorQueries())));
+
+        $page->call('closeVisitors')->assertDontSee('data-modal', false);
+    }
+
+    public function test_visitors_of_an_estimated_day_and_of_an_older_proxy(): void
+    {
+        $this->daily = self::dailyFixture();
+
+        Livewire::test(Views::class, ['installedApp' => $this->installed])
+            ->call('showVisitors', 'app.example.de', '2026-11-13')
+            ->assertSee('Seitenaufrufe an diesem Tag geschätzt')
+            ->assertSee('Braucht PK95 Proxy 1.5.0')
+            ->assertDontSee('data-visitors-summary', false)
+            ->call('showVisitors', 'app.example.de', 'gestern')
+            ->assertSet('visitDate', '2026-11-13');
+    }
+
+    public function test_a_client_hidden_in_the_dialog_is_left_out_everywhere(): void
+    {
+        $this->installed->update(['version' => '1.5.0']);
+        $this->daily = self::dailyFixture();
+        $this->visitors = self::visitorsFixture();
+
+        Livewire::test(Views::class, ['installedApp' => $this->installed])
+            ->call('showVisitors', 'app.example.de', '2026-11-14')
+            ->call('hideClient', 'curl/8.0')
+            ->assertDispatched('notice', kind: 'success', text: '„curl/8.0“ ist ausgeblendet, auch in den Zugriffen und Aufrufen.')
+            ->call('hideClient', 'a, b')
+            ->assertDispatched('notice', kind: 'error', text: '„a, b“ enthält ein Komma und lässt sich deshalb nicht ausblenden.');
+
+        $this->assertSame(['curl/8.0'], Settings::get(AccessLog::HIDDEN_SETTING));
+        $this->assertStringEndsWith('&exclude_client=curl%2F8.0', $this->visitorQueries()[array_key_last($this->visitorQueries())]);
+    }
+
+    public function test_the_access_log_filters_one_day(): void
+    {
+        $page = Livewire::test(AccessLog::class, ['installedApp' => $this->installed])
+            ->set('day', '2026-11-14')
+            ->assertSee('Tag: Sa 14.11.')
+            // PK95 Proxy 1.0.0 cannot filter by time yet: say so instead of showing every day silently
+            ->assertSee('Tagesfilter braucht PK95 Proxy 1.5.0');
+        // local midnight to midnight (Europe/Berlin, UTC+1 in November)
+        $this->assertStringContainsString('from=1794610800000&to=1794697200000', $this->requestQueries()[array_key_last($this->requestQueries())]);
+
+        $page->call('clearDay')->assertSet('day', '')->assertDontSee('data-day-filter', false);
+        $this->assertStringNotContainsString('from=', $this->requestQueries()[array_key_last($this->requestQueries())]);
+
+        $this->installed->update(['version' => '1.5.0']);
+        Livewire::test(AccessLog::class, ['installedApp' => $this->installed->fresh()])->set('day', '2026-11-14')
+            ->assertDontSee('Tagesfilter braucht', false);
+    }
+
+    public function test_visitor_helpers(): void
+    {
+        $this->assertTrue(Visitors::isLan('10.10.10.134'));
+        $this->assertTrue(Visitors::isLan('192.168.1.2'));
+        $this->assertTrue(Visitors::isLan('fd00::1'));
+        $this->assertFalse(Visitors::isLan('91.97.75.147'));
+        $this->assertFalse(Visitors::isLan('kein.ip'));
+
+        $v = fn (int $pages, int $requests, array $paths) => ['pages' => $pages, 'requests' => $requests, 'is_bot' => false,
+            'paths' => array_map(fn ($p) => ['path' => $p[0], 'status' => $p[1]], $paths)];
+        $this->assertSame([], Visitors::hints($v(12, 340, [['/login', 200], ['/x', 404]])));
+        $this->assertSame(['Viele Zugriffe, wenige Seiten'], Visitors::hints($v(2, 60, [['/', 200]])));
+        $this->assertSame(['Nur Fehlerstatus', 'Typische Scanner-Pfade'], Visitors::hints($v(0, 3, [['/.env', 404], ['/wp-admin/setup.php', 403]])));
+        $this->assertSame([], Visitors::hints($v(1, 1, [['/environment', 200]])), 'only the real scanner paths');
     }
 
     public function test_daily_helpers(): void

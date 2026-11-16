@@ -2,10 +2,12 @@
 
 namespace App\Modules\Proxy;
 
+use App\Http\Support\Format;
 use App\Models\InstalledApp;
 use App\Modules\Concerns\TalksToApp;
 use App\Services\Apps\AppException;
 use App\Support\Settings;
+use Illuminate\Support\Carbon;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -53,6 +55,12 @@ class AccessLog extends Component
     #[Url(as: 'hide')]
     public array $hidden = [];
 
+    /** one local day (YYYY-MM-DD), sent as from/to; PK95 Proxy 1.5.0 and newer */
+    #[Url]
+    public string $day = '';
+
+    public const DAY_FILTER = '1.5.0';
+
     public bool $live = true;
 
     /** Number of entries shown ("Ältere laden" adds 100, the panel answers at most 500). */
@@ -88,11 +96,42 @@ class AccessLog extends Component
         if (! request()->query->has('hide')) {
             $this->hidden = self::clean((array) Settings::get(self::HIDDEN_SETTING));
         }
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->day) !== 1) {
+            $this->day = '';
+        }
+    }
+
+    public function clearDay(): void
+    {
+        $this->day = '';
+        $this->updated('day');
+    }
+
+    /**
+     * Hide a client in the remembered list (from another page, e.g. the visitors of a day).
+     * Same rules as hideClient(); returns the reason when it is not possible.
+     */
+    public static function hideRemembered(string $name): ?string
+    {
+        $name = self::name($name);
+        $hidden = self::clean((array) Settings::get(self::HIDDEN_SETTING));
+        if ($name === '' || in_array($name, $hidden, true)) {
+            return null;
+        }
+        if (str_contains($name, ',')) {
+            return "„{$name}“ enthält ein Komma und lässt sich deshalb nicht ausblenden.";
+        }
+        if (count($hidden) >= self::MAX_HIDDEN) {
+            return 'Höchstens '.self::MAX_HIDDEN.' Clients lassen sich ausblenden.';
+        }
+        Settings::put(self::HIDDEN_SETTING, [...$hidden, $name]);
+
+        return null;
     }
 
     public function updated(string $property): void
     {
-        if (in_array($property, ['host', 'status', 'ip', 'country', 'q', 'hideBots', 'client', 'hidden'], true)) {
+        if (in_array($property, ['host', 'status', 'ip', 'country', 'q', 'hideBots', 'client', 'hidden', 'day'], true)) {
             $this->limit = 100;
             $this->open = [];
         }
@@ -203,6 +242,11 @@ class AccessLog extends Component
         foreach ($filter ? $this->hidden : [] as $name) {
             $query .= ($query === '' ? '' : '&').'exclude_client='.rawurlencode($name);
         }
+        // a local day: [midnight, next midnight) in ms; older panels ignore it (hint in the view)
+        if ($this->day !== '') {
+            $start = Carbon::parse($this->day, Format::timezone())->startOfDay();
+            $query .= ($query === '' ? '' : '&').'from='.$start->getTimestampMs().'&to='.$start->copy()->addDay()->getTimestampMs();
+        }
         [$rows, $error] = $this->load('/api/requests', $query);
         $rows = is_array($rows) ? $rows : [];
         [$hosts] = $this->load('/api/hosts');
@@ -225,6 +269,8 @@ class AccessLog extends Component
             'statuses' => $statuses,
             'more' => count($rows) >= $this->limit && $this->limit < 500,
             'loadError' => $error,
+            // the day filter needs PK95 Proxy 1.5.0; an older one would show every day
+            'dayUnsupported' => $this->day !== '' && $this->installedApp->version && version_compare(ltrim($this->installedApp->version, 'v'), self::DAY_FILTER, '<'),
             'clientFilter' => $filter,
             // names to pick: the panel's list, plus the clients of the rows on screen
             'clientNames' => collect($this->clients)->pluck('client')

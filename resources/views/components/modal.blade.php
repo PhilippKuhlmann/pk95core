@@ -3,7 +3,8 @@
     @if ($editing !== null)); the Alpine part "modal" (app.js) handles focus, Esc, backdrop,
     the question about unsaved changes and the page scroll.
       <x-modal title="Host bearbeiten" submit="save" wire:key="host-form"> fields </x-modal>
-    submit: Livewire method of the form; close: method that closes (default "cancel").
+    submit: Livewire method of the form, "" = a dialog to look at (no form, only "Schließen");
+    close: method that closes (default "cancel").
     Head with title and X, body scrolls, foot with "Abbrechen" and the save button stays.
     Below sm a full screen sheet. Layers: page bar 50 < dialog 55 < confirm and toasts 60 <
     tooltip 70. No transform on the dialog: comboboxes (position: fixed) and tooltips inside
@@ -38,17 +39,30 @@
             </button>
         </div>
 
-        <form wire:submit="{{ $submit }}" class="flex min-h-0 flex-1 flex-col">
-            <div x-ref="body" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 [&>*:first-child]:mt-0" x-on:input="dirty = true" x-on:change="dirty = true">
+        {{-- with submit a form (changes are tracked), without one a dialog to look at: only "Schließen" --}}
+        @if ($submit)
+            <form wire:submit="{{ $submit }}" class="flex min-h-0 flex-1 flex-col">
+        @else
+            <div class="flex min-h-0 flex-1 flex-col">
+        @endif
+            <div x-ref="body" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 [&>*:first-child]:mt-0" @if ($submit) x-on:input="dirty = true" x-on:change="dirty = true" @endif>
                 {{ $slot }}
             </div>
             <div class="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-gray-200 px-5 py-3 max-sm:pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-gray-700">
                 @isset($actions)
                     <div class="mr-auto flex flex-wrap gap-2">{{ $actions }}</div>
                 @endisset
-                <x-input.button type="button" color="gray" x-on:click="requestClose()" class="max-sm:min-h-11">Abbrechen</x-input.button>
-                <x-input.button type="submit" wire:loading.attr="disabled" wire:target="{{ $submit }}" class="max-sm:min-h-11">{{ $saveLabel }}</x-input.button>
+                @if ($submit)
+                    <x-input.button type="button" color="gray" x-on:click="requestClose()" class="max-sm:min-h-11">Abbrechen</x-input.button>
+                    <x-input.button type="submit" wire:loading.attr="disabled" wire:target="{{ $submit }}" class="max-sm:min-h-11">{{ $saveLabel }}</x-input.button>
+                @else
+                    <x-input.button type="button" color="gray" x-on:click="requestClose()" class="max-sm:min-h-11">Schließen</x-input.button>
+                @endif
             </div>
-        </form>
+        @if ($submit)
+            </form>
+        @else
+            </div>
+        @endif
     </div>
 </div>
