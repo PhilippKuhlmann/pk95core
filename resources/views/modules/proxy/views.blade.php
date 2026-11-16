@@ -11,7 +11,8 @@
     $hiddenCount = count($data['hidden']);
 @endphp
 
-<div wire:poll.60s>
+{{-- no polling while the visitors dialog is open: it would reload its list under the reader --}}
+<div @if ($visitHost === null) wire:poll.60s @endif>
     <x-page-header title="Aufrufe">
         <x-slot:sub>
             Echte Seitenaufrufe pro Host und Tag{{ $data['computed_at'] ? ' · Stand '.Fmt::time($data['computed_at']) : '' }}
@@ -90,9 +91,19 @@
                             </th>
                             @foreach ($r['values'] as $day => $n)
                                 @php $p = $r['series'][$day] ?? null; @endphp
-                                <td @class(['border-b border-gray-100 px-2 py-1.5 dark:border-gray-700/60', Daily::heat($n, $max), 'italic' => $p['estimated'] ?? false])
-                                    data-tip="{{ $p ? Daily::tip($day, $p) : Daily::label($day).': keine Aufrufe' }}">
-                                    @if ($n > 0){{ Fmt::num($n) }}@else<span class="text-gray-300 dark:text-gray-600">–</span>@endif
+                                <td @class(['border-b border-gray-100 p-0 dark:border-gray-700/60', Daily::heat($n, $max), 'italic' => $p['estimated'] ?? false])
+                                    @unless ($p) data-tip="{{ Daily::label($day) }}: keine Aufrufe" @endunless>
+                                    @if ($p)
+                                        {{-- a click shows who it was --}}
+                                        <button type="button" wire:click="showVisitors({{ Js::from($r['host']) }}, '{{ $day }}')" data-visitors-cell
+                                            data-tip="{{ Daily::tip($day, $p) }}&#10;Besucher anzeigen"
+                                            aria-label="{{ $r['host'] }}, {{ Daily::label($day) }}: {{ Fmt::num($n) }} {{ $metricLabel }}. Besucher anzeigen"
+                                            class="block w-full cursor-pointer px-2 py-1.5 text-right tabular-nums hover:underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cerulean-500">
+                                            @if ($n > 0){{ Fmt::num($n) }}@else<span class="text-gray-400 dark:text-gray-500">–</span>@endif
+                                        </button>
+                                    @else
+                                        <span class="block px-2 py-1.5 text-gray-300 dark:text-gray-600">–</span>
+                                    @endif
                                 </td>
                             @endforeach
                             <td class="border-b border-gray-100 px-3 py-1.5 font-semibold text-gray-900 dark:border-gray-700/60 dark:text-gray-100">{{ Fmt::num($r['total']) }}</td>
@@ -117,5 +128,9 @@
             @endforeach
             viel {{ $metricLabel }} pro Tag
         </div>
+    @endif
+
+    @if ($visit)
+        @include('modules.proxy.partials.visitors-dialog')
     @endif
 </div>
