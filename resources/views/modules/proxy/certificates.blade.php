@@ -127,7 +127,7 @@
                         <div class="text-sm font-medium text-gray-900 dark:text-gray-100">Auf dem LXC abholen</div>
                         <p class="mt-1 max-w-3xl text-xs text-gray-500 dark:text-gray-400">
                             Die Dateien liegen auf dem LXC unter <span class="font-mono">{{ $certBind['source'] }}/&lt;Domain&gt;/</span>. Bei einer Erneuerung bleibt der Pfad gleich, nur der Inhalt ändert sich.
-                            Auf dem LXC muss dafür der Benutzer certsync eingerichtet sein (nur SFTP, Gruppe pk95-certs) und den SSH-Schlüssel des abholenden Rechners kennen.
+                            Auf dem LXC muss dafür der Benutzer certsync eingerichtet sein (nur SFTP, Gruppe pk95-certs) und den SSH-Schlüssel des abholenden Rechners kennen (unten unter „Zugang für certsync“).
                         </p>
                         <dl class="mt-3 space-y-3 text-xs">
                             <div>
@@ -153,6 +153,58 @@
                     </div>
                 @endif
             @endif
+        @endif
+
+        @if ($certBind)
+            {{-- the SFTP user certsync: who may fetch the files (public keys), set up and gid --}}
+            <div class="mt-4 rounded-lg border border-gray-200 p-4 dark:border-gray-700" data-certsync>
+                <div class="text-sm font-medium text-gray-900 dark:text-gray-100">Zugang für certsync (SSH-Schlüssel)</div>
+                <p class="mt-1 max-w-3xl text-xs text-gray-500 dark:text-gray-400">
+                    Rechner mit einem dieser Schlüssel lesen als certsync die Zertifikate unter {{ $certBind['source'] }}, sonst nichts: keine Shell, kein Schreiben.
+                    Erlaubt sind ssh-ed25519, ecdsa-sha2-* und ssh-rsa ab {{ \App\Services\Certsync\Certsync::MIN_RSA_BITS }} Bit, ein öffentlicher Schlüssel pro Eintrag, ohne Optionen.
+                </p>
+                @if (! $certsyncSetup)
+                    <x-callout title="certsync ist auf dem LXC noch nicht eingerichtet" ton="gelb" class="mt-3" data-certsync-missing>
+                        Neue Installationen richten ihn selbst ein. Für diese hier einmal auf dem Proxmox-Host ausführen (statt &lt;CTID&gt; die Nummer des LXC):
+                        <span class="mt-1 block font-mono text-xs"><x-copy :value="\App\Services\Certsync\Certsync::SETUP_COMMAND" /></span>
+                    </x-callout>
+                @elseif ($certsyncSetup['gid'] !== $certsGid)
+                    <x-callout title="Gruppen-ID passt nicht" ton="gelb" class="mt-3" data-gid-mismatch>
+                        Die Gruppe pk95-certs hat auf dem LXC die gid {{ $certsyncSetup['gid'] }}, in Core ist {{ $certsGid }} eingestellt. Stelle unter Einstellungen {{ $certsyncSetup['gid'] }} ein und erstelle PK95 Proxy neu, sonst kann certsync die Dateien nicht lesen.
+                    </x-callout>
+                @endif
+
+                @if ($certsync['keys'])
+                    <ul class="mt-3 divide-y divide-gray-100 text-sm dark:divide-gray-700" data-certsync-keys>
+                        @foreach ($certsync['keys'] as $k)
+                            <li wire:key="key-{{ md5($k['fingerprint']) }}" class="flex flex-wrap items-center justify-between gap-2 py-2">
+                                <div class="min-w-0">
+                                    <div class="text-gray-900 dark:text-gray-100">{{ $k['comment'] !== '' ? $k['comment'] : 'Ohne Kommentar' }}
+                                        <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">{{ $k['type'] === 'ssh-rsa' ? 'RSA' : ($k['type'] === 'ssh-ed25519' ? 'Ed25519' : 'ECDSA') }} {{ $k['bits'] }} Bit</span>
+                                    </div>
+                                    <div class="break-all font-mono text-xs text-gray-500 dark:text-gray-400">{{ $k['fingerprint'] }}</div>
+                                </div>
+                                <x-input.button type="button" size="sm" color="gray" aria-label="Schlüssel {{ $k['comment'] ?: $k['fingerprint'] }} entfernen"
+                                    x-on:click="$store.confirm.ask({ title: 'Schlüssel entfernen?', button: 'Entfernen', text: {{ Js::from(($k['comment'] ?: $k['fingerprint']).' kann die Zertifikate danach nicht mehr abholen.') }}, ok: () => $wire.removeKey({{ Js::from($k['fingerprint']) }}) })">
+                                    <x-icon name="trash" class="h-4 w-4" />
+                                </x-input.button>
+                            </li>
+                        @endforeach
+                    </ul>
+                @else
+                    <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">Noch kein Schlüssel eingetragen.</p>
+                @endif
+                @if ($certsync['ignored'])
+                    <p class="mt-2 text-xs text-amber-700 dark:text-amber-300" data-certsync-ignored>{{ $certsync['ignored'] === 1 ? 'Eine Zeile' : $certsync['ignored'].' Zeilen' }} der Schlüsseldatei {{ $certsync['ignored'] === 1 ? 'entspricht' : 'entsprechen' }} nicht diesen Regeln und {{ $certsync['ignored'] === 1 ? 'fällt' : 'fallen' }} beim nächsten Ändern weg.</p>
+                @endif
+
+                <form wire:submit="addKey" class="mt-3 grid grid-cols-1 items-end gap-2 md:grid-cols-[1fr_auto]">
+                    <x-field label="Öffentlicher Schlüssel" for="certsync-key" feld="newKey" hilfe="Etwa der Inhalt von ~/.ssh/id_ed25519.pub des Rechners, der die Zertifikate abholt.">
+                        <x-input.textarea id="certsync-key" rows="2" wire:model="newKey" placeholder="ssh-ed25519 AAAA… name@rechner" class="mt-1 font-mono text-xs" />
+                    </x-field>
+                    <x-input.button type="submit" wire:loading.attr="disabled" wire:target="addKey" class="md:mb-6">Hinzufügen</x-input.button>
+                </form>
+            </div>
         @endif
 
         <form class="mt-4 grid grid-cols-1 items-end gap-3 md:grid-cols-[1fr_1fr_auto]"

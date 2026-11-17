@@ -13,13 +13,16 @@ use App\Modules\Proxy\Security;
 use App\Modules\Proxy\Streams;
 use App\Modules\Proxy\Views;
 use App\Modules\Proxy\Visitors;
+use App\Services\Certsync\Certsync;
 use App\Support\Settings;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Js;
 use Livewire\Livewire;
+use Tests\Unit\CertsyncKeysTest;
 
 /**
  * The PK95 Proxy module against a fake of the panel API (host network:
@@ -719,6 +722,98 @@ class ProxyModuleTest extends FeatureTestCase
         // PK95 Proxy 1.0.0 does not set the group yet
         $this->assertStringContainsString('data-group-too-old', $html);
         $this->assertStringNotContainsString('data-bind-missing', $html);
+    }
+
+    // ---- the SFTP user certsync: keys in /opt/pk95/ssh/authorized_keys/certsync ----------------
+
+    /** A temporary data root with the files install/certsync.sh leaves; returns the key file. */
+    private function certsyncData(?int $gid = 2001, array $lines = []): string
+    {
+        $dir = sys_get_temp_dir().'/pk95-certsync-'.bin2hex(random_bytes(4));
+        mkdir($dir.'/ssh/authorized_keys', 0755, true);
+        config(['pk95.data_dir' => $dir]);
+        $this->beforeApplicationDestroyed(fn () => File::deleteDirectory($dir));
+        if ($gid !== null) {
+            file_put_contents($dir.'/ssh/certsync.env', "CERTS_GID={$gid}\nCERTSYNC_UID=2001\n");
+        }
+        file_put_contents($dir.'/ssh/authorized_keys/certsync', implode("\n", $lines)."\n");
+
+        return $dir.'/ssh/authorized_keys/certsync';
+    }
+
+    /** @return list<array<string, mixed>> helper runs that wrote the key file */
+    private function keyWrites(): array
+    {
+        return array_values(array_filter($this->docker['helperRuns'], fn ($r) => ($r['mounts'][0]['Target'] ?? '') === '/keys'));
+    }
+
+    public function test_the_certificates_page_lists_the_keys_of_certsync(): void
+    {
+        $mac = CertsyncKeysTest::key('ssh-rsa', 4096, 'philipp@mac');
+        $this->certsyncData(2001, [$mac, 'command="/bin/sh" '.CertsyncKeysTest::key('ssh-ed25519')]);
+
+        $html = $this->get(route('apps.page', [$this->installed, 'certificates']))->assertOk()->getContent();
+
+        $this->assertStringContainsString('Zugang für certsync (SSH-Schlüssel)', $html);
+        $this->assertStringContainsString('philipp@mac', $html);
+        $this->assertStringContainsString('RSA 4096 Bit', $html);
+        $this->assertStringContainsString(Certsync::parse($mac)['fingerprint'], $html);
+        // a line against the rules (options) is shown as such and dropped on the next change
+        $this->assertStringContainsString('Eine Zeile der Schlüsseldatei entspricht nicht diesen Regeln', $html);
+        $this->assertStringNotContainsString('data-certsync-missing', $html);
+        $this->assertStringNotContainsString('data-gid-mismatch', $html);
+    }
+
+    public function test_certsync_not_set_up_or_with_another_gid_is_said(): void
+    {
+        $this->certsyncData(null);
+        $this->get(route('apps.page', [$this->installed, 'certificates']))->assertOk()
+            ->assertSee('data-certsync-missing', false)
+            ->assertSee('install/certsync.sh', false)
+            ->assertSee('Noch kein Schlüssel eingetragen.');
+
+        $this->certsyncData(3000);
+        $this->get(route('apps.page', [$this->installed, 'certificates']))->assertOk()
+            ->assertSee('data-gid-mismatch', false)
+            ->assertSee('Die Gruppe pk95-certs hat auf dem LXC die gid 3000, in Core ist 2001 eingestellt.');
+    }
+
+    public function test_keys_are_added_and_removed_by_a_root_helper(): void
+    {
+        $old = CertsyncKeysTest::key('ssh-ed25519', comment: 'alt');
+        $file = $this->certsyncData(2001, [$old]);
+        $new = CertsyncKeysTest::key('ecdsa-sha2-nistp256', comment: 'nas');
+
+        $page = Livewire::test(Certificates::class, ['installedApp' => $this->installed])
+            ->set('newKey', 'from="10.0.0.1" '.$new)->call('addKey')
+            ->assertHasErrors(['newKey'])
+            ->set('newKey', CertsyncKeysTest::key('ssh-rsa', 2048))->call('addKey')
+            ->assertHasErrors(['newKey'])
+            ->set('newKey', $old)->call('addKey')
+            ->assertHasErrors(['newKey']);
+        $this->assertSame([], $this->keyWrites(), 'nothing written for a rejected key');
+
+        $page->set('newKey', $new)->call('addKey')
+            ->assertHasNoErrors()
+            ->assertSet('newKey', '')
+            ->assertDispatched('notice', kind: 'success', text: 'Schlüssel für certsync hinzugefügt ('.Certsync::parse($new)['fingerprint'].').');
+
+        // as root next to the file, 0644 and renamed into place (sshd StrictModes)
+        $write = $this->keyWrites()[0];
+        $this->assertSame([['Type' => 'bind', 'Source' => dirname($file), 'Target' => '/keys', 'BindOptions' => ['CreateMountpoint' => true]]], $write['mounts']);
+        $this->assertSame('sh', $write['cmd'][0]);
+        $this->assertSame("umask 022 && printf '%s\\n' '".Certsync::parse($old)['line']."' '".Certsync::parse($new)['line']."' > /keys/.certsync.new && chmod 0644 /keys/.certsync.new && mv -f /keys/.certsync.new /keys/certsync", $write['cmd'][2]);
+
+        // removing writes the rest; the last one empties the file
+        $page->call('removeKey', Certsync::parse($old)['fingerprint'])
+            ->assertDispatched('notice', kind: 'success', text: 'Schlüssel entfernt. Dieser Rechner kann die Zertifikate nicht mehr abholen.');
+        $this->assertSame('umask 022 && true > /keys/.certsync.new && chmod 0644 /keys/.certsync.new && mv -f /keys/.certsync.new /keys/certsync', $this->keyWrites()[1]['cmd'][2]);
+
+        // the helper fails: a message, no change
+        $this->docker['helperExit'] = 1;
+        $this->docker['helperOutput'] = 'Read-only file system';
+        $page->set('newKey', $new)->call('addKey')
+            ->assertDispatched('notice', kind: 'error', text: 'Die Schlüsseldatei ließ sich nicht schreiben: Read-only file system');
     }
 
     public function test_visitor_helpers(): void

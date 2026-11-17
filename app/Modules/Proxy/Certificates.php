@@ -6,6 +6,7 @@ use App\Models\InstalledApp;
 use App\Modules\Concerns\TalksToApp;
 use App\Services\Automation\LanIp;
 use App\Services\Catalog\AppDefinition;
+use App\Services\Certsync\Certsync;
 use App\Services\Docker\DockerClient;
 use App\Services\Updates\UpdateService;
 use App\Support\Settings;
@@ -27,6 +28,9 @@ class Certificates extends Component
     public InstalledApp $installedApp;
 
     public string $acmeDomain = '';
+
+    /** public key for the SFTP user certsync (one line) */
+    public string $newKey = '';
 
     public string $acmeNote = '';
 
@@ -86,6 +90,38 @@ class Certificates extends Component
         }
     }
 
+    public function addKey(): void
+    {
+        try {
+            $key = app(Certsync::class)->add($this->newKey);
+        } catch (\InvalidArgumentException $e) {
+            $this->addError('newKey', $e->getMessage());
+
+            return;
+        } catch (\RuntimeException $e) {
+            $this->dispatch('notice', kind: 'error', text: $e->getMessage());
+
+            return;
+        }
+        $this->newKey = '';
+        $this->resetErrorBag('newKey');
+        $this->dispatch('notice', kind: 'success', text: 'Schlüssel für certsync hinzugefügt ('.$key['fingerprint'].').');
+    }
+
+    public function removeKey(string $fingerprint): void
+    {
+        try {
+            $removed = app(Certsync::class)->remove($fingerprint);
+        } catch (\RuntimeException $e) {
+            $this->dispatch('notice', kind: 'error', text: $e->getMessage());
+
+            return;
+        }
+        if ($removed) {
+            $this->dispatch('notice', kind: 'success', text: 'Schlüssel entfernt. Dieser Rechner kann die Zertifikate nicht mehr abholen.');
+        }
+    }
+
     public function render()
     {
         [$d, $error] = $this->load('/api/certificates');
@@ -98,6 +134,10 @@ class Certificates extends Component
 
         return view('modules.proxy.certificates', [
             'certBind' => $bind,
+            // the SFTP user on the LXC: its keys, whether it is set up, the gid there vs. the setting
+            'certsync' => Certsync::keys(),
+            'certsyncSetup' => Certsync::setup(),
+            'certsGid' => (int) Settings::get('proxy_certs_gid'),
             'bindActive' => $bind && $definition ? self::bindActive($definition, $bind) : null,
             // only what is known: the setting or the last detection (detecting starts a container)
             'lanIp' => trim((string) Settings::get('automation_lan_ip')) ?: (Cache::get(LanIp::CACHE)['ip'] ?? null),

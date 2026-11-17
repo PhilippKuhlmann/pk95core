@@ -193,6 +193,10 @@ ip="$(hostname -I | awk "{print \$1}")"
 cd /opt/pk95
 docker compose pull -q
 docker compose up -d
+
+# certsync: read-only SFTP access to the certificates of PK95 Proxy (/srv/pk95/certs);
+# can be repeated, see install/certsync.sh
+curl -fsSL --retry 3 "$RAW/install/certsync.sh" | bash
 '
 
 blue "Warte auf den Einrichtungscode"
@@ -214,3 +218,4 @@ else
 fi
 echo
 echo "Danach das Admin-Konto anlegen und unter „Apps“ PK95 Proxy, Uptime und ProxApps aktivieren."
+echo "Zertifikate für andere Anwendungen holt der Benutzer certsync per scp ab (Schlüssel unter Proxy → Zertifikate)."
