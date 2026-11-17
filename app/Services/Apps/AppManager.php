@@ -104,6 +104,7 @@ class AppManager
         foreach ($definition->volumes as $volume) {
             $this->docker->ensureVolume($definition->volumeName($volume['name']), ['pk95.app' => $definition->id]);
         }
+        $this->prepareBinds($app, $definition);
         if ($this->docker->inspectContainer($definition->containerName()) !== null) {
             $app->log('Ersetze vorhandenen Container '.$definition->containerName());
             $this->docker->removeContainer($definition->containerName());
@@ -156,6 +157,31 @@ class AppManager
     public function unpause(InstalledApp $app): void
     {
         $this->docker->startContainer($this->containerRef($app));
+    }
+
+    /**
+     * Host folders of the catalog (binds with create): a helper container makes the bind root
+     * traversable (0755, e.g. for the SFTP user certsync) and creates the folders empty; owner and
+     * rights of a folder set the app itself. Docker would create a missing folder anyway
+     * (CreateMountpoint), so a failure here is only logged.
+     */
+    private function prepareBinds(InstalledApp $app, AppDefinition $definition): void
+    {
+        $root = rtrim((string) config('pk95.bind_root'), '/');
+        $dirs = array_map(fn ($b) => '/bindroot'.substr($b['source'], strlen($root)), array_values(array_filter($definition->binds, fn ($b) => $b['create'])));
+        if ($dirs === []) {
+            return;
+        }
+        try {
+            $result = $this->docker->run((string) config('pk95.helper_image'),
+                ['sh', '-c', 'chmod 0755 /bindroot && mkdir -p '.implode(' ', array_map('escapeshellarg', $dirs))],
+                [['Type' => 'bind', 'Source' => $root, 'Target' => '/bindroot', 'BindOptions' => ['CreateMountpoint' => true]]], 60);
+            if ($result['exit'] !== 0) {
+                $app->log("Host-Ordner unter {$root} vorbereiten endete mit Code {$result['exit']}: {$result['output']}", 'warning');
+            }
+        } catch (Throwable $e) {
+            $app->log("Host-Ordner unter {$root} vorbereiten: {$e->getMessage()}", 'warning');
+        }
     }
 
     private function pull(InstalledApp $app, AppDefinition $definition): void

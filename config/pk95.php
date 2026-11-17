@@ -40,6 +40,14 @@ return [
     'bind_root' => env('PK95_BIND_ROOT', '/srv/pk95'),
 
     /*
+    | Settings a catalog env value may take ("{setting:key|default}") with their validation:
+    | an invalid value falls back to the default (a wrong gid would keep PK95 Proxy from starting).
+    */
+    'setting_rules' => [
+        'proxy_certs_gid' => ['required', 'integer', 'between:1000,65534'],
+    ],
+
+    /*
     | Docker Engine API over the mounted unix socket.
     */
     'docker' => [

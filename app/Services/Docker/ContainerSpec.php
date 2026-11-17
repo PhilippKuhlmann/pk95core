@@ -5,6 +5,7 @@ namespace App\Services\Docker;
 use App\Http\Support\Format;
 use App\Services\Catalog\AppDefinition;
 use App\Support\Settings;
+use Illuminate\Support\Facades\Validator;
 
 /**
  * Builds the Docker "container create" body for an app from its catalog entry.
@@ -92,6 +93,10 @@ final class ContainerSpec
             return $value;
         }
         $setting = trim((string) (Settings::get($m[1]) ?? ''));
+        $rules = config('pk95.setting_rules.'.$m[1]);
+        if ($setting !== '' && $rules && Validator::make(['v' => $setting], ['v' => $rules])->fails()) {
+            return $m[2];
+        }
 
         return $setting !== '' ? $setting : $m[2];
     }
