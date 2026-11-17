@@ -129,8 +129,13 @@ sysctls:                # nur net.*, nur bridge – z. B. Ping ohne NET_RAW:
 volumes:
   - name: data
     target: /data
+binds:                  # Host-Ordner, nur unterhalb von /srv/pk95 (PK95_BIND_ROOT)
+  - source: /srv/pk95/certs
+    target: /data/export # darf in einem Volume liegen, wird dann nicht mit gesichert
+    create: true         # fehlt der Ordner, legt Docker ihn an
 env:
   DATA_DIR: /data
+  CERTS_GID: "{setting:proxy_certs_gid|2001}"  # Wert aus einer Core-Einstellung, sonst der Standard
 ```
 
 ## 6. Versionierung

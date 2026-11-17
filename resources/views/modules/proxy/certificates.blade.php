@@ -66,7 +66,12 @@
                             <td class="py-2 pr-3 align-top">{{ $c['domain'] }}
                                 @if ($c['note'])<div class="text-xs text-gray-500">{{ $c['note'] }}</div>@endif
                                 @if ($st)
-                                    <div class="mt-1 flex flex-col font-mono text-xs text-gray-500"><span>{{ $c['path'] }}/fullchain.pem</span><span>{{ $c['path'] }}/privkey.pem</span></div>
+                                    {{-- on the LXC when the folder is bound, otherwise the path in the container --}}
+                                    @php $onHost = $certBind && $bindActive !== false ? Certificates::hostPath($c['path'], $certBind) : null; @endphp
+                                    <div class="mt-1 flex flex-col items-start font-mono text-xs text-gray-500 dark:text-gray-400" @if ($onHost) data-host-path @endif>
+                                        <x-copy :value="($onHost ?? $c['path']).'/fullchain.pem'" />
+                                        <x-copy :value="($onHost ?? $c['path']).'/privkey.pem'" />
+                                    </div>
                                 @endif
                             </td>
                             <td class="py-2 pr-3 align-top">{{ $st['issuer'] ?? '–' }}</td>
@@ -102,7 +107,51 @@
                 </tbody>
             </table>
             @if (collect($acme)->contains(fn ($c) => ! empty($c['status'])))
-                <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Die Pfade gelten im Container von PK95 Proxy (Volume pk95-proxy-data). Bei einer Erneuerung bleibt der Pfad gleich, nur der Inhalt ändert sich.</p>
+                @php
+                    $example = collect($acme)->first(fn ($c) => ! empty($c['status']));
+                    $exDomain = $example['domain'] ?? '<domain>';
+                    $exDir = $certBind ? (Certificates::hostPath($example['path'] ?? '', $certBind) ?? $certBind['source'].'/'.$exDomain) : null;
+                    $ip = $lanIp ?: '<LAN-IP>';
+                @endphp
+                @if (! $certBind)
+                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Die Pfade gelten im Container von PK95 Proxy (Volume pk95-proxy-data). Bei einer Erneuerung bleibt der Pfad gleich, nur der Inhalt ändert sich.</p>
+                @elseif ($bindActive === false)
+                    <x-callout title="Noch nicht auf dem LXC abholbar" ton="gelb" class="mt-3" data-bind-missing>
+                        Der laufende Container von PK95 Proxy hat den Ordner {{ $certBind['source'] }} noch nicht. Erstelle PK95 Proxy einmal neu (App-Details → Neu erstellen), die Daten bleiben dabei erhalten. Danach liegen die Dateien auch auf dem LXC. Bis dahin gelten die Pfade im Container.
+                        <x-slot:aktionen>
+                            <x-input.linkbutton :href="route('apps.show', $installedApp)" wire:navigate color="gray" size="sm">Zu den App-Details</x-input.linkbutton>
+                        </x-slot:aktionen>
+                    </x-callout>
+                @else
+                    <div class="mt-4 rounded-lg border border-gray-200 p-4 dark:border-gray-700" data-scp>
+                        <div class="text-sm font-medium text-gray-900 dark:text-gray-100">Auf dem LXC abholen</div>
+                        <p class="mt-1 max-w-3xl text-xs text-gray-500 dark:text-gray-400">
+                            Die Dateien liegen auf dem LXC unter <span class="font-mono">{{ $certBind['source'] }}/&lt;Domain&gt;/</span>. Bei einer Erneuerung bleibt der Pfad gleich, nur der Inhalt ändert sich.
+                            Auf dem LXC muss dafür der Benutzer certsync eingerichtet sein (nur SFTP, Gruppe pk95-certs) und den SSH-Schlüssel des abholenden Rechners kennen.
+                        </p>
+                        <dl class="mt-3 space-y-3 text-xs">
+                            <div>
+                                <dt class="text-gray-500 dark:text-gray-400">Einmal holen</dt>
+                                <dd class="mt-1 flex flex-col items-start gap-1 font-mono text-gray-800 dark:text-gray-200">
+                                    <x-copy :value="'scp certsync@'.$ip.':'.$exDir.'/fullchain.pem ./'" />
+                                    <x-copy :value="'scp certsync@'.$ip.':'.$exDir.'/privkey.pem ./'" />
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="text-gray-500 dark:text-gray-400">Täglich um 04:15 per Cron (Zielordner anpassen)</dt>
+                                <dd class="mt-1 font-mono text-gray-800 dark:text-gray-200">
+                                    <x-copy :value="'15 4 * * * scp -q certsync@'.$ip.':'.$exDir.'/fullchain.pem certsync@'.$ip.':'.$exDir.'/privkey.pem /etc/ssl/'.$exDomain.'/'" />
+                                </dd>
+                            </div>
+                        </dl>
+                        @if ($groupTooOld)
+                            <p class="mt-3 text-xs text-amber-700 dark:text-amber-300" data-group-too-old>Lesen darf die Gruppe pk95-certs die Dateien erst ab PK95 Proxy {{ Certificates::CERTS_GROUP }}.</p>
+                        @endif
+                        @unless ($lanIp)
+                            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Statt &lt;LAN-IP&gt; die Adresse des LXC einsetzen. Core kennt sie, sobald sie unter Automatik eingetragen oder erkannt ist.</p>
+                        @endunless
+                    </div>
+                @endif
             @endif
         @endif
 

@@ -4,7 +4,14 @@ namespace App\Modules\Proxy;
 
 use App\Models\InstalledApp;
 use App\Modules\Concerns\TalksToApp;
+use App\Services\Automation\LanIp;
+use App\Services\Catalog\AppDefinition;
+use App\Services\Docker\DockerClient;
+use App\Services\Updates\UpdateService;
+use App\Support\Settings;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Component;
+use Throwable;
 
 /**
  * PK95 Proxy: certificates of the hosts, Let's Encrypt certificates for other
@@ -13,6 +20,9 @@ use Livewire\Component;
 class Certificates extends Component
 {
     use TalksToApp;
+
+    /** From this version the exported files belong to the group of proxy_certs_gid (readable by certsync). */
+    public const CERTS_GROUP = '1.7.0';
 
     public InstalledApp $installedApp;
 
@@ -82,13 +92,70 @@ class Certificates extends Component
         [$acme] = $this->load('/api/acme-certs');
         $d = is_array($d) ? $d : ['hosts' => [], 'custom' => []];
 
+        // the export folder on the LXC (catalog bind), whether the container has it, the LAN IP
+        $definition = $this->installedApp->definition();
+        $bind = self::exportBind($definition?->binds ?? []);
+
         return view('modules.proxy.certificates', [
+            'certBind' => $bind,
+            'bindActive' => $bind && $definition ? self::bindActive($definition, $bind) : null,
+            // only what is known: the setting or the last detection (detecting starts a container)
+            'lanIp' => trim((string) Settings::get('automation_lan_ip')) ?: (Cache::get(LanIp::CACHE)['ip'] ?? null),
+            'groupTooOld' => UpdateService::isVersion((string) $this->installedApp->version)
+                && version_compare(ltrim((string) $this->installedApp->version, 'v'), self::CERTS_GROUP, '<'),
             'hosts' => $d['hosts'] ?? [],
             'custom' => $d['custom'] ?? [],
             'acme' => is_array($acme) ? $acme : [],
             'secure' => request()->isSecure(),
             'loadError' => $error,
         ]);
+    }
+
+    /**
+     * The host folder the exported certificates are bound to (catalog binds of the proxy).
+     *
+     * @param  list<array{source: string, target: string, create: bool}>  $binds
+     * @return array{source: string, target: string, create: bool}|null
+     */
+    public static function exportBind(array $binds): ?array
+    {
+        foreach ($binds as $bind) {
+            if (str_ends_with($bind['target'], '/acme-export')) {
+                return $bind;
+            }
+        }
+
+        return null;
+    }
+
+    /** Path of an exported file on the LXC: the container path below the bind's target. */
+    public static function hostPath(string $path, array $bind): ?string
+    {
+        return str_starts_with($path, $bind['target'].'/') ? $bind['source'].substr($path, strlen($bind['target'])) : null;
+    }
+
+    /**
+     * Whether the running proxy container has the bind (a container from before the catalog
+     * change does not: then it has to be created again). null = Docker did not answer.
+     *
+     * @param  array{source: string, target: string, create: bool}  $bind
+     */
+    public static function bindActive(AppDefinition $definition, array $bind): ?bool
+    {
+        try {
+            $container = app(DockerClient::class)->inspectContainer($definition->containerName());
+        } catch (Throwable) {
+            return null;
+        }
+        if ($container === null) {
+            return null;
+        }
+        $mounts = [
+            ...array_map(fn ($m) => [$m['Type'] ?? '', $m['Source'] ?? '', $m['Destination'] ?? ''], (array) ($container['Mounts'] ?? [])),
+            ...array_map(fn ($m) => [$m['Type'] ?? '', $m['Source'] ?? '', $m['Target'] ?? ''], (array) ($container['HostConfig']['Mounts'] ?? [])),
+        ];
+
+        return in_array(['bind', $bind['source'], $bind['target']], $mounts, true);
     }
 
     /**
