@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\EnsureAdDnsForward;
 use App\Jobs\LinkDeployment;
 use App\Models\AppEvent;
 use App\Models\InstalledApp;
@@ -54,6 +55,10 @@ class EventController extends Controller
         // A deployed app gets a proxy host and monitors; a removed one loses them again.
         if ($app->app_id === 'proxapps' && in_array($input['type'], ['deployment.succeeded', 'deployment.removed'], true)) {
             LinkDeployment::dispatch($app->app_id, $input['type'], $input['data'] ?? []);
+        }
+        // A freshly set up AD domain: PK95 DNS forwards the realm to Samba (idempotent).
+        if ($app->app_id === 'ad' && $input['type'] === 'ad.setup.done') {
+            EnsureAdDnsForward::dispatch($app->app_id, $input['data'] ?? []);
         }
 
         return response()->json(['id' => $event->id], 202);

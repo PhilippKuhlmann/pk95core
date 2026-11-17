@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Http\Support\Format;
+use App\Jobs\EnsureAdDnsForward;
+use App\Models\AppEvent;
 use App\Models\InstalledApp;
 use App\Modules\Ad\AdModule;
 use App\Modules\Ad\Computers;
@@ -19,6 +21,7 @@ use App\Services\Docker\ContainerSpec;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
 /**
@@ -41,6 +44,9 @@ class AdModuleTest extends FeatureTestCase
 
     /** @var list<array{domain: string, upstream: string}> conditional forwarding of the fake PK95 DNS */
     private array $conditional = [['domain' => 'fritz.box', 'upstream' => '192.168.178.1']];
+
+    /** the fake PK95 DNS answers PUT /api/settings with 422 */
+    private bool $dnsRefuses = false;
 
     protected function setUp(): void
     {
@@ -536,6 +542,9 @@ class AdModuleTest extends FeatureTestCase
     private function dns(Request $r)
     {
         $this->dnsCalls[] = ['method' => $r->method(), 'path' => parse_url($r->url(), PHP_URL_PATH), 'body' => $r->data()];
+        if ($r->method() === 'PUT' && $this->dnsRefuses) {
+            return Http::response(['error' => 'Bitte Eingaben prüfen.', 'fields' => ['conditional.1.upstream' => 'Upstream nicht erlaubt.']], 422);
+        }
         if ($r->method() === 'PUT') {
             $this->conditional = $r->data()['conditional'];
         }
@@ -844,6 +853,51 @@ class AdModuleTest extends FeatureTestCase
 
         $page->call('delete', 'drives.ps1')->assertDispatched('notice', kind: 'success', text: 'drives.ps1 gelöscht.');
         $this->assertArrayNotHasKey('drives.ps1', $this->state['scripts']);
+    }
+
+    public function test_setup_done_event_queues_the_dns_forwarding(): void
+    {
+        Queue::fake();
+        $event = ['type' => 'ad.setup.done', 'severity' => 'info', 'title' => 'Domäne eingerichtet', 'data' => ['realm' => 'ad.example.com', 'netbios_domain' => 'EXAMPLE', 'dc' => 'dc1']];
+        $this->withToken($this->installed->token)->postJson('/api/v1/events', $event)->assertStatus(202);
+        Queue::assertPushed(EnsureAdDnsForward::class, fn ($job) => $job->appId === 'ad' && $job->data['realm'] === 'ad.example.com');
+
+        // other events of AD and the same event from another app do not
+        $this->withToken($this->installed->token)->postJson('/api/v1/events', ['type' => 'ad.samba.down', 'severity' => 'critical', 'title' => 'x'])->assertStatus(202);
+        $other = InstalledApp::factory()->create(['app_id' => 'uptime']);
+        $this->withToken($other->token)->postJson('/api/v1/events', $event)->assertStatus(202);
+        Queue::assertPushed(EnsureAdDnsForward::class, 1);
+    }
+
+    public function test_setup_done_job_adds_the_forwarding_once(): void
+    {
+        // without PK95 DNS: nothing to do, no warning (the domain page shows the entry)
+        (new EnsureAdDnsForward('ad', ['realm' => 'ad.example.com']))->handle();
+        $this->assertSame([], $this->dnsCalls);
+        $this->assertSame(0, AppEvent::query()->count());
+
+        $this->installDns();
+        (new EnsureAdDnsForward('ad', ['realm' => 'ad.example.com']))->handle();
+        (new EnsureAdDnsForward('ad', ['realm' => 'ad.example.com']))->handle();
+        $this->assertSame(1, $this->dnsPuts(), 'idempotent');
+        $this->assertSame([['domain' => 'fritz.box', 'upstream' => '192.168.178.1'], ['domain' => 'ad.example.com', 'upstream' => '127.0.0.1:5300']], $this->conditional);
+
+        // the domain page now only shows it, the button is the fallback
+        $this->get(route('apps.page', [$this->installed, 'domain']))->assertOk()->assertSee('Eingetragen:');
+    }
+
+    public function test_setup_done_job_uses_the_event_realm_and_warns_when_dns_refuses(): void
+    {
+        $this->installDns();
+        $this->state['down'] = true; // /api/domain does not answer: realm from the event, port 5300
+        $this->dnsRefuses = true;
+        (new EnsureAdDnsForward('ad', ['realm' => 'AD.example.com']))->handle();
+
+        $put = collect($this->dnsCalls)->firstWhere('method', 'PUT');
+        $this->assertSame(['domain' => 'ad.example.com', 'upstream' => '127.0.0.1:5300'], last($put['body']['conditional']));
+        $event = AppEvent::query()->where('type', 'core.dns_forward.failed')->sole();
+        $this->assertSame(['ad', 'warning'], [$event->app_id, $event->severity]);
+        $this->assertStringContainsString('Upstream nicht erlaubt.', $event->body);
     }
 
     public function test_ntp_unavailable_is_a_warning_on_the_domain_page(): void
