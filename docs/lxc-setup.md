@@ -64,6 +64,43 @@ blockiert dann Stylesheet und Skripte als gemischte Inhalte.
 Ein Proxmox-Backup des LXC (vzdump/PBS) sichert alles zusammen. Den Anwendungsschlüssel nicht verlieren:
 Mit ihm sind die Service-Tokens der Apps verschlüsselt.
 
+## Zertifikate für andere Anwendungen (certsync)
+
+PK95 Proxy legt die Let's-Encrypt-Zertifikate, die unter **Proxy → Zertifikate → Let's Encrypt für andere
+Anwendungen** stehen, auf dem LXC unter `/srv/pk95/certs/<domain>/` ab (`fullchain.pem`, `privkey.pem`,
+Gruppe `pk95-certs`, Dateien 0640). Andere Rechner holen sie mit dem Benutzer `certsync` per `scp` ab:
+
+```bash
+scp certsync@<LAN-IP>:/srv/pk95/certs/<domain>/fullchain.pem ./
+scp certsync@<LAN-IP>:/srv/pk95/certs/<domain>/privkey.pem ./
+```
+
+Täglich per Cron, etwa um 04:15 nach `/etc/ssl/<domain>/`:
+
+```
+15 4 * * * scp -q certsync@<LAN-IP>:/srv/pk95/certs/<domain>/fullchain.pem certsync@<LAN-IP>:/srv/pk95/certs/<domain>/privkey.pem /etc/ssl/<domain>/
+```
+
+**Was die Installation einrichtet** (`install/proxmox.sh` ruft dafür `install/certsync.sh` auf):
+
+- Gruppe `pk95-certs` (gid 2001) und Benutzer `certsync` (uid 2001, ohne Passwort, Shell `nologin`).
+  Die gid muss zur Einstellung **Gruppen-ID (gid) von pk95-certs** in Core passen (Standard 2001). Weicht sie ab,
+  zeigt Core das unter Proxy → Zertifikate an.
+- SSH für `certsync` (`/etc/ssh/sshd_config.d/pk95-certsync.conf`): nur Schlüssel, nur SFTP und nur lesend
+  (`internal-sftp -R`), eingesperrt in `/srv/pk95`, ohne Weiterleitungen und ohne Terminal. Die Pfade
+  `/srv/pk95/certs/…` gelten auch dort.
+- Die Schlüssel stehen in `/opt/pk95/ssh/authorized_keys/certsync` (root, 0644).
+
+**Schlüssel hinzufügen:** in Core unter **Proxy → Zertifikate → Zugang für certsync** den öffentlichen Schlüssel des
+abholenden Rechners einfügen (etwa `~/.ssh/id_ed25519.pub`). Erlaubt sind `ssh-ed25519`, `ecdsa-sha2-*` und `ssh-rsa`
+ab 3072 Bit, ohne Optionen wie `command=` oder `from=`. Dort lassen sie sich auch wieder entfernen.
+
+**Bestehende Installationen** richten den Zugang einmal auf dem Proxmox-Host ein (`<CTID>` = Nummer des LXC). Das
+Skript lässt sich gefahrlos wiederholen und übernimmt einen Schlüssel aus `/etc/ssh/authorized_keys/certsync`:
+
+```bash
+pct exec <CTID> -- bash -c "$(curl -fsSL https://raw.githubusercontent.com/PhilippKuhlmann/pk95core/main/install/certsync.sh)"
+```
 ## Sicherheit
 
 - Core hat über den Docker-Socket root-gleiche Rechte im LXC. Port 8080 nur im LAN freigeben.

@@ -37,7 +37,8 @@ und neu abgefragt. Danach erledigt das Skript alles allein:
 1. lädt bei Bedarf die Debian-13-Vorlage,
 2. legt einen unprivilegierten LXC mit Nesting und Keyctl für Docker an, der mit dem Host startet,
 3. installiert darin Docker und startet PK95 Core,
-4. zeigt die Adresse und den **Einrichtungscode** an.
+4. richtet den SFTP-Zugang `certsync` für die Zertifikate anderer Anwendungen ein (siehe unten),
+5. zeigt die Adresse und den **Einrichtungscode** an.
 
 Danach `http://<IP>:8080` öffnen, den Code eingeben, das Admin-Konto anlegen und unter **Apps** PK95 Proxy, Uptime,
 DNS und ProxApps aktivieren.
@@ -62,6 +63,43 @@ CTID=250 IP=10.10.250.50/24 GW=10.10.250.1 bash -c "$(curl -fsSL https://raw.git
 Läuft Core später unter einer Domain hinter einem Reverse Proxy, siehe
 [docs/lxc-setup.md → Hinter einem Reverse Proxy](docs/lxc-setup.md#hinter-einem-reverse-proxy-https).
 
+## Zertifikate für andere Anwendungen (certsync)
+
+PK95 Proxy legt die Let's-Encrypt-Zertifikate, die unter **Proxy → Zertifikate → Let's Encrypt für andere
+Anwendungen** stehen, auf dem LXC unter `/srv/pk95/certs/<domain>/` ab (`fullchain.pem`, `privkey.pem`,
+Gruppe `pk95-certs`, Dateien 0640). Andere Rechner holen sie mit dem Benutzer `certsync` per `scp` ab:
+
+```bash
+scp certsync@<LAN-IP>:/srv/pk95/certs/<domain>/fullchain.pem ./
+scp certsync@<LAN-IP>:/srv/pk95/certs/<domain>/privkey.pem ./
+```
+
+Täglich per Cron, etwa um 04:15 nach `/etc/ssl/<domain>/`:
+
+```
+15 4 * * * scp -q certsync@<LAN-IP>:/srv/pk95/certs/<domain>/fullchain.pem certsync@<LAN-IP>:/srv/pk95/certs/<domain>/privkey.pem /etc/ssl/<domain>/
+```
+
+**Was die Installation einrichtet** (`install/proxmox.sh` ruft dafür `install/certsync.sh` auf):
+
+- Gruppe `pk95-certs` (gid 2001) und Benutzer `certsync` (uid 2001, ohne Passwort, Shell `nologin`).
+  Die gid muss zur Einstellung **Gruppen-ID (gid) von pk95-certs** in Core passen (Standard 2001). Weicht sie ab,
+  zeigt Core das unter Proxy → Zertifikate an.
+- SSH für `certsync` (`/etc/ssh/sshd_config.d/pk95-certsync.conf`): nur Schlüssel, nur SFTP und nur lesend
+  (`internal-sftp -R`), eingesperrt in `/srv/pk95`, ohne Weiterleitungen und ohne Terminal. Die Pfade
+  `/srv/pk95/certs/…` gelten auch dort.
+- Die Schlüssel stehen in `/opt/pk95/ssh/authorized_keys/certsync` (root, 0644).
+
+**Schlüssel hinzufügen:** in Core unter **Proxy → Zertifikate → Zugang für certsync** den öffentlichen Schlüssel des
+abholenden Rechners einfügen (etwa `~/.ssh/id_ed25519.pub`). Erlaubt sind `ssh-ed25519`, `ecdsa-sha2-*` und `ssh-rsa`
+ab 3072 Bit, ohne Optionen wie `command=` oder `from=`. Dort lassen sie sich auch wieder entfernen.
+
+**Bestehende Installationen** richten den Zugang einmal auf dem Proxmox-Host ein (`<CTID>` = Nummer des LXC). Das
+Skript lässt sich gefahrlos wiederholen und übernimmt einen Schlüssel aus `/etc/ssh/authorized_keys/certsync`:
+
+```bash
+pct exec <CTID> -- bash -c "$(curl -fsSL https://raw.githubusercontent.com/PhilippKuhlmann/pk95core/main/install/certsync.sh)"
+```
 ## Dokumentation
 
 - **Einrichtung von Hand:** [docs/lxc-setup.md](docs/lxc-setup.md)
