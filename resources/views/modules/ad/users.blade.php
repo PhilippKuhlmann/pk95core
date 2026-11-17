@@ -36,8 +36,8 @@
                 <x-field label="Nachname" for="u-sur" feld="form.surname">
                     <x-input.text id="u-sur" feld="form.surname" wire:model="form.surname" maxlength="64" class="mt-1 w-full" />
                 </x-field>
-                <x-field label="Anzeigename" for="u-display" feld="form.display_name" hilfe="Leer: Vor- und Nachname. Zugleich der Objektname in der OU.">
-                    <x-input.text id="u-display" feld="form.display_name" wire:model="form.display_name" maxlength="256" :disabled="$locked" class="mt-1 w-full" />
+                <x-field label="Anzeigename" for="u-display" feld="form.display_name" hilfe="Bis 64 Zeichen, ohne / und \. Leer: Vor- und Nachname. Zugleich der Objektname in der OU.">
+                    <x-input.text id="u-display" feld="form.display_name" wire:model="form.display_name" maxlength="64" :disabled="$locked" class="mt-1 w-full" />
                 </x-field>
                 <x-field label="Benutzername" for="u-name" feld="form.username" hilfe="Für die Anmeldung als DOMÄNE\name, bis 20 Zeichen." :required="true">
                     <x-input.text id="u-name" feld="form.username" wire:model="form.username" maxlength="20" autocomplete="off" :disabled="$locked" class="mt-1 w-full font-mono text-sm" />

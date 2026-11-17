@@ -75,8 +75,12 @@ class AdModuleTest extends FeatureTestCase
             'groups' => [
                 'g-da' => $this->group('g-da', 'Domain Admins', ['builtin' => true, 'protected' => true, 'member_count' => 1]),
                 'g-v' => $this->group('g-v', 'Vertrieb', ['ou_id' => 'f1', 'ou_path' => 'Firma']),
+                'g-du' => $this->group('g-du', 'Domain Users', ['builtin' => true, 'protected' => true, 'member_count' => 2]),
             ],
-            'members' => ['g-da' => ['a-1'], 'g-v' => []],
+            'members' => ['g-da' => ['a-1'], 'g-v' => [], 'g-du' => []],
+            // accounts whose primary group it is (members[].primary: true, untouched by PUT /members)
+            'primary' => ['g-du' => ['a-1', 'm-1']],
+            'ntp' => ['running' => true, 'available' => true, 'message' => ''],
             'computers' => [
                 'pc-dc' => ['id' => 'pc-dc', 'name' => 'DC1', 'dns_hostname' => 'dc1.ad.example.com', 'os' => 'Samba', 'os_version' => '4.22', 'description' => '',
                     'enabled' => true, 'is_dc' => true, 'ou_id' => 'dc', 'ou_path' => 'Domain Controllers', 'last_logon' => 0, 'created_at' => 1762000000000],
@@ -199,7 +203,7 @@ class AdModuleTest extends FeatureTestCase
         }
         if ($path === '/api/status') {
             return Http::response(['version' => '1.0.0', 'state' => $s['setup']['state'],
-                'samba' => ['state' => 'running', 'last_exit' => '', 'services' => ['ldap' => true, 'kerberos' => true, 'smb' => true, 'dns' => false]], 'ntp' => ['running' => true]]);
+                'samba' => ['state' => 'running', 'last_exit' => '', 'services' => ['ldap' => true, 'kerberos' => true, 'smb' => true, 'dns' => false]], 'ntp' => $s['ntp']]);
         }
         if ($s['setup']['state'] !== 'ready') {
             return $error(409, 'Die Domäne ist noch nicht eingerichtet.');
@@ -211,7 +215,7 @@ class AdModuleTest extends FeatureTestCase
                 'dc' => ['hostname' => 'dc1', 'fqdn' => 'dc1.ad.example.com', 'ip' => '192.168.1.10'], 'domain_level' => '2008_R2', 'forest_level' => '2008_R2',
                 'samba_version' => '4.22.3-Debian', 'fsmo' => ['schema' => 'dc1', 'pdc' => 'dc1'], 'upn_suffixes' => ['ad.example.com'],
                 'counts' => ['users' => count($s['users']), 'groups' => count($s['groups']), 'computers' => count($s['computers']), 'ous' => 3, 'gpos' => count($s['gpos'])],
-                'dns_forwarder' => '127.0.0.1', 'dns_port' => 5300]);
+                'dns_forwarder' => '127.0.0.1', 'dns_port' => 5300, 'ntp' => $s['ntp']]);
         }
         if ($path === '/api/domain/dbcheck') {
             return $method === 'POST' ? Http::response(['running' => true], 202)
@@ -381,7 +385,9 @@ class AdModuleTest extends FeatureTestCase
             } elseif ($method === 'PUT') {
                 $g = array_merge($g, $body);
             }
-            $members = array_map(fn ($mid) => ['id' => $mid, 'name' => $s['users'][$mid]['username'] ?? $mid, 'kind' => 'user', 'builtin' => false], $s['members'][$id] ?? []);
+            $member = fn ($mid, $primary) => ['id' => $mid, 'name' => $s['users'][$mid]['display_name'] ?? $mid, 'username' => $s['users'][$mid]['username'] ?? '',
+                'kind' => 'user', 'builtin' => false] + ($primary ? ['primary' => true] : []);
+            $members = [...array_map(fn ($mid) => $member($mid, false), $s['members'][$id] ?? []), ...array_map(fn ($mid) => $member($mid, true), $s['primary'][$id] ?? [])];
 
             return Http::response($g + ['dn' => 'CN='.$g['name'], 'sid' => 'S-1-5-21-1-'.$id, 'members' => $members, 'member_of' => [], 'effective_users' => $members]);
         }
@@ -838,6 +844,46 @@ class AdModuleTest extends FeatureTestCase
 
         $page->call('delete', 'drives.ps1')->assertDispatched('notice', kind: 'success', text: 'drives.ps1 gelöscht.');
         $this->assertArrayNotHasKey('drives.ps1', $this->state['scripts']);
+    }
+
+    public function test_ntp_unavailable_is_a_warning_on_the_domain_page(): void
+    {
+        $this->get(route('apps.page', [$this->installed, 'domain']))->assertOk()
+            ->assertDontSee('data-ntp-warning', false)->assertDontSee('Zeit (NTP): nicht verfügbar');
+
+        $this->state['ntp'] = ['running' => false, 'available' => false, 'message' => 'NTP nicht verfügbar: Port 123/udp ist im LXC belegt.'];
+        $this->get(route('apps.page', [$this->installed, 'domain']))->assertOk()
+            ->assertSee('data-ntp-warning', false)->assertSee('Zeitdienst (NTP) nicht verfügbar')
+            ->assertSee('NTP nicht verfügbar: Port 123/udp ist im LXC belegt.')->assertSee('Zeit (NTP): nicht verfügbar');
+    }
+
+    public function test_primary_group_members_are_shown_apart_and_never_sent(): void
+    {
+        $page = Livewire::test(Groups::class, ['installedApp' => $this->installed])
+            ->call('edit', 'g-du')->assertSet('form.member_ids', [])
+            ->assertSee('Mitglied über die primäre Gruppe')->assertSee('Max Muster')->assertSee('nicht entfernbar');
+        // the primary members are no options of the selection
+        $options = collect($page->instance()->render()->getData()['memberOptions'])->pluck('value')->all();
+        $this->assertNotContains('m-1', $options);
+        $this->assertNotContains('a-1', $options);
+
+        // nothing changed: no PUT /members; a direct member added: only that one is sent
+        $page->call('save')->assertSet('editing', null);
+        $this->assertSame([], $this->sent('PUT', '/api/groups/g-du/members'));
+        $this->state['users']['e-1'] = $this->user('e-1', 'erika', 'Erika Muster', 'u1', 'Users');
+        $page->call('edit', 'g-du')->set('form.member_ids', ['e-1'])->call('save')->assertSet('editing', null);
+        $this->assertSame(['member_ids' => ['e-1']], last($this->sent('PUT', '/api/groups/g-du/members'))['body']);
+    }
+
+    public function test_display_name_is_checked_in_the_form(): void
+    {
+        $posts = count($this->sent('POST', '/api/users'));
+        Livewire::test(Users::class, ['installedApp' => $this->installed])
+            ->call('create')->set('form.username', 'lang')->set('form.password', 'Lang-genug-1')
+            ->set('form.display_name', str_repeat('x', 65))->call('save')->assertHasErrors('form.display_name')
+            ->set('form.display_name', 'Vertrieb/Nord')->call('save')->assertHasErrors('form.display_name')
+            ->assertSeeHtml('maxlength="64"');
+        $this->assertCount($posts, $this->sent('POST', '/api/users'), 'nothing sent');
     }
 
     public function test_unreachable_app_is_reported_on_the_page(): void

@@ -59,6 +59,19 @@
                 <x-field label="Mitglieder" feld="form.member_ids" hilfe="Direkte Mitglieder: Benutzer, Gruppen und Computer." class="md:col-span-2">
                     <x-input.combobox wire:model="form.member_ids" label="Mitglieder" :options="$memberOptions" :multiple="true" :search="true" placeholder="Keine Mitglieder" many="Mitglieder" class="mt-1" />
                 </x-field>
+                @if ($primaryMembers = Groups::primaryMembers($details))
+                    <div class="md:col-span-2" data-primary-members>
+                        <div class="text-sm font-medium text-gray-700 dark:text-gray-300">Mitglied über die primäre Gruppe</div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">Für diese Konten ist {{ $details['name'] ?? 'die Gruppe' }} die primäre Gruppe. Sie bleiben Mitglied und lassen sich hier nicht entfernen; das geht nur, indem man ihnen eine andere primäre Gruppe gibt.</p>
+                        <ul class="mt-2 flex flex-wrap gap-1.5">
+                            @foreach ($primaryMembers as $m)
+                                <li class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200" data-tip="Primäre Gruppe, nicht entfernbar">
+                                    <x-icon name="lock" class="h-3 w-3" aria-hidden="true" />{{ $m['name'] }}@if (($m['username'] ?? '') !== '' && $m['username'] !== $m['name'])<span class="font-mono text-gray-500 dark:text-gray-400">{{ $m['username'] }}</span>@endif<span class="sr-only">(primäre Gruppe, nicht entfernbar)</span>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
             </div>
             @if ($editing !== 'new')
                 <table class="mt-4 w-full text-sm" data-group-details>

@@ -81,6 +81,15 @@
                 <div class="{{ $label }} mt-1">{{ $domain['counts']['ous'] ?? 0 }} OUs · {{ $domain['counts']['gpos'] ?? 0 }} Gruppenrichtlinien</div></div>
         </div>
 
+        {{-- signed NTP for the members: never blocks Samba, but without it Windows clients drift and Kerberos fails --}}
+        @php $ntp = (array) ($domain['ntp'] ?? $status['ntp'] ?? []); @endphp
+        @if (($ntp['available'] ?? true) === false)
+            <x-callout title="Zeitdienst (NTP) nicht verfügbar" ton="gelb" class="m-3" data-ntp-warning>
+                {{ ($ntp['message'] ?? '') !== '' ? $ntp['message'] : 'PK95 AD kann die Zeit nicht an die Domänenmitglieder verteilen.' }}
+                Windows-Rechner der Domäne holen ihre Zeit vom Domänencontroller; ohne NTP laufen ihre Uhren auseinander und die Anmeldung (Kerberos) scheitert ab fünf Minuten Abweichung.
+            </x-callout>
+        @endif
+
         @if ($status)
             <x-panel class="m-3" data-status>
                 <div class="font-DINPro-bold text-gray-900 dark:text-gray-100">Dienste</div>
@@ -89,7 +98,11 @@
                     @foreach (['ldap' => 'LDAP', 'kerberos' => 'Kerberos', 'smb' => 'SMB', 'dns' => 'DNS'] as $key => $name)
                         <span class="inline-flex items-center gap-1.5"><span @class(['h-2 w-2 rounded-full', 'bg-green-500' => $status['samba']['services'][$key] ?? false, 'bg-rose-500' => ! ($status['samba']['services'][$key] ?? false)])></span>{{ $name }}</span>
                     @endforeach
-                    <span class="inline-flex items-center gap-1.5"><span @class(['h-2 w-2 rounded-full', 'bg-green-500' => $status['ntp']['running'] ?? false, 'bg-rose-500' => ! ($status['ntp']['running'] ?? false)])></span>Zeit (NTP)</span>
+                    @php
+                        $ntpRunning = (bool) ($ntp['running'] ?? false);
+                        $ntpOff = ($ntp['available'] ?? true) === false;
+                    @endphp
+                    <span class="inline-flex items-center gap-1.5" @if ($ntpOff) data-tip="{{ $ntp['message'] ?? '' }}" @endif><span @class(['h-2 w-2 rounded-full', 'bg-green-500' => $ntpRunning, 'bg-amber-500' => ! $ntpRunning && $ntpOff, 'bg-rose-500' => ! $ntpRunning && ! $ntpOff])></span>Zeit (NTP){{ $ntpOff ? ': nicht verfügbar' : '' }}</span>
                 </div>
                 @if (($status['samba']['last_exit'] ?? '') !== '')
                     <p class="mt-2 text-xs text-rose-700 dark:text-rose-300">Zuletzt beendet: {{ $status['samba']['last_exit'] }}</p>

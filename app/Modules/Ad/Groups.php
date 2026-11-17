@@ -67,7 +67,8 @@ class Groups extends Component
             $form[$key] = (string) ($g[$key] ?? '');
         }
         $form['ou_id'] = (string) ($g['ou_id'] ?? '');
-        $form['member_ids'] = array_values(array_map(fn ($m) => (string) $m['id'], (array) ($g['members'] ?? [])));
+        // members through their primary group (primary: true) stay; PUT /members leaves them alone
+        $form['member_ids'] = array_values(array_map(fn ($m) => (string) $m['id'], self::directMembers($g)));
         $this->form = $form;
         $this->original = $form;
         $this->details = $g;
@@ -150,21 +151,41 @@ class Groups extends Component
     }
 
     /**
+     * @param  array<string, mixed>  $group  details of GET /api/groups/{id}
+     * @return list<array<string, mixed>>
+     */
+    public static function directMembers(array $group): array
+    {
+        return array_values(array_filter((array) ($group['members'] ?? []), fn ($m) => empty($m['primary'])));
+    }
+
+    /**
+     * @param  array<string, mixed>  $group
+     * @return list<array<string, mixed>> accounts with this group as primary group (not removable here)
+     */
+    public static function primaryMembers(array $group): array
+    {
+        return array_values(array_filter((array) ($group['members'] ?? []), fn ($m) => ! empty($m['primary'])));
+    }
+
+    /**
      * Users, groups and computers as member options (grouped); members the lists do not
-     * carry (foreign principals) stay selectable under "Andere".
+     * carry (foreign principals) stay selectable under "Andere". Primary-group members are
+     * no options: they are shown apart and cannot be removed.
      *
      * @return list<array{value: string, label: string, hint?: string, group: string}>
      */
     private function memberOptions(): array
     {
         $options = [];
-        $seen = [];
+        $primary = array_flip(array_map(fn ($m) => (string) $m['id'], self::primaryMembers($this->details)));
+        $seen = $primary;
         foreach (['/api/users' => 'Benutzer', '/api/groups' => 'Gruppen', '/api/computers' => 'Computer'] as $path => $group) {
             [$list] = $this->fetch($path);
             foreach ((array) ($list['items'] ?? []) as $item) {
                 $id = (string) $item['id'];
-                if ($id === $this->editing) {
-                    continue; // not a member of itself
+                if ($id === $this->editing || isset($primary[$id])) {
+                    continue; // not a member of itself; primary-group members are listed apart
                 }
                 $label = (string) ($item['display_name'] ?? $item['name'] ?? $item['username'] ?? $id);
                 $hint = (string) ($item['username'] ?? $item['ou_path'] ?? '');
@@ -172,9 +193,9 @@ class Groups extends Component
                 $seen[$id] = true;
             }
         }
-        foreach ((array) ($this->details['members'] ?? []) as $m) {
+        foreach (self::directMembers($this->details) as $m) {
             if (! isset($seen[(string) $m['id']])) {
-                $options[] = ['value' => (string) $m['id'], 'label' => (string) $m['name'], 'group' => 'Andere'];
+                $options[] = ['value' => (string) $m['id'], 'label' => (string) $m['name'], 'hint' => (string) ($m['username'] ?? ''), 'group' => 'Andere'];
             }
         }
 

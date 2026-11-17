@@ -98,6 +98,13 @@ class Users extends Component
     public function save(): void
     {
         $this->resetErrorBag();
+        // display_name is the object name (CN): 1 to 64 characters, no / or \ (empty = given name and surname)
+        $display = trim((string) ($this->form['display_name'] ?? ''));
+        if (mb_strlen($display) > 64 || strpbrk($display, '/\\') !== false) {
+            $this->addError('form.display_name', 'Der Anzeigename hat höchstens 64 Zeichen und enthält kein / oder \\.');
+
+            return;
+        }
         if ($this->editing === 'new') {
             $body = array_intersect_key($this->form, array_flip(self::FIELDS)) + [
                 'password' => (string) $this->form['password'],
