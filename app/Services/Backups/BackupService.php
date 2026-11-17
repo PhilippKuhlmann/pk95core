@@ -70,7 +70,9 @@ class BackupService
                         $exclude[] = '--exclude=./'.substr($bind['target'], strlen(rtrim($volume['target'], '/')) + 1);
                     }
                 }
-                $result = $this->docker->run((string) config('pk95.helper_image'), ['tar', 'czf', '/backups/'.$file, ...$exclude, '-C', '/source', '.'], [
+                // the archives hold the app's secrets (databases, tokens, TLS keys): 0640, never readable for others
+                $tar = implode(' ', array_map('escapeshellarg', ['/backups/'.$file, ...$exclude]));
+                $result = $this->docker->run((string) config('pk95.helper_image'), ['sh', '-c', "umask 027 && tar czf {$tar} -C /source ."], [
                     ['Type' => 'volume', 'Source' => $definition->volumeName($volume['name']), 'Target' => '/source', 'ReadOnly' => true],
                     ['Type' => 'bind', 'Source' => $dir, 'Target' => '/backups'],
                 ]);
