@@ -34,6 +34,12 @@ return [
     'data_dir' => env('PK95_DATA_DIR', '/opt/pk95'),
 
     /*
+    | Host folders an app may bind (catalog "binds") lie below this root only, so a catalog
+    | entry cannot hand an arbitrary host path to a container. Docker creates missing ones.
+    */
+    'bind_root' => env('PK95_BIND_ROOT', '/srv/pk95'),
+
+    /*
     | Docker Engine API over the mounted unix socket.
     */
     'docker' => [
@@ -116,6 +122,9 @@ return [
         // Base address of PK95 Uptime's public status pages (<address>/status/<slug>): Core's links
         // and a PK95 Proxy host for its domain (Uptime itself does not get it). Empty = not set up.
         'uptime_public_url' => 'https://status.kuhlmannit.de',
+        // Group id PK95 Proxy gives its exported certificates (/srv/pk95/certs on the LXC):
+        // members of that group on the host (e.g. the SFTP user certsync) may read them.
+        'proxy_certs_gid' => 2001,
     ],
 
     /*

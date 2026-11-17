@@ -82,6 +82,11 @@ class CatalogTest extends TestCase
             'bad port mapping' => [['ports' => ['80']] + $base, 'ports-Eintrag'],
             'non-net sysctl' => [['sysctls' => ['kernel.shmmax' => '1']] + $base, 'nur net.*'],
             'sysctl on host network' => [['network_mode' => 'host', 'sysctls' => ['net.ipv4.ip_forward' => '1']] + $base, 'network_mode host'],
+            // host folders only below pk95.bind_root (/srv/pk95): no arbitrary host path into a container
+            'bind outside the root' => [['binds' => [['source' => '/etc', 'target' => '/x']]] + $base, 'source muss unter /srv/pk95/ liegen'],
+            'bind of the root itself' => [['binds' => [['source' => '/srv/pk95', 'target' => '/x']]] + $base, 'source muss unter /srv/pk95/ liegen'],
+            'bind climbing out' => [['binds' => [['source' => '/srv/pk95/../../etc', 'target' => '/x']]] + $base, 'ohne . und ..'],
+            'relative bind target' => [['binds' => [['source' => '/srv/pk95/x', 'target' => 'x']]] + $base, 'binds[0] braucht'],
         ];
     }
 

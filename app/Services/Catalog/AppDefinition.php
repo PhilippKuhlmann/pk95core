@@ -33,6 +33,8 @@ final readonly class AppDefinition
         public ?string $module,
         /** @var array<string, string> namespaced kernel settings of the container (bridge mode) */
         public array $sysctls = [],
+        /** @var list<array{source: string, target: string, create: bool}> host folders below pk95.bind_root */
+        public array $binds = [],
     ) {}
 
     /**
@@ -103,6 +105,23 @@ final readonly class AppDefinition
             $sysctls[(string) $key] = (string) $value;
         }
 
+        // Host folders: only below pk95.bind_root, so a catalog entry cannot bind any host path
+        $root = rtrim((string) config('pk95.bind_root'), '/').'/';
+        $clean = fn (string $p) => preg_match('#^(/[A-Za-z0-9._-]+)+/?$#', $p) === 1 && ! preg_match('#/\.{1,2}(/|$)#', $p);
+        $binds = [];
+        foreach ((array) ($raw['binds'] ?? []) as $i => $bind) {
+            $source = (string) ($bind['source'] ?? '');
+            $target = (string) ($bind['target'] ?? '');
+            if (! $clean($source) || ! $clean($target)) {
+                $fail("binds[{$i}] braucht absolute source- und target-Pfade (ohne . und ..)");
+            }
+            $source = rtrim($source, '/');
+            if (! str_starts_with($source.'/', $root) || $source.'/' === $root) {
+                $fail("binds[{$i}]: source muss unter {$root} liegen");
+            }
+            $binds[] = ['source' => $source, 'target' => rtrim($target, '/'), 'create' => (bool) ($bind['create'] ?? false)];
+        }
+
         $module = array_key_exists('module', $raw) ? $raw['module'] : $id;
 
         return new self(
@@ -122,6 +141,7 @@ final readonly class AppDefinition
             icon: (string) ($raw['icon'] ?? 'box'),
             module: $module === null ? null : (string) $module,
             sysctls: $sysctls,
+            binds: $binds,
         );
     }
 

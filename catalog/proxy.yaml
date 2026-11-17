@@ -25,5 +25,14 @@ volumes:
     target: /var/lib/proxypanel-agent
   - name: logs
     target: /var/log/caddy
+# Let's Encrypt certificates for other applications: on the LXC under /srv/pk95/certs, to be
+# fetched with scp by the SFTP user certsync (group pk95-certs). Lies on top of the data volume,
+# so the volume backup leaves it out (Caddy exports again on start).
+binds:
+  - source: /srv/pk95/certs
+    target: /var/lib/proxypanel/acme-export
+    create: true
 env:
   PROXYPANEL_LISTEN: 0.0.0.0:8090
+  # group of the exported files (PK95 Proxy 1.7.0; older versions ignore it)
+  PROXYPANEL_CERTS_GID: "{setting:proxy_certs_gid|2001}"

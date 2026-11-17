@@ -4,6 +4,7 @@ namespace App\Services\Docker;
 
 use App\Http\Support\Format;
 use App\Services\Catalog\AppDefinition;
+use App\Support\Settings;
 
 /**
  * Builds the Docker "container create" body for an app from its catalog entry.
@@ -17,7 +18,7 @@ final class ContainerSpec
     {
         // $image: an image id (sha256:…) instead of image:tag, used to roll back to the
         // exact image that ran before an update even if the tag has moved on.
-        $env = $app->env + [
+        $env = array_map(self::envValue(...), $app->env) + [
             'PK95_CORE_MODE' => '1',
             // A host-network app cannot resolve "pk95core": it reaches Core's published port.
             'PK95_CORE_URL' => (string) config($app->networkMode === 'host' ? 'pk95.host_core_url' : 'pk95.core_url'),
@@ -28,11 +29,17 @@ final class ContainerSpec
 
         $host = [
             'RestartPolicy' => ['Name' => 'unless-stopped'],
-            'Mounts' => array_map(fn (array $v) => [
-                'Type' => 'volume',
-                'Source' => $app->volumeName($v['name']),
-                'Target' => $v['target'],
-            ], $app->volumes),
+            'Mounts' => [
+                ...array_map(fn (array $v) => [
+                    'Type' => 'volume',
+                    'Source' => $app->volumeName($v['name']),
+                    'Target' => $v['target'],
+                ], $app->volumes),
+                // host folders (below pk95.bind_root); a bind inside a volume target lies on top of it,
+                // Docker mounts by depth. create: Docker makes the folder on the host when it is missing.
+                ...array_map(fn (array $b) => ['Type' => 'bind', 'Source' => $b['source'], 'Target' => $b['target']]
+                    + ($b['create'] ? ['BindOptions' => ['CreateMountpoint' => true]] : []), $app->binds),
+            ],
             'LogConfig' => ['Type' => 'json-file', 'Config' => ['max-size' => '10m', 'max-file' => '3']],
         ];
         if ($app->capAdd !== []) {
@@ -73,5 +80,19 @@ final class ContainerSpec
         $spec['HostConfig'] = $host;
 
         return $spec;
+    }
+
+    /**
+     * A catalog env value; "{setting:key|default}" comes from Core's settings, the default when
+     * the setting is empty (e.g. PROXYPANEL_CERTS_GID: "{setting:proxy_certs_gid|2001}").
+     */
+    public static function envValue(string $value): string
+    {
+        if (! preg_match('/^\{setting:([a-z0-9_]+)\|([^}]*)\}$/', $value, $m)) {
+            return $value;
+        }
+        $setting = trim((string) (Settings::get($m[1]) ?? ''));
+
+        return $setting !== '' ? $setting : $m[2];
     }
 }

@@ -660,6 +660,67 @@ class ProxyModuleTest extends FeatureTestCase
         $this->assertSame(45, $this->guardPuts()[0]['repeat_hits']);
     }
 
+    // ---- certificates for other applications: on the LXC below /srv/pk95/certs ------------------
+
+    /** The proxy container as Docker reports it, with or without the folder on the LXC. */
+    private function proxyContainer(bool $withBind): void
+    {
+        $mounts = [['Type' => 'volume', 'Source' => 'pk95-proxy-data', 'Target' => '/var/lib/proxypanel']];
+        if ($withBind) {
+            $mounts[] = ['Type' => 'bind', 'Source' => '/srv/pk95/certs', 'Target' => '/var/lib/proxypanel/acme-export'];
+        }
+        $this->docker['containers']['cid-pk95-proxy'] = ['Id' => 'cid-pk95-proxy', 'Name' => 'pk95-proxy', 'running' => true,
+            'spec' => ['Image' => 'ghcr.io/philippkuhlmann/pk95-proxy:latest', 'HostConfig' => ['Mounts' => $mounts]]];
+    }
+
+    public function test_certificates_can_be_fetched_from_the_lxc_with_scp(): void
+    {
+        Settings::put('automation_lan_ip', '10.10.250.50');
+        $this->installed->update(['version' => '1.7.0']);
+        $this->proxyContainer(withBind: true);
+
+        $html = $this->get(route('apps.page', [$this->installed, 'certificates']))->assertOk()->getContent();
+
+        // the path on the LXC instead of the one in the container, to copy
+        $this->assertStringContainsString('data-host-path', $html);
+        $this->assertStringContainsString('/srv/pk95/certs/mail.example.de/fullchain.pem', $html);
+        $this->assertStringContainsString('/srv/pk95/certs/mail.example.de/privkey.pem', $html);
+        $this->assertStringNotContainsString('/var/lib/proxypanel/acme-export/mail.example.de/fullchain.pem', $html);
+        // scp once and as a cron line, with the user certsync that has to exist on the LXC
+        $this->assertStringContainsString('scp certsync@10.10.250.50:/srv/pk95/certs/mail.example.de/fullchain.pem ./', $html);
+        $this->assertStringContainsString('scp certsync@10.10.250.50:/srv/pk95/certs/mail.example.de/privkey.pem ./', $html);
+        $this->assertStringContainsString('15 4 * * * scp -q certsync@10.10.250.50:/srv/pk95/certs/mail.example.de/fullchain.pem certsync@10.10.250.50:/srv/pk95/certs/mail.example.de/privkey.pem /etc/ssl/mail.example.de/', $html);
+        $this->assertStringContainsString('der Benutzer certsync eingerichtet sein', $html);
+        $this->assertStringNotContainsString('data-bind-missing', $html);
+        $this->assertStringNotContainsString('data-group-too-old', $html);
+    }
+
+    public function test_a_proxy_container_without_the_folder_has_to_be_created_again(): void
+    {
+        $this->proxyContainer(withBind: false);
+
+        $html = $this->get(route('apps.page', [$this->installed, 'certificates']))->assertOk()->getContent();
+
+        $this->assertStringContainsString('data-bind-missing', $html);
+        $this->assertStringContainsString('Erstelle PK95 Proxy einmal neu', $html);
+        $this->assertStringContainsString(route('apps.show', $this->installed), $html);
+        // until then the files are only in the container
+        $this->assertStringContainsString('/var/lib/proxypanel/acme-export/mail.example.de/fullchain.pem', $html);
+        $this->assertStringNotContainsString('data-scp', $html);
+    }
+
+    public function test_without_lan_ip_and_with_an_older_proxy_the_scp_box_says_what_is_missing(): void
+    {
+        // Docker gives no answer about the container: no warning, the paths of the catalog
+        $html = $this->get(route('apps.page', [$this->installed, 'certificates']))->assertOk()->getContent();
+
+        $this->assertStringContainsString('scp certsync@&lt;LAN-IP&gt;:/srv/pk95/certs/mail.example.de/fullchain.pem ./', $html);
+        $this->assertStringContainsString('Statt &lt;LAN-IP&gt; die Adresse des LXC einsetzen.', $html);
+        // PK95 Proxy 1.0.0 does not set the group yet
+        $this->assertStringContainsString('data-group-too-old', $html);
+        $this->assertStringNotContainsString('data-bind-missing', $html);
+    }
+
     public function test_visitor_helpers(): void
     {
         $this->assertTrue(Visitors::isLan('10.10.10.134'));

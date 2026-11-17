@@ -57,6 +57,7 @@ blockiert dann Stylesheet und Skripte als gemischte Inhalte.
 | Pfad im LXC | Inhalt |
 |---|---|
 | `/opt/pk95/core` | Core: SQLite-Datenbank, Anwendungsschlüssel (`app/private/app.key`) |
+| `/srv/pk95/certs/<domain>/` | Let's-Encrypt-Zertifikate für andere Anwendungen (PK95 Proxy, Bind-Mount). Abholen per `scp` mit dem Benutzer `certsync` (nur SFTP, Gruppe `pk95-certs`, gid 2001 = Einstellung `proxy_certs_gid`) |
 | `/opt/pk95/backups/<app>/` | App-Sicherungen (`<Zeit>-<id>-<volume>.tar.gz`), erstellt von einem kurzlebigen `alpine`-Hilfscontainer |
 | Docker-Volumes `pk95-<app>-<name>` | Daten der Apps (`docker volume ls --filter label=pk95.managed=1`) |
 

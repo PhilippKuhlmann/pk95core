@@ -63,7 +63,14 @@ class BackupService
 
             foreach ($definition->volumes as $volume) {
                 $file = "{$stamp}-{$volume['name']}.tar.gz";
-                $result = $this->docker->run((string) config('pk95.helper_image'), ['tar', 'czf', '/backups/'.$file, '-C', '/source', '.'], [
+                // a host folder bound inside the volume (e.g. acme-export) is not backed up twice
+                $exclude = [];
+                foreach ($definition->binds as $bind) {
+                    if (str_starts_with($bind['target'], rtrim($volume['target'], '/').'/')) {
+                        $exclude[] = '--exclude=./'.substr($bind['target'], strlen(rtrim($volume['target'], '/')) + 1);
+                    }
+                }
+                $result = $this->docker->run((string) config('pk95.helper_image'), ['tar', 'czf', '/backups/'.$file, ...$exclude, '-C', '/source', '.'], [
                     ['Type' => 'volume', 'Source' => $definition->volumeName($volume['name']), 'Target' => '/source', 'ReadOnly' => true],
                     ['Type' => 'bind', 'Source' => $dir, 'Target' => '/backups'],
                 ]);
