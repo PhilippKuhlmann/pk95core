@@ -81,6 +81,15 @@ Täglich per Cron, etwa um 04:15 nach `/etc/ssl/<domain>/`:
 15 4 * * * scp -q certsync@<LAN-IP>:/srv/pk95/certs/<domain>/fullchain.pem certsync@<LAN-IP>:/srv/pk95/certs/<domain>/privkey.pem /etc/ssl/<domain>/
 ```
 
+Alle Domains auf einmal, jede in einen eigenen Ordner `/etc/ssl/<domain>/`:
+
+```
+15 4 * * * scp -rq certsync@<LAN-IP>:/srv/pk95/certs/<domain1> certsync@<LAN-IP>:/srv/pk95/certs/<domain2> /etc/ssl/
+```
+
+`certsync` darf nur SFTP (lesend). `scp` ab OpenSSH 9 überträgt von selbst über SFTP, auch rekursiv mit `-r`; ältere
+Versionen brauchen `scp -s`. Unter Proxy → Zertifikate stehen die Befehle fertig zum Kopieren, mit Auswahl der Domain.
+
 **Was die Installation einrichtet** (`install/proxmox.sh` ruft dafür `install/certsync.sh` auf):
 
 - Gruppe `pk95-certs` (gid 2001) und Benutzer `certsync` (uid 2001, ohne Passwort, Shell `nologin`).

@@ -89,6 +89,13 @@
                             </td>
                             <td class="py-2 align-top">
                                 <div class="flex justify-end gap-1">
+                                    @if ($st && $certBind && $bindActive !== false)
+                                        {{-- the commands for this domain in the box "Auf dem LXC abholen" --}}
+                                        <x-input.button type="button" size="sm" color="gray" data-tip="Abholen per scp" aria-label="{{ $c['domain'] }} abholen (scp-Befehle)" data-scp-pick
+                                            x-on:click="$dispatch('certsync-pick', {{ Js::from($c['domain']) }})">
+                                            <x-icon name="download" class="h-4 w-4" />
+                                        </x-input.button>
+                                    @endif
                                     @if ($st)
                                         <x-input.button type="button" size="sm" color="gray" wire:click="download({{ $c['id'] }}, 'fullchain.pem')">Zertifikat</x-input.button>
                                         <x-input.button type="button" size="sm" color="gray"
@@ -123,27 +130,51 @@
                         </x-slot:aktionen>
                     </x-callout>
                 @else
-                    <div class="mt-4 rounded-lg border border-gray-200 p-4 dark:border-gray-700" data-scp>
+                    @php
+                        // every exported domain with its folder on the LXC: the commands follow the choice (Alpine)
+                        $dirs = collect($acme)->filter(fn ($c) => ! empty($c['status']))
+                            ->mapWithKeys(fn ($c) => [$c['domain'] => Certificates::hostPath($c['path'], $certBind) ?? $certBind['source'].'/'.$c['domain']])->all();
+                        $src = fn (string $file) => 'certsync@'.$ip.':'.$exDir.'/'.$file;
+                    @endphp
+                    <div class="mt-4 scroll-mt-20 rounded-lg border border-gray-200 p-4 dark:border-gray-700" data-scp id="certsync-fetch"
+                        x-data="{ domain: @js($exDomain), dirs: @js($dirs), ip: @js($ip), src(file) { return 'certsync@' + this.ip + ':' + (this.dirs[this.domain] ?? '') + '/' + file } }"
+                        x-on:certsync-pick.window="if (dirs[$event.detail]) { domain = $event.detail; $el.scrollIntoView({ behavior: 'smooth', block: 'start' }) }">
                         <div class="text-sm font-medium text-gray-900 dark:text-gray-100">Auf dem LXC abholen</div>
                         <p class="mt-1 max-w-3xl text-xs text-gray-500 dark:text-gray-400">
                             Die Dateien liegen auf dem LXC unter <span class="font-mono">{{ $certBind['source'] }}/&lt;Domain&gt;/</span>. Bei einer Erneuerung bleibt der Pfad gleich, nur der Inhalt ändert sich.
                             Auf dem LXC muss dafür der Benutzer certsync eingerichtet sein (nur SFTP, Gruppe pk95-certs) und den SSH-Schlüssel des abholenden Rechners kennen (unten unter „Zugang für certsync“).
                         </p>
+                        @if (count($dirs) > 1)
+                            {{-- client state only: the choice changes the commands below, no round trip --}}
+                            <x-input.combobox x-model="domain" label="Domain" :options="array_combine(array_keys($dirs), array_keys($dirs))" :search="count($dirs) > 6"
+                                class="mt-3 w-full sm:w-80" data-scp-domain />
+                        @endif
                         <dl class="mt-3 space-y-3 text-xs">
                             <div>
                                 <dt class="text-gray-500 dark:text-gray-400">Einmal holen</dt>
                                 <dd class="mt-1 flex flex-col items-start gap-1 font-mono text-gray-800 dark:text-gray-200">
-                                    <x-copy :value="'scp certsync@'.$ip.':'.$exDir.'/fullchain.pem ./'" />
-                                    <x-copy :value="'scp certsync@'.$ip.':'.$exDir.'/privkey.pem ./'" />
+                                    <x-copy :value="'scp '.$src('fullchain.pem').' ./'" expr="'scp ' + src('fullchain.pem') + ' ./'" />
+                                    <x-copy :value="'scp '.$src('privkey.pem').' ./'" expr="'scp ' + src('privkey.pem') + ' ./'" />
                                 </dd>
                             </div>
                             <div>
                                 <dt class="text-gray-500 dark:text-gray-400">Täglich um 04:15 per Cron (Zielordner anpassen)</dt>
                                 <dd class="mt-1 font-mono text-gray-800 dark:text-gray-200">
-                                    <x-copy :value="'15 4 * * * scp -q certsync@'.$ip.':'.$exDir.'/fullchain.pem certsync@'.$ip.':'.$exDir.'/privkey.pem /etc/ssl/'.$exDomain.'/'" />
+                                    <x-copy :value="'15 4 * * * scp -q '.$src('fullchain.pem').' '.$src('privkey.pem').' /etc/ssl/'.$exDomain.'/'"
+                                        expr="'15 4 * * * scp -q ' + src('fullchain.pem') + ' ' + src('privkey.pem') + ' /etc/ssl/' + domain + '/'" />
                                 </dd>
                             </div>
+                            @if (count($dirs) > 1)
+                                {{-- scp -r over SFTP (read-only internal-sftp in the chroot): each domain lands in /etc/ssl/<domain>/ --}}
+                                <div data-scp-all>
+                                    <dt class="text-gray-500 dark:text-gray-400">Alle {{ count($dirs) }} Domains auf einmal, täglich per Cron (je ein Ordner unter /etc/ssl/)</dt>
+                                    <dd class="mt-1 font-mono text-gray-800 dark:text-gray-200">
+                                        <x-copy :value="'15 4 * * * scp -rq '.implode(' ', array_map(fn ($dir) => 'certsync@'.$ip.':'.$dir, $dirs)).' /etc/ssl/'" />
+                                    </dd>
+                                </div>
+                            @endif
                         </dl>
+                        <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">certsync darf nur SFTP. scp ab OpenSSH 9 nutzt das von selbst, ältere Versionen brauchen <span class="font-mono">scp -s</span>.</p>
                         @if ($groupTooOld)
                             <p class="mt-3 text-xs text-amber-700 dark:text-amber-300" data-group-too-old>Lesen darf die Gruppe pk95-certs die Dateien erst ab PK95 Proxy {{ Certificates::CERTS_GROUP }}.</p>
                         @endif
