@@ -4,6 +4,9 @@
 # queue worker).
 set -e
 cd /app
+# Files Core creates are for its owner and group only: the database holds the app tokens and
+# password hashes, backups the apps' secrets (supervisord sets the same umask for its programs).
+umask 027
 
 # The storage volume may start empty (bind mount) – recreate Laravel's layout.
 mkdir -p storage/app/private storage/app/public storage/framework/cache/data \
@@ -46,6 +49,10 @@ fi
 if [ -d "${PK95_DATA_DIR:-/opt/pk95}" ]; then
     mkdir -p "${PK95_DATA_DIR:-/opt/pk95}/backups"
     chown www-data:www-data "${PK95_DATA_DIR:-/opt/pk95}/backups"
+    # earlier versions left 0755/0644: folders 0750, archives 0640 (written by root helpers)
+    chmod 0750 "${PK95_DATA_DIR:-/opt/pk95}/backups"
+    find "${PK95_DATA_DIR:-/opt/pk95}/backups" -mindepth 1 -type d -exec chmod 0750 {} +
+    find "${PK95_DATA_DIR:-/opt/pk95}/backups" -type f -exec chmod 0640 {} +
 fi
 
 # php-fpm and the queue workers read the environment from .env, not from the shell.
@@ -73,6 +80,10 @@ php artisan route:cache --no-interaction >/dev/null
 php artisan view:cache --no-interaction >/dev/null
 
 chown -R www-data:www-data storage bootstrap/cache
+# storage = /opt/pk95/core on the LXC: database (with -wal/-shm, SQLite copies its mode),
+# sessions, compiled views. Earlier versions left 0755/0644 there.
+find storage -type d -exec chmod 0750 {} +
+find storage -type f -exec chmod 0640 {} +
 chmod 600 storage/app/private/app.key 2>/dev/null || true
 chmod 600 storage/app/private/setup.token 2>/dev/null || true
 

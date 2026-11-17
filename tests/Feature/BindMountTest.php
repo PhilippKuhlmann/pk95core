@@ -80,7 +80,7 @@ class BindMountTest extends FeatureTestCase
         // the folder lies outside the volume: its old copy inside the volume is not backed up again
         $backup = app(BackupService::class)->create($app, 'manual');
         $this->assertSame('done', $backup->status);
-        $this->assertSame(['tar', 'czf', '/backups/'.basename($backup->files['data']), '--exclude=./export', '-C', '/source', '.'], $this->docker['helperRuns'][1]['cmd']);
+        $this->assertSame(['sh', '-c', "umask 027 && tar czf '/backups/".basename($backup->files['data'])."' '--exclude=./export' -C /source ."], $this->docker['helperRuns'][1]['cmd']);
         $this->assertCount(1, $backup->files, 'only the volume, not the host folder');
     }
 

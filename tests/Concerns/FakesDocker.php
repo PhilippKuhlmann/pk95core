@@ -197,9 +197,10 @@ trait FakesDocker
         $cmd = (array) ($spec['Cmd'] ?? []);
         $mounts = (array) ($spec['HostConfig']['Mounts'] ?? []);
         $this->docker['helperRuns'][] = ['cmd' => $cmd, 'mounts' => $mounts, 'network' => $spec['HostConfig']['NetworkMode'] ?? null];
-        if ($this->docker['helperExit'] === 0 && ($cmd[1] ?? null) === 'czf') {
+        // a backup ("tar czf '/backups/<file>' …" in sh -c): the archive appears in the bound folder
+        if ($this->docker['helperExit'] === 0 && preg_match("#tar czf '/backups/([^']+)'#", implode(' ', $cmd), $m)) {
             $bind = collect($mounts)->firstWhere('Type', 'bind');
-            file_put_contents($bind['Source'].'/'.basename((string) $cmd[2]), str_repeat('x', 2048));
+            file_put_contents($bind['Source'].'/'.$m[1], str_repeat('x', 2048));
         }
 
         return $this->docker['helperExit'];
