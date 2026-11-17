@@ -67,7 +67,8 @@ class BackupUpdateTest extends FeatureTestCase
         $this->assertStringStartsWith($this->dataDir.'/backups/demo/', $file);
 
         $run = $this->docker['helperRuns'][0];
-        $this->assertSame(['tar', 'czf', '/backups/'.basename($file), '-C', '/source', '.'], $run['cmd']);
+        // umask 027: the archive (it holds the app's secrets) is 0640, not readable for others
+        $this->assertSame(['sh', '-c', "umask 027 && tar czf '/backups/".basename($file)."' -C /source ."], $run['cmd']);
         $this->assertSame(['Type' => 'volume', 'Source' => 'pk95-demo-data', 'Target' => '/source', 'ReadOnly' => true], $run['mounts'][0]);
         $this->assertSame($this->dataDir.'/backups/demo', $run['mounts'][1]['Source']);
         $this->assertTrue($this->container('pk95-demo')['running'], 'app runs again');
