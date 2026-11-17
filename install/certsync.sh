@@ -85,6 +85,7 @@ printf 'CERTS_GID=%s\nCERTSYNC_UID=%s\n' "$(getent group pk95-certs | cut -d: -f
 chmod 0644 /opt/pk95/ssh/certsync.env
 
 # --- sshd -------------------------------------------------------------------------------
+# (the block up to "end sshd" is also run by tests/Unit/InstallScriptsTest.php)
 # (read -d: no command substitution around the here-document, works with every bash)
 read -r -d '' conf <<'EOF' || true
 # PK95 Core: certsync may only read /srv/pk95 (the certificates of PK95 Proxy) with scp/sftp.
@@ -104,15 +105,34 @@ Match all
 EOF
 conf="${conf%$'\n'}"
 if [ ! -f "$SSHD_CONF" ] || [ "$(cat "$SSHD_CONF")" != "$conf" ]; then
-    mkdir -p /etc/ssh/sshd_config.d
+    mkdir -p "$(dirname "$SSHD_CONF")"
+    # keep the previous drop-in: a broken one would stop sshd from starting (Debian 13 runs
+    # sshd -t before every start through ssh.socket), up to locking everyone out
+    backup=""
+    if [ -f "$SSHD_CONF" ]; then
+        backup="$(mktemp)"
+        cp -p "$SSHD_CONF" "$backup"
+    fi
     printf '%s\n' "$conf" > "$SSHD_CONF"
     chmod 0644 "$SSHD_CONF"
-    sshd -t || fail "Die SSH-Konfiguration ist ungültig (sshd -t), siehe oben."
-    # Debian 13 starts sshd through ssh.socket: a reload may end it briefly, the socket
-    # starts it again. Not an error.
+    if ! sshd -t; then
+        # roll back: the previous file, or none if there was none
+        if [ -n "$backup" ]; then
+            cp -p "$backup" "$SSHD_CONF"
+            rm -f "$backup"
+        else
+            rm -f "$SSHD_CONF"
+        fi
+        sshd -t || echo "Achtung: Die SSH-Konfiguration ist auch ohne die neue certsync-Datei ungültig. Bitte prüfen, bevor ssh neu startet." >&2
+        fail "Die neue SSH-Konfiguration für certsync war ungültig (sshd -t) und ist zurückgenommen. SSH bleibt, wie es war."
+    fi
+    if [ -n "$backup" ]; then rm -f "$backup"; fi
+    # only now: Debian 13 starts sshd through ssh.socket, a reload may end it briefly and the
+    # socket starts it again. Not an error.
     systemctl try-reload-or-restart ssh >/dev/null 2>&1 || true
     say "SSH-Konfiguration für certsync gesetzt"
 fi
+# --- end sshd ---------------------------------------------------------------------------
 
 ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
 say "certsync ist eingerichtet. Schlüssel fügst du in PK95 Core unter Proxy → Zertifikate hinzu."
