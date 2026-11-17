@@ -1,0 +1,32 @@
+# PK95 AD (repo pk95ad): Samba Active Directory domain controller with users, groups, OUs,
+# computers, AD DNS and Group Policy, managed through the PK95 Core module "ad". Image built by the
+# pk95ad repo's GitHub Actions; it needs the Core mode of app protocol v1.
+#
+# Host network: a DC has to be reachable on its real address with the standard AD ports
+# (88, 123/udp, 135, 137-138/udp, 139, 389, 445, 464, 636, 3268, 3269, RPC 49152-49200).
+# Port 53 belongs to PK95 DNS: Samba's DNS listens on 5300 and PK95 DNS forwards the realm there
+# (conditional forwarding "<realm>" -> 127.0.0.1:5300). Admin API on 8389.
+# Runs as root inside the container; no capabilities needed. NT ACLs are stored in the xattr
+# user.NTACL because security.* xattrs cannot be written in an unprivileged LXC.
+id: ad
+name: PK95 AD
+summary: Active-Directory-Domänencontroller (Samba) für Windows-Clients. Benutzer, Gruppen, Organisationseinheiten, Computer, DNS der AD-Zone und Gruppenrichtlinien werden in PK95 Core verwaltet. Belegt die AD-Ports des LXC (88, 389, 445 …); DNS läuft über PK95 DNS.
+image: ghcr.io/philippkuhlmann/pk95-ad
+tag: latest
+port: 8389
+icon: key
+module: ad
+health: /core/health
+network_mode: host
+volumes:
+  - name: samba
+    target: /var/lib/samba
+  - name: config
+    target: /etc/samba
+  - name: data
+    target: /var/lib/pk95ad
+env:
+  PK95AD_LISTEN: 0.0.0.0:8389
+  PK95AD_DATA_DIR: /var/lib/pk95ad
+  PK95AD_DNS_PORT: "5300"
+  PK95AD_RPC_PORTS: 49152-49200

@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Ad\AdModule;
 use App\Modules\Dns\DnsModule;
 use App\Modules\ProxApps\ProxAppsModule;
 use App\Modules\Proxy\ProxyModule;
@@ -106,6 +107,7 @@ return [
         'proxapps' => ProxAppsModule::class,
         'proxy' => ProxyModule::class,
         'dns' => DnsModule::class,
+        'ad' => AdModule::class,
     ],
 
     /*
