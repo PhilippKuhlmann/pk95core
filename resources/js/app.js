@@ -191,7 +191,13 @@ const tooltip = (() => {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && target) hide();
     });
-    window.addEventListener('scroll', () => { if (target && !follow) place(); else if (target) hide(); }, { capture: true, passive: true });
+    // scrolling: the tip moves with its element, or goes once the element left the view (a button
+    // that scrolled the page itself, e.g. "Abholen") or when it followed the mouse
+    window.addEventListener('scroll', () => {
+        if (!target) return;
+        const r = target.getBoundingClientRect();
+        if (follow || r.bottom < 0 || r.top > window.innerHeight) hide(); else place();
+    }, { capture: true, passive: true });
     window.addEventListener('resize', () => hide());
     document.addEventListener('livewire:navigating', () => hide());
     // a Livewire re-render (polling) may change or remove the element under the tip

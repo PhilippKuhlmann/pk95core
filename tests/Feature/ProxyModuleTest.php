@@ -50,6 +50,9 @@ class ProxyModuleTest extends FeatureTestCase
     /** @var array<string, mixed>|null GET /api/hosts/visitors (PK95 Proxy 1.5.0); null = older Proxy (404) */
     private ?array $visitors = null;
 
+    /** @var list<array<string, mixed>> more Let's Encrypt certificates for other applications (/api/acme-certs) */
+    private array $extraAcme = [];
+
     /** @var array<string, mixed> more guard fields in the faked /api/security answer (e.g. repeat_hits of Proxy 1.6.0) */
     private array $guardExtra = [];
 
@@ -138,7 +141,7 @@ class ProxyModuleTest extends FeatureTestCase
             'GET /api/certificates' => Http::response(['hosts' => [['host_id' => 1, 'domain' => 'app.example.de', 'kind' => 'proxy', 'enabled' => true,
                 'status' => 'ok', 'source' => 'auto', 'issuer' => "Let's Encrypt", 'not_after' => now()->getTimestamp() + 5 * 86400]], 'custom' => []]),
             'GET /api/acme-certs' => Http::response([['id' => 7, 'domain' => 'mail.example.de', 'note' => 'Mailserver', 'created_at' => $now,
-                'path' => '/var/lib/proxypanel/acme-export/mail.example.de', 'status' => ['issuer' => "Let's Encrypt", 'not_after' => now()->getTimestamp() + 80 * 86400]]]),
+                'path' => '/var/lib/proxypanel/acme-export/mail.example.de', 'status' => ['issuer' => "Let's Encrypt", 'not_after' => now()->getTimestamp() + 80 * 86400]], ...$this->extraAcme]),
             'GET /api/acme-certs/7/fullchain.pem' => Http::response("-----BEGIN CERTIFICATE-----\n", 200,
                 ['Content-Type' => 'application/x-pem-file', 'Content-Disposition' => 'attachment; filename="mail.example.de.fullchain.pem"']),
             'GET /api/error-pages' => Http::response(['defaults' => array_fill_keys(array_keys(ErrorPages::GROUPS), ['title' => 'Standard', 'text' => 'Text']),
@@ -696,6 +699,46 @@ class ProxyModuleTest extends FeatureTestCase
         $this->assertStringContainsString('der Benutzer certsync eingerichtet sein', $html);
         $this->assertStringNotContainsString('data-bind-missing', $html);
         $this->assertStringNotContainsString('data-group-too-old', $html);
+    }
+
+    public function test_the_scp_box_follows_the_chosen_domain(): void
+    {
+        Settings::put('automation_lan_ip', '10.10.250.50');
+        $this->proxyContainer(withBind: true);
+        $this->extraAcme = [['id' => 8, 'domain' => 'test1.example.de', 'note' => '', 'created_at' => 1,
+            'path' => '/var/lib/proxypanel/acme-export/test1.example.de', 'status' => ['issuer' => "Let's Encrypt", 'not_after' => now()->getTimestamp() + 80 * 86400]]];
+
+        $html = $this->get(route('apps.page', [$this->installed, 'certificates']))->assertOk()->getContent();
+
+        // the dropdown (client state, x-model) with every exported domain, the first chosen
+        $this->assertMatchesRegularExpression('/x-model="domain"[^>]*x-data="combobox\(/s', $html);
+        $this->assertStringContainsString('data-scp-domain', $html);
+        $this->assertStringContainsString('&quot;value&quot;:&quot;test1.example.de&quot;', $html);
+        $this->assertStringContainsString("domain: 'mail.example.de'", $html);
+        // @js writes JSON with \u0022 for the quotes
+        $this->assertStringContainsString(str_replace('"', chr(92).'u0022', '"test1.example.de":"'), $html);
+        // the commands follow it; the first domain is there before Alpine runs
+        $this->assertStringContainsString('x-text="&#039;scp &#039; + src(&#039;fullchain.pem&#039;) + &#039; ./&#039;"', $html);
+        $this->assertStringContainsString('>scp certsync@10.10.250.50:/srv/pk95/certs/mail.example.de/fullchain.pem ./</span>', $html);
+        // all domains at once: scp -r over SFTP, each into /etc/ssl/<domain>/
+        $this->assertStringContainsString('15 4 * * * scp -rq certsync@10.10.250.50:/srv/pk95/certs/mail.example.de certsync@10.10.250.50:/srv/pk95/certs/test1.example.de /etc/ssl/', $html);
+        $this->assertStringContainsString('scp ab OpenSSH 9', $html);
+        // "Abholen" in every row chooses the domain and scrolls to the box
+        $this->assertSame(2, substr_count($html, 'data-scp-pick="data-scp-pick"'));
+        $this->assertStringContainsString("x-on:click=\"\$dispatch('certsync-pick', 'test1.example.de')\"", $html);
+        $this->assertStringContainsString('x-on:certsync-pick.window=', $html);
+    }
+
+    public function test_one_domain_needs_no_choice(): void
+    {
+        $this->proxyContainer(withBind: true);
+
+        $html = $this->get(route('apps.page', [$this->installed, 'certificates']))->assertOk()->getContent();
+
+        $this->assertStringContainsString('data-scp', $html);
+        $this->assertStringNotContainsString('data-scp-domain', $html);
+        $this->assertStringNotContainsString('data-scp-all', $html);
+        $this->assertSame(1, substr_count($html, 'data-scp-pick="data-scp-pick"'));
     }
 
     public function test_a_proxy_container_without_the_folder_has_to_be_created_again(): void
