@@ -121,7 +121,7 @@ final class LocalGroups extends Kind
     {
         return [
             ['Lokale Gruppe', ''],
-            ['Mitglieder', ''],
+            ['Mitglieder', 'hidden sm:table-cell'],
             ['Gilt für', 'hidden sm:table-cell'],
         ];
     }
