@@ -90,6 +90,20 @@
             </x-callout>
         @endif
 
+        {{-- Unix IDs (PK95 AD 1.0.1+): the unprivileged LXC only has 0–65535; missing field (1.0.0) = no hint --}}
+        @php
+            $idmap = is_array($domain['idmap'] ?? null) ? $domain['idmap'] : null;
+            $xidRange = (array) ($idmap['xid_range'] ?? []);
+        @endphp
+        @if ($idmap && ($idmap['ok'] ?? true) === false)
+            <x-callout title="Unix-IDs der Domäne" ton="gelb" class="m-3" data-idmap-warning>
+                {{ ($idmap['message'] ?? '') !== '' ? $idmap['message'] : 'Samba vergibt Unix-IDs außerhalb des Bereichs, den der LXC kennt.' }}
+                @if (count($xidRange) === 2)
+                    <span class="mt-1 block text-xs">Bereich {{ number_format((int) $xidRange[0], 0, ',', '.') }} bis {{ number_format((int) $xidRange[1], 0, ',', '.') }}, vergeben {{ number_format((int) ($idmap['allocated'] ?? 0), 0, ',', '.') }}, nächste ID {{ number_format((int) ($idmap['next_xid'] ?? 0), 0, ',', '.') }}.</span>
+                @endif
+            </x-callout>
+        @endif
+
         @if ($status)
             <x-panel class="m-3" data-status>
                 <div class="font-DINPro-bold text-gray-900 dark:text-gray-100">Dienste</div>
