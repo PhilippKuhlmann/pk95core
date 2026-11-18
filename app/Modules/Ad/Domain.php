@@ -116,7 +116,7 @@ class Domain extends Component
     {
         [$setup, $loadError] = $this->fetch('/api/setup');
         $state = is_array($setup) ? (string) ($setup['state'] ?? '') : '';
-        $data = ['setup' => $setup, 'state' => $state, 'loadError' => $loadError, 'domain' => null, 'status' => null, 'dbcheck' => null, 'forward' => null];
+        $data = ['setup' => $setup, 'state' => $state, 'loadError' => $loadError, 'domain' => null, 'status' => null, 'dbcheck' => null, 'forward' => null, 'dnsLink' => null];
 
         if ($state === 'ready') {
             [$data['domain']] = $this->fetch('/api/domain');
@@ -133,6 +133,9 @@ class Domain extends Component
                 // right after the wizard: PK95 DNS forwards the realm to Samba (idempotent)
                 $data['forward'] = $this->watching ? DnsForward::ensure($realm, $port) : DnsForward::state($realm, $port);
                 $this->watching = false;
+                // where the rule shows up in PK95 DNS (DNS-Einträge → Weiterleitungen)
+                $dns = DnsForward::dnsApp();
+                $data['dnsLink'] = $dns ? route('apps.page', [$dns, 'records']).'#weiterleitungen' : null;
             }
         }
 

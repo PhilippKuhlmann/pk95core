@@ -85,8 +85,8 @@
                 @endif
             </x-panel>
 
-            {{-- conditional forwarding --}}
-            <x-panel class="m-3">
+            {{-- conditional forwarding (target of the link on DNS-Einträge → Weiterleitungen) --}}
+            <x-panel class="m-3 scroll-mt-20" id="weiterleitung">
                 <div class="{{ $card }}">Weiterleitung nach Domain</div>
                 <p class="{{ $intro }}">Anfragen für eine Domain und ihre Subdomains gehen an einen bestimmten Server, etwa fritz.box an die Fritzbox.</p>
                 <form wire:submit="save('routing')" class="mt-3 flex flex-col gap-4">
