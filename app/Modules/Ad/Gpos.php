@@ -4,6 +4,7 @@ namespace App\Modules\Ad;
 
 use App\Modules\Ad\Concerns\AdPage;
 use App\Services\Apps\AppException;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -55,6 +56,22 @@ class Gpos extends Component
 
     /** index in $drives whose editor is open */
     public ?int $driveEditing = null;
+
+    /** tab of the settings dialog: computer | user | drives */
+    public string $settingsTab = 'computer';
+
+    /** filter of the settings dialog: label or help contains it */
+    public string $settingsSearch = '';
+
+    /** filter of the settings dialog: only configured settings */
+    public bool $onlyConfigured = false;
+
+    /** who a drive map applies to (form field "condition" ↔ target {group_id, not}) */
+    public const DRIVE_CONDITIONS = [
+        'all' => 'Alle Benutzer, für die die Gruppenrichtlinie gilt',
+        'member' => 'Nur Mitglieder der Sicherheitsgruppe …',
+        'not_member' => 'Alle außer Mitglieder der Sicherheitsgruppe …',
+    ];
 
     public const STATUS = [
         'enabled' => 'Aktiv',
@@ -222,7 +239,108 @@ class Gpos extends Component
         $this->settingsOriginal = $form;
         $this->otherSettings = (array) $response->json('other_settings');
         $this->loadDrives($id);
+        $this->settingsSearch = '';
+        $this->onlyConfigured = false;
+        // start where something is configured: computer, user, then the drive maps
+        $this->settingsTab = 'computer';
+        foreach (['computer', 'user'] as $scope) {
+            if ($this->configuredCount($scope) > 0) {
+                $this->settingsTab = $scope;
+                break;
+            }
+            if ($scope === 'user' && $this->drives !== []) {
+                $this->settingsTab = 'drives';
+            }
+        }
         $this->settingsFor = $id;
+    }
+
+    public function updatedSettingsTab(string $tab): void
+    {
+        if (! in_array($tab, ['computer', 'user', 'drives'], true)) {
+            $this->settingsTab = 'computer';
+        }
+    }
+
+    /** back to the values as loaded (settings and drive maps) */
+    public function discardSettings(): void
+    {
+        $this->settings = $this->settingsOriginal;
+        $this->drives = $this->drivesOriginal;
+        $this->driveEditing = null;
+        $this->resetErrorBag();
+    }
+
+    /**
+     * The badge of a setting row: label and tone (gray = not configured, green/red = bool,
+     * blue = a value).
+     *
+     * @param  array<string, mixed>  $item  catalog item
+     * @return array{0: string, 1: string}
+     */
+    public static function settingStatus(array $item, mixed $value): array
+    {
+        if ($item['type'] === 'bool') {
+            return match ((string) $value) {
+                '1' => ['Aktiviert', 'green'],
+                '0' => ['Deaktiviert', 'red'],
+                default => ['Nicht konfiguriert', 'gray'],
+            };
+        }
+        if ($item['type'] === 'scripts') {
+            $count = count(array_filter((array) $value, fn ($s) => trim((string) ($s['path'] ?? '')) !== ''));
+
+            return $count === 0 ? ['Nicht konfiguriert', 'gray'] : [$count === 1 ? '1 Skript' : $count.' Skripte', 'blue'];
+        }
+        $text = trim((string) $value);
+        if ($text === '') {
+            return ['Nicht konfiguriert', 'gray'];
+        }
+
+        return match ($item['type']) {
+            'int' => [$text.(! empty($item['unit']) ? ' '.$item['unit'] : ''), 'blue'],
+            'enum' => [(string) (collect((array) ($item['options'] ?? []))->first(fn ($o) => (string) $o['value'] === $text)['label'] ?? $text), 'blue'],
+            default => [Str::limit(preg_replace('/\s+/', ' ', $text), 40), 'blue'],
+        };
+    }
+
+    /** @param  array<string, mixed>  $item */
+    public static function isConfigured(array $item, mixed $value): bool
+    {
+        return self::settingStatus($item, $value)[1] !== 'gray';
+    }
+
+    /** configured settings of one scope (computer | user), from the form as it is now */
+    private function configuredCount(string $scope): int
+    {
+        return count(array_filter($this->catalog(), fn ($i) => ($i['scope'] ?? '') === $scope && self::isConfigured($i, $this->settings[$i['key']] ?? null)));
+    }
+
+    /**
+     * Indexes of drive rows that are new or changed, and the number of changes (removed rows
+     * count, a pure reordering counts once).
+     *
+     * @return array{0: list<int>, 1: int}
+     */
+    private function driveChanges(): array
+    {
+        if (! $this->drivesSupported) {
+            return [[], 0];
+        }
+        $before = collect($this->drivesOriginal)->keyBy('uid');
+        $changed = [];
+        foreach ($this->drives as $i => $drive) {
+            if ($drive['uid'] === '' || $before->get($drive['uid']) !== $drive) {
+                $changed[] = $i;
+            }
+        }
+        $removed = $before->keys()->diff(array_column($this->drives, 'uid'))->count();
+        $count = count($changed) + $removed;
+        if ($count === 0 && array_column($this->drives, 'uid') !== array_column($this->drivesOriginal, 'uid')) {
+            $count = 1;
+        }
+
+        return [$changed, $count];
     }
 
     // --- drive maps (PK95 AD 1.1.0) ----------------------------------------------------
@@ -326,9 +444,9 @@ class Gpos extends Component
             'action' => (string) ($d['action'] ?? 'update'),
             'reconnect' => (bool) ($d['reconnect'] ?? true),
             'visibility' => (string) ($d['visibility'] ?? 'unchanged'),
+            'condition' => $target === null ? 'all' : (! empty($target['not']) ? 'not_member' : 'member'),
             'group' => (string) ($target['group_id'] ?? ''),
             'group_name' => (string) ($target['group_name'] ?? ''),
-            'not' => (bool) ($target['not'] ?? false),
             'changed_at' => (int) ($d['changed_at'] ?? 0),
             'readonly' => $readonly,
             'warning' => (string) ($d['warning'] ?? ''),
@@ -356,10 +474,32 @@ class Gpos extends Component
             'action' => (string) $f['action'],
             'reconnect' => (bool) $f['reconnect'],
             'visibility' => (string) $f['visibility'],
-            'target' => $f['group'] !== '' ? ['group_id' => (string) $f['group'], 'not' => (bool) $f['not']] : null,
+            'target' => $f['condition'] !== 'all' && $f['group'] !== ''
+                ? ['group_id' => (string) $f['group'], 'not' => $f['condition'] === 'not_member']
+                : null,
         ];
 
         return $f['uid'] !== '' ? ['uid' => $f['uid']] + $item : $item;
+    }
+
+    /** "Alle Benutzer" clears the group; a group of another condition stays selected */
+    public function updatedDrives(mixed $value, ?string $key = null): void
+    {
+        if ($key !== null && preg_match('/^(\d+)\.condition$/', $key, $m) && $value === 'all' && isset($this->drives[(int) $m[1]])) {
+            $this->drives[(int) $m[1]]['group'] = '';
+            $this->drives[(int) $m[1]]['group_name'] = '';
+        }
+    }
+
+    /** "Gilt für" of a drive row: Alle Benutzer / Mitglieder von X / Alle außer X */
+    public static function driveAudience(array $drive, ?string $groupName = null): string
+    {
+        if ($drive['condition'] === 'all' || $drive['group'] === '') {
+            return 'Alle Benutzer';
+        }
+        $name = $groupName ?: ($drive['group_name'] ?: $drive['group']);
+
+        return $drive['condition'] === 'not_member' ? 'Alle außer '.$name : 'Mitglieder von '.$name;
     }
 
     /** item fields of 422 answers ("items.2.target.group_id") → the form ("drives.2.group") */
@@ -390,8 +530,9 @@ class Gpos extends Component
     public function saveSettings(): void
     {
         $this->resetErrorBag();
+        $catalog = $this->catalog();
         $body = [];
-        foreach ($this->catalog() as $item) {
+        foreach ($catalog as $item) {
             $key = $item['key'];
             $value = $this->settings[$key] ?? null;
             if ($value !== ($this->settingsOriginal[$key] ?? null)) {
@@ -404,9 +545,22 @@ class Gpos extends Component
 
             return;
         }
+        // a condition on a group needs the group; checked before anything is written
+        if ($drivesChanged) {
+            foreach ($this->drives as $i => $drive) {
+                if (! $drive['readonly'] && $drive['condition'] !== 'all' && $drive['group'] === '') {
+                    $this->addError('drives.'.$i.'.group', 'Wähle die Sicherheitsgruppe für die Bedingung.');
+                }
+            }
+            if ($this->showFirstError($catalog)) {
+                return;
+            }
+        }
         if ($body !== []) {
             $response = $this->appRequest(fn ($api) => $api->put('/api/gpos/'.$this->settingsFor.'/settings', ['settings' => $body]));
             if (! $this->succeeded($response, '')) {
+                $this->showFirstError($catalog);
+
                 return;
             }
             $this->settingsOriginal = $this->settings;
@@ -415,13 +569,7 @@ class Gpos extends Component
             $items = array_map(fn ($d) => self::driveToApi($d), $this->drives);
             $response = $this->appRequest(fn ($api) => $api->put('/api/gpos/'.$this->settingsFor.'/drives', ['items' => $items]));
             if (! $this->succeeded($response, '')) {
-                // open the first row the app complained about
-                foreach (array_keys($this->getErrorBag()->messages()) as $key) {
-                    if (preg_match('/^drives\.(\d+)\./', $key, $m)) {
-                        $this->driveEditing = (int) $m[1];
-                        break;
-                    }
-                }
+                $this->showFirstError($catalog);
 
                 return;
             }
@@ -431,6 +579,34 @@ class Gpos extends Component
         $this->done('Einstellungen gespeichert. Windows-Rechner übernehmen sie bei der nächsten Aktualisierung (etwa alle 90 Minuten oder mit gpupdate).');
         $this->settingsFor = null;
         $this->driveEditing = null;
+    }
+
+    /**
+     * Switches to the tab of the first field error (and opens a drive row); true when there
+     * is one.
+     *
+     * @param  list<array<string, mixed>>  $catalog
+     */
+    private function showFirstError(array $catalog): bool
+    {
+        $scopes = array_column($catalog, 'scope', 'key');
+        foreach (array_keys($this->getErrorBag()->messages()) as $key) {
+            if (preg_match('/^drives(\.(\d+))?/', $key, $m)) {
+                $this->settingsTab = 'drives';
+                $this->driveEditing = isset($m[2]) ? (int) $m[2] : $this->driveEditing;
+
+                return true;
+            }
+            if (preg_match('/^settings\.([\w-]+)/', $key, $m) && isset($scopes[$m[1]])) {
+                $this->settingsTab = $scopes[$m[1]] === 'user' ? 'user' : 'computer';
+                $this->settingsSearch = '';
+                $this->onlyConfigured = false;
+
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -571,6 +747,9 @@ class Gpos extends Component
             'targetNode' => collect($ous)->firstWhere('id', $this->target),
             'inheritance' => $inheritance,
             'groupOptions' => $groupOptions,
+            // settings dialog: what changed (footer "n Änderungen", marked rows)
+            'driveChanges' => $this->settingsFor !== null ? $this->driveChanges() : [[], 0],
+            'settingChanges' => count(array_filter(array_keys($this->settings), fn ($k) => ($this->settings[$k] ?? null) !== ($this->settingsOriginal[$k] ?? null))),
             // catalog grouped: scope (computer before user) → group → items
             'catalog' => collect($catalog)->groupBy('scope')->sortKeys()->map(fn ($items) => $items->groupBy(fn ($i) => $i['group'] ?? 'Allgemein')),
             'loadError' => $loadError,
