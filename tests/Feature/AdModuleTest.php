@@ -100,6 +100,16 @@ class AdModuleTest extends FeatureTestCase
                 'gp-2' => $this->gpo('gp-2', 'Bildschirmsperre', false, [['target_id' => 'v1', 'target_name' => 'Vertrieb', 'target_type' => 'ou', 'target_path' => 'Firma/Vertrieb', 'enabled' => true, 'enforced' => false, 'order' => 1]]),
             ],
             'settings' => ['gp-2' => ['screen_lock_minutes' => 10]],
+            // drive maps (PK95 AD 1.1.0); drives404: an app before 1.1.0
+            'drives' => ['gp-2' => [
+                ['uid' => '{A1}', 'letter' => 'V', 'first_available' => false, 'path' => '\\\\nas.example.com\\vertrieb', 'label' => 'Vertrieb', 'action' => 'update',
+                    'reconnect' => true, 'visibility' => 'unchanged', 'target' => ['group_id' => 'g-v', 'group_name' => 'Vertrieb', 'not' => false],
+                    'changed_at' => 1762900000000, 'readonly' => false, 'warning' => ''],
+                ['uid' => '{B2}', 'letter' => 'P', 'first_available' => false, 'path' => '\\\\nas\\privat', 'label' => '', 'action' => 'update',
+                    'reconnect' => true, 'visibility' => 'unchanged', 'target' => null, 'changed_at' => 1762800000000, 'readonly' => true,
+                    'warning' => 'Enthält ein gespeichertes Kennwort (unsicher, MS14-025). Bitte in der GPMC entfernen.'],
+            ]],
+            'drives404' => false,
             'records' => [
                 's1' => ['id' => 's1', 'zone' => 'ad.example.com', 'name' => 'ad.example.com', 'type' => 'SOA', 'value' => 'dc1.ad.example.com', 'ttl' => 3600, 'priority' => 0, 'weight' => 0, 'port' => 0, 'dynamic' => false, 'system' => true],
                 's2' => ['id' => 's2', 'zone' => 'ad.example.com', 'name' => 'dc1.ad.example.com', 'type' => 'A', 'value' => '192.168.1.10', 'ttl' => 900, 'priority' => 0, 'weight' => 0, 'port' => 0, 'dynamic' => false, 'system' => true],
@@ -432,7 +442,10 @@ class AdModuleTest extends FeatureTestCase
                 return Http::response($s['gpos']['gp-new'], 201);
             }
 
-            return Http::response(array_values($s['gpos']));
+            return Http::response(array_values(array_map(fn ($g) => $this->withDriveCount($g), $s['gpos'])));
+        }
+        if (preg_match('#^/api/gpos/([\w-]+)/drives$#', $path, $m)) {
+            return $this->drives($m[1], $method, $body);
         }
         if (preg_match('#^/api/gpos/([\w-]+)(/(settings|links)(/([\w-]+))?)?$#', $path, $m)) {
             $id = $m[1];
@@ -478,7 +491,7 @@ class AdModuleTest extends FeatureTestCase
             }
             $settings = array_merge(array_fill_keys(array_column($this->catalog(), 'key'), null), $s['settings'][$id] ?? []);
 
-            return Http::response($gpo + ['settings' => $settings, 'other_settings' => ['computer' => $id === 'gp-1' ? 4 : 0, 'user' => 0, 'extensions' => $id === 'gp-1' ? ['Sicherheit'] : []]]);
+            return Http::response($this->withDriveCount($gpo) + ['settings' => $settings, 'other_settings' => ['computer' => $id === 'gp-1' ? 4 : 0, 'user' => 0, 'extensions' => $id === 'gp-1' ? ['Sicherheit'] : []]]);
         }
 
         // DNS of the AD zones
@@ -539,6 +552,63 @@ class AdModuleTest extends FeatureTestCase
         }
 
         return $error(404, 'Unbekannte Route '.$path);
+    }
+
+    /** @return array<string, mixed> the GPO with drive_count (PK95 AD 1.1.0) */
+    private function withDriveCount(array $gpo): array
+    {
+        return $this->state['drives404'] ? $gpo : $gpo + ['drive_count' => count($this->state['drives'][$gpo['id']] ?? [])];
+    }
+
+    /** GET/PUT /api/gpos/{id}/drives with the rules of docs/api.md -> Drive maps */
+    private function drives(string $id, string $method, array $body)
+    {
+        $s = &$this->state;
+        if ($s['drives404'] || ! isset($s['gpos'][$id])) {
+            return Http::response(['error' => 'Nicht gefunden.'], 404);
+        }
+        $stored = collect($s['drives'][$id] ?? [])->keyBy('uid');
+        if ($method === 'PUT') {
+            $items = (array) ($body['items'] ?? []);
+            $invalid = fn (string $field, string $msg) => Http::response(['error' => 'Bitte Eingaben prüfen.', 'fields' => [$field => $msg]], 422);
+            if (count($items) > 50) {
+                return $invalid('items', 'Höchstens 50 Netzlaufwerke.');
+            }
+            $letters = [];
+            $out = [];
+            foreach ($items as $n => $item) {
+                $old = isset($item['uid']) ? $stored->get($item['uid']) : null;
+                if ($old && $old['readonly']) {
+                    $out[] = $old; // read-only items stay as they are
+
+                    continue;
+                }
+                if (! str_starts_with((string) ($item['path'] ?? ''), '\\\\')) {
+                    return $invalid("items.$n.path", 'Bitte einen UNC-Pfad wie \\\\server\\freigabe angeben.');
+                }
+                if (! $item['first_available']) {
+                    if (in_array($item['letter'], $letters, true)) {
+                        return $invalid("items.$n.letter", 'Der Buchstabe '.$item['letter'].': ist in dieser Gruppenrichtlinie schon vergeben.');
+                    }
+                    $letters[] = $item['letter'];
+                }
+                $target = $item['target'];
+                if ($target !== null) {
+                    if (! isset($s['groups'][$target['group_id']])) {
+                        return $invalid("items.$n.target.group_id", 'Die Gruppe gibt es nicht.');
+                    }
+                    $target['group_name'] = $s['groups'][$target['group_id']]['name'];
+                }
+                $out[] = ['uid' => $old ? $old['uid'] : '{NEW-'.$n.'}'] + $item + ['changed_at' => 1763000000000, 'readonly' => false, 'warning' => ''];
+                $out[array_key_last($out)]['target'] = $target;
+            }
+            $s['drives'][$id] = $out;
+            $s['gpos'][$id]['version']['user']++;
+
+            return Http::response(['items' => $out, 'version' => $s['gpos'][$id]['version']]);
+        }
+
+        return Http::response(['items' => array_values($s['drives'][$id] ?? [])]);
     }
 
     private function dns(Request $r)
@@ -794,6 +864,87 @@ class AdModuleTest extends FeatureTestCase
         $this->assertNull(Gpos::toApi(['type' => 'bool'], ''));
         $this->assertFalse(Gpos::toApi(['type' => 'bool'], '0'));
         $this->assertSame(5, Gpos::toApi(['type' => 'int'], ' 5 '));
+    }
+
+    public function test_drive_maps_are_listed_with_hints_and_read_only_items(): void
+    {
+        $this->get(route('apps.page', [$this->installed, 'gpo']))->assertOk()->assertSee('2 Netzlaufwerke');
+
+        Livewire::test(Gpos::class, ['installedApp' => $this->installed])
+            ->call('openSettings', 'gp-2')->assertSet('drivesSupported', true)->assertCount('drives', 2)
+            ->assertSee('Netzlaufwerke')->assertSee('Fileserver oder NAS')->assertSee('Kennwörter für Laufwerke speichert PK95 AD bewusst nicht')
+            ->assertSee('\\nas.example.com\vertrieb')->assertSee('Vertrieb')
+            ->assertSee('Enthält ein gespeichertes Kennwort (unsicher, MS14-025). Bitte in der GPMC entfernen.')
+            ->assertSeeHtml('data-drive-readonly')
+            // read-only: no editor
+            ->call('editDrive', 1)->assertSet('driveEditing', null)
+            // nothing changed: no PUT
+            ->call('saveSettings')->assertSet('settingsFor', null);
+        $this->assertSame([], $this->sent('PUT', '/api/gpos/gp-2/drives'));
+        $this->assertSame([], $this->sent('PUT', '/api/gpos/gp-2/settings'));
+    }
+
+    public function test_drive_maps_are_hidden_before_pk95_ad_1_1(): void
+    {
+        $this->state['drives404'] = true;
+        $this->get(route('apps.page', [$this->installed, 'gpo']))->assertOk()->assertDontSee('Netzlaufwerke');
+        Livewire::test(Gpos::class, ['installedApp' => $this->installed])
+            ->call('openSettings', 'gp-2')->assertSet('drivesSupported', false)
+            ->assertSee('Netzlaufwerke per Gruppenrichtlinie gibt es ab PK95 AD 1.1.0.')->assertDontSee('Netzlaufwerk hinzufügen')
+            ->set('settings.deny_cmd', '1')->call('saveSettings')->assertSet('settingsFor', null);
+        $this->assertCount(1, $this->sent('PUT', '/api/gpos/gp-2/settings'));
+        $this->assertSame([], $this->sent('PUT', '/api/gpos/gp-2/drives'));
+    }
+
+    public function test_drive_maps_add_edit_order_remove_and_save(): void
+    {
+        $readonly = $this->state['drives']['gp-2'][1];
+        $page = Livewire::test(Gpos::class, ['installedApp' => $this->installed])
+            ->call('openSettings', 'gp-2')
+            ->call('addDrive')->assertSet('driveEditing', 2)->assertSet('drives.2.letter', 'H')->assertSet('drives.2.action', 'update')
+            ->assertSet('drives.2.reconnect', true)->assertSeeHtml('data-drive-editor')->assertSeeHtml('placeholder="\\\\nas\\freigabe"')
+            ->set('drives.2.path', '\\\\nas\\technik')->set('drives.2.label', 'Technik')
+            ->set('drives.2.group', 'g-v')->assertSee('Nur für Benutzer, die nicht Mitglied der Gruppe sind')->set('drives.2.not', true)
+            ->call('closeDrive')->assertSet('driveEditing', null)->assertSee('Nicht in Vertrieb')
+            // processed before the read-only item
+            ->call('moveDrive', 2, -1)->assertSet('drives.1.label', 'Technik')
+            ->call('moveDrive', 0, -1)->assertSet('drives.0.uid', '{A1}')
+            ->call('editDrive', 0)->set('drives.0.label', 'Verkauf')->set('drives.0.visibility', 'hide')
+            ->call('saveSettings')->assertHasNoErrors()->assertSet('settingsFor', null)
+            ->assertDispatched('notice', kind: 'success', text: 'Einstellungen gespeichert. Windows-Rechner übernehmen sie bei der nächsten Aktualisierung (etwa alle 90 Minuten oder mit gpupdate).');
+
+        $items = last($this->sent('PUT', '/api/gpos/gp-2/drives'))['body']['items'];
+        $this->assertSame(['uid' => '{A1}', 'letter' => 'V', 'first_available' => false, 'path' => '\\\\nas.example.com\\vertrieb', 'label' => 'Verkauf',
+            'action' => 'update', 'reconnect' => true, 'visibility' => 'hide', 'target' => ['group_id' => 'g-v', 'not' => false]], $items[0]);
+        $this->assertSame(['letter' => 'H', 'first_available' => false, 'path' => '\\\\nas\\technik', 'label' => 'Technik', 'action' => 'update',
+            'reconnect' => true, 'visibility' => 'unchanged', 'target' => ['group_id' => 'g-v', 'not' => true]], $items[1], 'a new item has no uid');
+        $this->assertSame($readonly, $items[2], 'the read-only item goes back exactly as it came');
+        $this->assertSame([], $this->sent('PUT', '/api/gpos/gp-2/settings'), 'only the drives changed');
+        $this->assertSame(1, $this->state['gpos']['gp-2']['version']['user']);
+
+        // removing the read-only item deletes it (leaving it out)
+        $page->call('openSettings', 'gp-2')->assertCount('drives', 3)->call('removeDrive', 2)->call('saveSettings')->assertSet('settingsFor', null);
+        $this->assertSame(['{A1}', '{NEW-1}'], array_column(last($this->sent('PUT', '/api/gpos/gp-2/drives'))['body']['items'], 'uid'));
+    }
+
+    public function test_drive_map_errors_are_shown_per_row(): void
+    {
+        $page = Livewire::test(Gpos::class, ['installedApp' => $this->installed])
+            ->call('openSettings', 'gp-2')->call('addDrive')->call('closeDrive')
+            ->set('drives.2.letter', 'V')->set('drives.2.path', '\\\\nas\\x')->call('saveSettings')
+            ->assertHasErrors('drives.2.letter')->assertSet('settingsFor', 'gp-2')->assertSet('driveEditing', 2)
+            ->assertSee('Der Buchstabe V: ist in dieser Gruppenrichtlinie schon vergeben.');
+
+        $page->set('drives.2.first_available', true)->set('drives.2.path', 'nas\\x')->call('saveSettings')->assertHasErrors('drives.2.path')
+            ->set('drives.2.path', '\\\\nas\\x')->set('drives.2.group', 'g-weg')->call('saveSettings')->assertHasErrors('drives.2.group')
+            ->assertSee('Die Gruppe gibt es nicht.')
+            ->set('drives.2.group', '')->call('saveSettings')->assertHasNoErrors()->assertSet('settingsFor', null);
+        $this->assertSame(['letter' => 'V', 'first_available' => true, 'target' => null],
+            array_intersect_key(last($this->sent('PUT', '/api/gpos/gp-2/drives'))['body']['items'][2], ['letter' => 0, 'first_available' => 0, 'target' => 0]));
+
+        // at most 50
+        $page->call('openSettings', 'gp-2')->set('drives', array_fill(0, 50, Gpos::driveToForm(['letter' => 'X', 'first_available' => true, 'path' => '\\\\nas\\x'])))
+            ->call('addDrive')->assertHasErrors('drives')->assertCount('drives', 50)->assertSee('Höchstens 50 Netzlaufwerke je Gruppenrichtlinie.');
     }
 
     public function test_gpo_create_links_enforce_order_and_block_inheritance(): void
