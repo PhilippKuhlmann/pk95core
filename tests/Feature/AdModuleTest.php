@@ -12,6 +12,7 @@ use App\Modules\Ad\DnsForward;
 use App\Modules\Ad\DnsRecords;
 use App\Modules\Ad\Domain;
 use App\Modules\Ad\Gpos;
+use App\Modules\Ad\Gpp\Kinds;
 use App\Modules\Ad\Groups;
 use App\Modules\Ad\Ous;
 use App\Modules\Ad\Scripts;
@@ -110,6 +111,19 @@ class AdModuleTest extends FeatureTestCase
                     'warning' => 'Enthält ein gespeichertes Kennwort (unsicher, MS14-025). Bitte in der GPMC entfernen.'],
             ]],
             'drives404' => false,
+            // the other preferences lists (PK95 AD 1.3.0) on gp-1; gpp404: an app before 1.3.0
+            'gpp' => [
+                'local-groups' => ['gp-1' => [
+                    ['uid' => '{L1}', 'group' => 'administrators', 'members' => [['id' => 'g-v', 'name' => 'Vertrieb', 'kind' => 'group', 'action' => 'add']],
+                        'remove_other_users' => false, 'remove_other_groups' => false, 'target' => null, 'changed_at' => 1762900000000, 'readonly' => false, 'warning' => ''],
+                ]],
+                'printers' => ['gp-1' => [
+                    ['uid' => '{P1}', 'path' => '\\\\print\\buero', 'action' => 'update', 'default' => true,
+                        'target' => ['group_id' => 'g-v', 'group_name' => 'Vertrieb', 'not' => false], 'changed_at' => 1762900000000, 'readonly' => false, 'warning' => ''],
+                ]],
+                'shortcuts' => [],
+            ],
+            'gpp404' => false,
             'records' => [
                 's1' => ['id' => 's1', 'zone' => 'ad.example.com', 'name' => 'ad.example.com', 'type' => 'SOA', 'value' => 'dc1.ad.example.com', 'ttl' => 3600, 'priority' => 0, 'weight' => 0, 'port' => 0, 'dynamic' => false, 'system' => true],
                 's2' => ['id' => 's2', 'zone' => 'ad.example.com', 'name' => 'dc1.ad.example.com', 'type' => 'A', 'value' => '192.168.1.10', 'ttl' => 900, 'priority' => 0, 'weight' => 0, 'port' => 0, 'dynamic' => false, 'system' => true],
@@ -154,6 +168,11 @@ class AdModuleTest extends FeatureTestCase
             ['key' => 'screen_lock_minutes', 'scope' => 'user', 'group' => 'Desktop', 'label' => 'Bildschirmsperre nach Inaktivität', 'type' => 'int', 'min' => 1, 'max' => 600, 'unit' => 'Minuten', 'help' => 'Startet den Bildschirmschoner mit Kennwortschutz.'],
             ['key' => 'wallpaper_path', 'scope' => 'user', 'group' => 'Desktop', 'label' => 'Hintergrundbild', 'type' => 'string', 'max' => 260],
             ['key' => 'deny_cmd', 'scope' => 'user', 'group' => 'System', 'label' => 'Eingabeaufforderung sperren', 'type' => 'bool'],
+            // editions (PK95 AD 1.2.0) on an entry and on an enum option
+            ['key' => 'store_off', 'editions' => ['enterprise', 'education'], 'scope' => 'computer', 'group' => 'Datenschutz', 'label' => 'Microsoft Store abschalten', 'type' => 'bool'],
+            ['key' => 'telemetry_level', 'scope' => 'computer', 'group' => 'Datenschutz', 'label' => 'Diagnosedaten', 'type' => 'enum',
+                'options' => [['value' => 0, 'label' => 'Sicherheit', 'editions' => ['enterprise', 'education']], ['value' => 1, 'label' => 'Erforderlich'],
+                    ['value' => 2, 'label' => 'Alle Editionen', 'editions' => ['home', 'pro', 'enterprise', 'education']]]],
             ['key' => 'logon_scripts', 'scope' => 'user', 'group' => 'Skripte', 'label' => 'Anmeldeskripte', 'type' => 'scripts'],
             ['key' => 'windows_update_mode', 'scope' => 'computer', 'group' => 'Windows Update', 'label' => 'Automatische Updates', 'type' => 'enum',
                 'options' => [['value' => 'off', 'label' => 'Aus'], ['value' => 'notify', 'label' => 'Nur melden'], ['value' => 'auto', 'label' => 'Automatisch installieren']]],
@@ -447,6 +466,9 @@ class AdModuleTest extends FeatureTestCase
         if (preg_match('#^/api/gpos/([\w-]+)/drives$#', $path, $m)) {
             return $this->drives($m[1], $method, $body);
         }
+        if (preg_match('#^/api/gpos/([\w-]+)/(local-groups|printers|shortcuts)$#', $path, $m)) {
+            return $this->preferenceList($m[2], $m[1], $method, $body);
+        }
         if (preg_match('#^/api/gpos/([\w-]+)(/(settings|links)(/([\w-]+))?)?$#', $path, $m)) {
             $id = $m[1];
             if (! isset($s['gpos'][$id])) {
@@ -557,7 +579,137 @@ class AdModuleTest extends FeatureTestCase
     /** @return array<string, mixed> the GPO with drive_count (PK95 AD 1.1.0) */
     private function withDriveCount(array $gpo): array
     {
-        return $this->state['drives404'] ? $gpo : $gpo + ['drive_count' => count($this->state['drives'][$gpo['id']] ?? [])];
+        $gpo = $this->state['drives404'] ? $gpo : $gpo + ['drive_count' => count($this->state['drives'][$gpo['id']] ?? [])];
+        if (! $this->state['gpp404']) {
+            $count = fn (string $list) => count($this->state['gpp'][$list][$gpo['id']] ?? []);
+            $gpo['preference_counts'] = ['drives' => $gpo['drive_count'] ?? 0, 'local_groups' => $count('local-groups'), 'printers' => $count('printers'), 'shortcuts' => $count('shortcuts')];
+        }
+
+        return $gpo;
+    }
+
+    /**
+     * GET/PUT /api/gpos/{id}/local-groups|printers|shortcuts as in pk95ad docs/api.md → "Preferences: local groups,
+     * printers, shortcuts" (1.3.0, a918dc9), with the field names and German messages of pk95ad/gpp.py. All field
+     * errors of a PUT come back together, like the app's Fields.
+     */
+    private function preferenceList(string $list, string $id, string $method, array $body)
+    {
+        $s = &$this->state;
+        if ($s['gpp404'] || ! isset($s['gpos'][$id])) {
+            return Http::response(['error' => 'Nicht gefunden.'], 404);
+        }
+        if ($method !== 'PUT') {
+            return Http::response(['items' => array_values($s['gpp'][$list][$id] ?? [])]);
+        }
+        $items = (array) ($body['items'] ?? []);
+        $fields = [];
+        $add = function (string $field, string $msg) use (&$fields) {
+            $fields[$field] ??= $msg;
+        };
+        if (count($items) > 50) {
+            return Http::response(['error' => 'Bitte Eingaben prüfen.', 'fields' => ['items' => 'Höchstens 50 Einträge.']], 422);
+        }
+        $stored = collect($s['gpp'][$list][$id] ?? [])->keyBy('uid');
+        $accounts = array_column($s['users'], 'display_name', 'id') + array_column($s['groups'], 'name', 'id');
+        $builtin = ['administrators', 'users', 'backup_operators', 'remote_desktop_users', 'network_configuration_operators', 'event_log_readers', 'remote_management_users'];
+        [$uniqueField, $uniqueError, $unique] = match ($list) {
+            'local-groups' => ['group', 'Diese lokale Gruppe steht schon in der Richtlinie.', fn ($v) => $v['group'] ?? null],
+            'printers' => ['path', 'Dieser Drucker steht schon in der Richtlinie.', fn ($v) => mb_strtolower((string) ($v['path'] ?? ''))],
+            'shortcuts' => ['name', 'Eine Verknüpfung mit diesem Namen gibt es hier schon.', fn ($v) => ($v['location'] ?? '').'|'.mb_strtolower((string) ($v['name'] ?? ''))],
+        };
+        $keys = [];
+        $out = [];
+        foreach ($items as $n => $item) {
+            $name = "items.$n";
+            $old = isset($item['uid']) ? $stored->get($item['uid']) : null;
+            if ($old && $old['readonly']) {
+                $out[] = $old;
+
+                continue;
+            }
+            $target = $item['target'] ?? null;
+            if ($target !== null) {
+                if (! isset($s['groups'][$target['group_id'] ?? ''])) {
+                    $add("$name.target.group_id", 'Die Gruppe gibt es nicht.');
+                } else {
+                    $target = ['group_id' => $target['group_id'], 'group_name' => $s['groups'][$target['group_id']]['name'], 'not' => (bool) ($target['not'] ?? false)];
+                }
+            }
+            if ($list === 'local-groups') {
+                if (! in_array($item['group'] ?? null, $builtin, true)) {
+                    $add("$name.group", 'Erlaubt: '.implode(', ', $builtin).'.');
+                }
+                if (count($item['members'] ?? []) > 100) {
+                    $add("$name.members", 'Höchstens 100 Mitglieder.');
+                }
+                $seen = [];
+                $members = [];
+                foreach ((array) ($item['members'] ?? []) as $j => $m) {
+                    $mname = "$name.members.$j";
+                    $action = $m['action'] ?? 'add';
+                    if (! isset($accounts[$m['id'] ?? ''])) {
+                        $add("$mname.id", 'Das Konto gibt es nicht.');
+                    } elseif (! in_array($action, ['add', 'remove'], true)) {
+                        $add("$mname.action", 'Erlaubt: add, remove.');
+                    } elseif (in_array($m['id'], $seen, true)) {
+                        $add("$mname.id", 'Dieses Konto steht schon in der Liste.');
+                    } elseif ($item['group'] === 'administrators' && $m['id'] === 'g-da' && $action === 'remove') {
+                        $seen[] = $m['id'];
+                        $add("$mname.action", 'Domain Admins kann nicht aus den lokalen Administratoren entfernt werden.');
+                    } else {
+                        $seen[] = $m['id'];
+                        $members[] = ['id' => $m['id'], 'name' => $accounts[$m['id']], 'kind' => isset($s['groups'][$m['id']]) ? 'group' : 'user', 'action' => $action];
+                    }
+                }
+                // never lock out: with a switch on, the administrators keep Domain Admins (first, like the app)
+                if ($item['group'] === 'administrators' && (($item['remove_other_users'] ?? false) || ($item['remove_other_groups'] ?? false)) && ! in_array('g-da', $seen, true)) {
+                    array_unshift($members, ['id' => 'g-da', 'name' => 'Domain Admins', 'kind' => 'group', 'action' => 'add']);
+                }
+                $item = ['group' => $item['group'], 'members' => $members,
+                    'remove_other_users' => (bool) ($item['remove_other_users'] ?? false), 'remove_other_groups' => (bool) ($item['remove_other_groups'] ?? false)];
+            }
+            if ($list === 'printers') {
+                if (! preg_match('#^\\\\\\\\[^\\\\]+\\\\[^\\\\]+$#', (string) ($item['path'] ?? ''))) {
+                    $add("$name.path", 'Bitte die Freigabe angeben: \\\\server\\drucker.');
+                }
+                $item = ['path' => (string) $item['path'], 'action' => $item['action'] ?? 'update', 'default' => (bool) ($item['default'] ?? false)];
+            }
+            if ($list === 'shortcuts') {
+                if (! preg_match('/^[^\\\\\/:*?"<>|\x00-\x1f]{1,100}$/u', (string) ($item['name'] ?? ''))) {
+                    $add("$name.name", 'Name mit 1–100 Zeichen, ohne \\ / : * ? " < > |.');
+                }
+                $isUrl = ($item['target_type'] ?? '') === 'url';
+                if ($isUrl && ! preg_match('#^https?://\S+$#', (string) ($item['target_path'] ?? ''))) {
+                    $add("$name.target_path", 'Bitte eine Adresse angeben (https://…).');
+                } elseif (! $isUrl && ! str_starts_with((string) ($item['target_path'] ?? ''), '\\\\')) {
+                    $add("$name.target_path", 'Bitte einen UNC-Pfad angeben, z. B. \\\\server\\freigabe\\datei.');
+                }
+                if (! in_array($item['location'] ?? '', ['desktop', 'start_menu', 'programs'], true)) {
+                    $add("$name.location", 'Erlaubt: desktop, start_menu, programs.');
+                }
+                if ($isUrl && ($item['arguments'] ?? '') !== '') {
+                    $add("$name.arguments", 'Nur bei Verknüpfungen auf Dateien.');
+                }
+                if (! is_int($item['icon_index'] ?? 0) || $item['icon_index'] < 0 || $item['icon_index'] > 255) {
+                    $add("$name.icon_index", 'Bitte eine Zahl von 0 bis 255.');
+                }
+                $item = array_intersect_key($item, array_flip(['name', 'target_type', 'target_path', 'location', 'arguments', 'icon_path', 'icon_index', 'action']));
+            }
+            $key = $unique($item);
+            if ($key !== null && in_array($key, $keys, true)) {
+                $add("$name.$uniqueField", $uniqueError);
+            }
+            $keys[] = $key;
+            $out[] = ['uid' => $old ? $old['uid'] : '{NEW-'.$n.'}'] + $item + ['target' => $target, 'changed_at' => 1763000000000, 'readonly' => false, 'warning' => ''];
+        }
+        if ($fields) {
+            return Http::response(['error' => 'Bitte Eingaben prüfen.', 'fields' => $fields], 422);
+        }
+        $s['gpp'][$list][$id] = $out;
+        $s['gpos'][$id]['version'][$list === 'local-groups' ? 'computer' : 'user']++;
+
+        return Http::response(['items' => $out, 'version' => $s['gpos'][$id]['version']]);
     }
 
     /** GET/PUT /api/gpos/{id}/drives with the rules of docs/api.md -> Drive maps */
@@ -889,6 +1041,32 @@ class AdModuleTest extends FeatureTestCase
         $this->assertSame(['2 Skripte', 'blue'], Gpos::settingStatus(['type' => 'scripts'], [['path' => 'a.bat'], ['path' => 'b.bat'], ['path' => ' ']]));
     }
 
+    public function test_gpo_settings_show_the_windows_editions_of_pk95_ad_1_2(): void
+    {
+        $this->assertSame('nur Enterprise/Education', Gpos::editionsLabel(['education', 'enterprise']));
+        $this->assertSame('nur Pro', Gpos::editionsLabel(['pro', 'unknown']));
+        $this->assertSame('ab Pro', Gpos::editionsLabel(['education', 'pro', 'enterprise']));
+        $this->assertSame('nur Home/Pro', Gpos::editionsLabel(['pro', 'home']), 'in edition order');
+        $this->assertNull(Gpos::editionsLabel(null), 'missing: all editions');
+        $this->assertNull(Gpos::editionsLabel([]));
+        $this->assertNull(Gpos::editionsLabel(['home', 'pro', 'enterprise', 'education']));
+        $this->assertSame('Sicherheit (nur Enterprise)', Gpos::optionLabel(['label' => 'Sicherheit', 'editions' => ['enterprise']]));
+        $this->assertSame('Sicherheit (nur Enterprise)', Gpos::optionLabel(['label' => 'Sicherheit (nur Enterprise)', 'editions' => ['enterprise']]), 'not twice');
+
+        $page = Livewire::test(Gpos::class, ['installedApp' => $this->installed])->call('openSettings', 'gp-2')->set('settingsTab', 'computer');
+        // a badge on the restricted entry only (the rendered HTML: the JSON of the response escapes "/")
+        $html = $page->html();
+        $this->assertSame(1, substr_count($html, 'data-editions '));
+        $this->assertMatchesRegularExpression('#Microsoft Store abschalten(\s|<!--.*?-->)*<span[^>]*data-editions[^>]*>nur Enterprise/Education</span>#', $html);
+        $this->assertStringContainsString('>Sicherheit (nur Enterprise/Education)</option>', $html);
+        $this->assertStringContainsString('>Erforderlich</option>', $html);
+        $this->assertStringContainsString('>Alle Editionen</option>', $html);
+        // a hint under the select while a restricted option is chosen
+        $page->assertDontSeeHtml('data-option-editions')
+            ->set('settings.telemetry_level', '0')->assertSeeHtml('data-option-editions')->assertSee('Dieser Wert wirkt nicht auf allen Windows-Editionen (nur Enterprise/Education)')
+            ->set('settings.telemetry_level', '1')->assertDontSeeHtml('data-option-editions');
+    }
+
     public function test_gpo_settings_save_sends_only_the_changes(): void
     {
         // a 422 on a field of the other tab switches there
@@ -922,18 +1100,18 @@ class AdModuleTest extends FeatureTestCase
         $this->get(route('apps.page', [$this->installed, 'gpo']))->assertOk()->assertSee('2 Netzlaufwerke');
 
         Livewire::test(Gpos::class, ['installedApp' => $this->installed])
-            ->call('openSettings', 'gp-2')->assertSet('drivesSupported', true)->assertCount('drives', 2)
+            ->call('openSettings', 'gp-2')->assertSet('gppSupported.drives', true)->assertCount('gpp.drives', 2)
             // a section of "Benutzer", open with entries, not on "Computer"
-            ->assertSet('settingsTab', 'user')->assertSeeHtml('data-drive-table')->assertSee('Einstellungen (Laufwerkszuordnungen)')->assertSee('2 Laufwerke')
-            ->set('settingsTab', 'computer')->assertDontSeeHtml('data-drives-section')
-            ->set('settingsTab', 'user')->assertSeeHtml('data-drive-table')
+            ->assertSet('settingsTab', 'user')->assertSeeHtml('data-gpp-table')->assertSee('Einstellungen (Laufwerkszuordnungen, Drucker, Verknüpfungen)')->assertSee('2 Laufwerke')
+            ->set('settingsTab', 'computer')->assertDontSeeHtml('data-gpp-section="drives"')->assertSeeHtml('data-gpp-section="local_groups"')
+            ->set('settingsTab', 'user')->assertSeeHtml('data-gpp-table')
             ->assertSeeInOrder(['Laufwerk', 'Pfad', 'Bezeichnung', 'Aktion'])->assertSee('Gilt für')
             ->assertSee('Mitglieder von Vertrieb')->assertSee('Alle Benutzer')
             // the hint is a tooltip now
-            ->assertSeeHtml('data-drives-hint')->assertSee('Fileserver oder NAS')->assertSee('Kennwörter für Laufwerke speichert PK95 AD bewusst nicht')
+            ->assertSeeHtml('data-gpp-hint')->assertSee('Fileserver oder NAS')->assertSee('Kennwörter für Laufwerke speichert PK95 AD bewusst nicht')
             ->assertSee('\\nas.example.com\vertrieb')
-            ->assertSee('Enthält ein gespeichertes Kennwort (unsicher, MS14-025). Bitte in der GPMC entfernen.')->assertSeeHtml('data-drive-readonly')
-            ->call('editDrive', 1)->assertSet('driveEditing', null)
+            ->assertSee('Enthält ein gespeichertes Kennwort (unsicher, MS14-025). Bitte in der GPMC entfernen.')->assertSeeHtml('data-gpp-readonly')
+            ->call('editGpp', 'drives', 1)->assertSet('gppEditing', null)
             ->call('saveSettings')->assertSet('settingsFor', null);
         $this->assertSame([], $this->sent('PUT', '/api/gpos/gp-2/drives'));
         $this->assertSame([], $this->sent('PUT', '/api/gpos/gp-2/settings'));
@@ -942,19 +1120,138 @@ class AdModuleTest extends FeatureTestCase
     public function test_drive_maps_section_follows_search_and_only_configured(): void
     {
         $page = Livewire::test(Gpos::class, ['installedApp' => $this->installed])->call('openSettings', 'gp-2')
-            ->set('settingsSearch', 'laufwerk')->assertSeeHtml('data-drives-section')->assertDontSee('Bildschirmsperre nach Inaktivität')
-            ->set('settingsSearch', 'netz')->assertSeeHtml('data-drives-section')
-            ->set('settingsSearch', 'vertrieb')->assertSeeHtml('data-drives-section')
-            ->set('settingsSearch', 'v:')->assertSeeHtml('data-drives-section')
-            ->set('settingsSearch', 'kennwortschutz')->assertDontSeeHtml('data-drives-section')->assertSee('Bildschirmsperre nach Inaktivität')
-            ->set('settingsSearch', '')->set('onlyConfigured', true)->assertSeeHtml('data-drives-section');
+            ->set('settingsSearch', 'laufwerk')->assertSeeHtml('data-gpp-section')->assertDontSee('Bildschirmsperre nach Inaktivität')
+            ->set('settingsSearch', 'netz')->assertSeeHtml('data-gpp-section')
+            ->set('settingsSearch', 'vertrieb')->assertSeeHtml('data-gpp-section')
+            ->set('settingsSearch', 'v:')->assertSeeHtml('data-gpp-section')
+            ->set('settingsSearch', 'kennwortschutz')->assertDontSeeHtml('data-gpp-section')->assertSee('Bildschirmsperre nach Inaktivität')
+            ->set('settingsSearch', '')->set('onlyConfigured', true)->assertSeeHtml('data-gpp-section');
 
         // without drive maps: "Nur konfigurierte" hides the section, the count says 0
         $this->state['drives']['gp-2'] = [];
         $page->call('openSettings', 'gp-2')->assertSet('onlyConfigured', false)->assertSee('0 Laufwerke')->assertSeeInOrder(['Benutzer', '1'])
-            ->set('onlyConfigured', true)->assertDontSeeHtml('data-drives-section');
+            ->set('onlyConfigured', true)->assertDontSeeHtml('data-gpp-section');
         // gp-1 has nothing configured: it opens on Computer
         $page->call('openSettings', 'gp-1')->assertSet('settingsTab', 'computer');
+    }
+
+    public function test_preferences_lists_of_pk95_ad_1_3_are_sections_of_their_tab(): void
+    {
+        $this->get(route('apps.page', [$this->installed, 'gpo']))->assertOk()
+            ->assertSee('2 Netzlaufwerke')->assertSee('1 lokale Gruppe')->assertSee('1 Drucker');
+
+        Livewire::test(Gpos::class, ['installedApp' => $this->installed])
+            ->call('openSettings', 'gp-1')
+            // the local group is computer configuration: gp-1 opens there, each tab counts its lists
+            ->assertSet('settingsTab', 'computer')->assertSeeInOrder(['Computer', '1', 'Benutzer', '1'])
+            ->assertSee('Einstellungen (Lokale Benutzer und Gruppen)')->assertSeeHtml('data-gpp-section="local_groups"')->assertSee('1 Gruppe')
+            ->assertSee('Administratoren')->assertSee('Vertrieb')->assertSee('Alle Computer')
+            ->assertDontSeeHtml('data-gpp-section="printers"')
+            ->set('settingsTab', 'user')
+            ->assertSee('Einstellungen (Laufwerkszuordnungen, Drucker, Verknüpfungen)')
+            ->assertSeeHtml('data-gpp-section="printers"')->assertSee('1 Drucker')->assertSee('\\print\buero')->assertSee('Standard')
+            ->assertSee('Mitglieder von Vertrieb')->assertSee('PrintNightmare')
+            ->assertSeeHtml('data-gpp-section="shortcuts"')->assertSee('0 Verknüpfungen')->assertSee('Noch keine Verknüpfungen.')
+            // the search finds a list by its words and its rows
+            ->set('settingsSearch', 'drucker')->assertSeeHtml('data-gpp-section="printers"')->assertDontSeeHtml('data-gpp-section="shortcuts"')
+            ->set('settingsSearch', 'buero')->assertSeeHtml('data-gpp-section="printers"')
+            ->set('settingsSearch', '')->set('onlyConfigured', true)->assertSeeHtml('data-gpp-section="printers"')->assertDontSeeHtml('data-gpp-section="shortcuts"');
+    }
+
+    public function test_local_groups_members_remove_others_and_errors(): void
+    {
+        $page = Livewire::test(Gpos::class, ['installedApp' => $this->installed])->call('openSettings', 'gp-1')
+            ->call('editGpp', 'local_groups', 0)->assertSet('gpp.local_groups.0.add_ids', ['g-v'])
+            ->assertSee('Hinzufügen')->assertSee('Entfernen')->assertSeeHtml('data-domain-admins-hint')->assertDontSeeHtml('data-remove-others-warning')
+            ->set('gpp.local_groups.0.add_ids', ['g-v', 'm-1'])->set('gpp.local_groups.0.remove_other_users', true)
+            ->assertSeeHtml('data-remove-others-warning')->assertSee('Achtung: alle anderen Benutzer werden entfernt')->assertSee('Domain Admins nimmt PK95 AD dabei immer auf.')
+            ->set('gpp.local_groups.0.remove_other_groups', true)->assertSee('Achtung: alle anderen Benutzer und Gruppen werden entfernt')
+            ->call('closeGpp')->assertSeeHtml('data-remove-others')->assertSee('Alle anderen Benutzer und Gruppen werden entfernt')
+            // a new row takes the first local group not used yet
+            ->call('addGpp', 'local_groups')->assertSet('gpp.local_groups.1.local_group', 'remote_desktop_users')
+            ->assertSee('Administratoren (schon in dieser Gruppenrichtlinie)')
+            // the condition group is "group", the local group "local_group": choosing "all" keeps the local group
+            ->set('gpp.local_groups.1.add_ids', ['g-du'])->set('gpp.local_groups.1.condition', 'member')->set('gpp.local_groups.1.group', 'g-gl')
+            ->set('gpp.local_groups.1.condition', 'all')->assertSet('gpp.local_groups.1.group', '')->assertSet('gpp.local_groups.1.local_group', 'remote_desktop_users');
+        $page->call('saveSettings')->assertHasNoErrors()->assertSet('settingsFor', null);
+        $items = last($this->sent('PUT', '/api/gpos/gp-1/local-groups'))['body']['items'];
+        $this->assertSame(['uid' => '{L1}', 'group' => 'administrators', 'members' => [['id' => 'g-v', 'action' => 'add'], ['id' => 'm-1', 'action' => 'add']],
+            'remove_other_users' => true, 'remove_other_groups' => true, 'target' => null], $items[0]);
+        $this->assertSame(['group' => 'remote_desktop_users', 'members' => [['id' => 'g-du', 'action' => 'add']],
+            'remove_other_users' => false, 'remove_other_groups' => false, 'target' => null], $items[1]);
+        $this->assertSame('Max Muster', $this->state['gpp']['local-groups']['gp-1'][0]['members'][2]['name']);
+        // the app adds Domain Admins (first) to the administrators when a switch is on: the row shows it on reopening
+        $page->call('openSettings', 'gp-1')->assertSet('gpp.local_groups.0.add_ids', ['g-da', 'g-v', 'm-1'])->assertSee('Domain Admins');
+
+        // 422 on members: mapped to the selection, the computer tab and the row open
+        $page->call('openSettings', 'gp-1')->set('settingsTab', 'user')
+            ->call('editGpp', 'local_groups', 0)->set('gpp.local_groups.0.add_ids', ['g-v'])->set('gpp.local_groups.0.remove_ids', ['g-da'])->call('closeGpp')
+            ->call('saveSettings')->assertHasErrors('gpp.local_groups.0.members')->assertSet('settingsTab', 'computer')
+            ->assertSet('gppEditing', 'local_groups.0')->assertSee('Domain Admins kann nicht aus den lokalen Administratoren entfernt werden.');
+        // checked before sending: an account in both lists, more than 100 members
+        $sent = count($this->sent('PUT', '/api/gpos/gp-1/local-groups'));
+        $page->set('gpp.local_groups.0.remove_ids', ['g-v'])->call('saveSettings')->assertHasErrors('gpp.local_groups.0.members')
+            ->assertSee('Ein Konto kann nicht zugleich hinzugefügt und entfernt werden.')
+            ->set('gpp.local_groups.0.remove_ids', array_map(fn ($i) => 'x-'.$i, range(1, 100)))->call('saveSettings')
+            ->assertHasErrors('gpp.local_groups.0.members')->assertSee('Höchstens 100 Mitglieder je lokaler Gruppe.');
+        $this->assertCount($sent, $this->sent('PUT', '/api/gpos/gp-1/local-groups'));
+    }
+
+    public function test_printers_and_shortcuts_round_trip(): void
+    {
+        $page = Livewire::test(Gpos::class, ['installedApp' => $this->installed])->call('openSettings', 'gp-1')->set('settingsTab', 'user')
+            ->call('addGpp', 'printers')->assertSet('gppEditing', 'printers.1')->assertSee('Neuer Drucker')
+            ->set('gpp.printers.1.path', '10.0.0.5')->set('gpp.printers.1.condition', 'not_member')->set('gpp.printers.1.group', 'g-gl-unknown')
+            ->call('addGpp', 'shortcuts')->assertSet('gppEditing', 'shortcuts.0')->assertSet('gpp.shortcuts.0.target_type', 'url')
+            ->set('gpp.shortcuts.0.name', 'Intranet')->set('gpp.shortcuts.0.target_path', 'ftp://intranet')->set('gpp.shortcuts.0.arguments', '-x')
+            ->set('settingsTab', 'computer')->call('saveSettings')
+            // the first list with an error: the printer (unknown group, no share), on the user tab; all its errors at once
+            ->assertHasErrors(['gpp.printers.1.group', 'gpp.printers.1.path'])->assertSet('settingsTab', 'user')->assertSet('gppEditing', 'printers.1')
+            ->assertSee('Die Gruppe gibt es nicht.')->assertSee('Bitte die Freigabe angeben')
+            // a printer only once per GPO
+            ->set('gpp.printers.1.group', 'g-v')->set('gpp.printers.1.path', '\\\\PRINT\\Buero')->call('saveSettings')->assertHasErrors('gpp.printers.1.path')
+            ->assertSee('Dieser Drucker steht schon in der Richtlinie.')
+            ->set('gpp.printers.1.path', '\\\\print\\lager')->call('saveSettings')->assertHasErrors('gpp.shortcuts.0.target_path')->assertSet('gppEditing', 'shortcuts.0')
+            ->set('gpp.shortcuts.0.target_path', 'https://intranet.example.de')
+            // the icon index is an unsigned byte
+            ->set('gpp.shortcuts.0.icon_index', '256')->call('saveSettings')->assertHasErrors('gpp.shortcuts.0.icon_index')->assertSee('Der Index ist eine Zahl von 0 bis 255.')
+            ->set('gpp.shortcuts.0.icon_index', '3')->set('gpp.shortcuts.0.location', 'start_menu')
+            ->call('saveSettings')->assertHasNoErrors()->assertSet('settingsFor', null);
+
+        $printers = last($this->sent('PUT', '/api/gpos/gp-1/printers'))['body']['items'];
+        $this->assertSame('{P1}', $printers[0]['uid']);
+        $this->assertSame(['path' => '\\\\print\\lager', 'action' => 'update', 'default' => false, 'target' => ['group_id' => 'g-v', 'not' => true]], $printers[1]);
+        $this->assertSame(['name' => 'Intranet', 'target_type' => 'url', 'target_path' => 'https://intranet.example.de', 'location' => 'start_menu',
+            'arguments' => '', 'icon_path' => '', 'icon_index' => 3, 'action' => 'update', 'target' => null],
+            last($this->sent('PUT', '/api/gpos/gp-1/shortcuts'))['body']['items'][0], 'arguments only for files');
+
+        // a file shortcut keeps its arguments
+        $page->call('openSettings', 'gp-1')->set('settingsTab', 'user')->call('editGpp', 'shortcuts', 0)
+            ->set('gpp.shortcuts.0.target_type', 'file')->assertSee('Argumente')->set('gpp.shortcuts.0.target_path', '\\\\srv\\apps\\tool.exe')->set('gpp.shortcuts.0.arguments', '/silent')
+            ->call('saveSettings')->assertSet('settingsFor', null);
+        $this->assertSame(['file', '/silent'], [last($this->sent('PUT', '/api/gpos/gp-1/shortcuts'))['body']['items'][0]['target_type'], last($this->sent('PUT', '/api/gpos/gp-1/shortcuts'))['body']['items'][0]['arguments']]);
+
+        // a name only once per location: the same name in the start menu is taken, on the desktop it is free
+        $page->call('openSettings', 'gp-1')->set('settingsTab', 'user')->call('addGpp', 'shortcuts')
+            ->set('gpp.shortcuts.1.name', 'intranet')->set('gpp.shortcuts.1.target_path', 'https://intranet.example.de')->set('gpp.shortcuts.1.location', 'start_menu')
+            ->call('saveSettings')->assertHasErrors('gpp.shortcuts.1.name')->assertSet('gppEditing', 'shortcuts.1')
+            ->assertSee('Eine Verknüpfung mit diesem Namen gibt es hier schon.')
+            ->set('gpp.shortcuts.1.location', 'desktop')->call('saveSettings')->assertHasNoErrors()->assertSet('settingsFor', null);
+        $this->assertCount(2, $this->state['gpp']['shortcuts']['gp-1']);
+    }
+
+    public function test_preferences_lists_before_pk95_ad_1_3(): void
+    {
+        $this->state['gpp404'] = true;
+        // the GPO list falls back to drive_count
+        $this->get(route('apps.page', [$this->installed, 'gpo']))->assertOk()->assertSee('2 Netzlaufwerke')->assertDontSee('1 Drucker');
+        Livewire::test(Gpos::class, ['installedApp' => $this->installed])->call('openSettings', 'gp-1')
+            ->assertSet('gppSupported.local_groups', false)->assertSet('gppSupported.drives', true)
+            ->assertSee('ab PK95 AD 1.3.0')->assertSee('Lokale Gruppen per Gruppenrichtlinie gibt es ab PK95 AD 1.3.0.')
+            ->call('addGpp', 'printers')->assertSet('gppEditing', null)
+            ->set('settingsTab', 'user')->assertSee('Drucker per Gruppenrichtlinie gibt es ab PK95 AD 1.3.0.')
+            ->set('onlyConfigured', true)->assertDontSeeHtml('data-gpp-section="printers"');
+        $this->assertSame([], $this->sent('GET', '/api/users'), 'no member list without local groups');
     }
 
     public function test_drive_maps_are_hidden_before_pk95_ad_1_1(): void
@@ -962,7 +1259,7 @@ class AdModuleTest extends FeatureTestCase
         $this->state['drives404'] = true;
         $this->get(route('apps.page', [$this->installed, 'gpo']))->assertOk()->assertDontSee('Netzlaufwerke');
         Livewire::test(Gpos::class, ['installedApp' => $this->installed])
-            ->call('openSettings', 'gp-2')->assertSet('drivesSupported', false)
+            ->call('openSettings', 'gp-2')->assertSet('gppSupported.drives', false)
             ->set('settingsTab', 'user')->assertSee('ab PK95 AD 1.1.0')->assertSee('Netzlaufwerke per Gruppenrichtlinie gibt es ab PK95 AD 1.1.0.')->assertDontSee('Netzlaufwerk hinzufügen')
             ->set('settings.deny_cmd', '1')->call('saveSettings')->assertSet('settingsFor', null);
         $this->assertCount(1, $this->sent('PUT', '/api/gpos/gp-2/settings'));
@@ -974,19 +1271,19 @@ class AdModuleTest extends FeatureTestCase
         $readonly = $this->state['drives']['gp-2'][1];
         $page = Livewire::test(Gpos::class, ['installedApp' => $this->installed])
             ->call('openSettings', 'gp-2')->set('settingsTab', 'user')
-            ->call('editDrive', 0)->assertSet('drives.0.condition', 'member')->assertSeeHtml('data-drive-condition')
+            ->call('editGpp', 'drives', 0)->assertSet('gpp.drives.0.condition', 'member')->assertSeeHtml('data-gpp-condition')
             ->assertSee('Bedingung')->assertSee('Nur Mitglieder der Gruppe')->assertSee('Alle außer Mitgliedern der Gruppe')->assertDontSee('Sicherheitsgruppe …')->assertSeeHtml('data-group-link')
             ->assertSeeHtml(route('apps.page', [$this->installed, 'groups']).'?q=Vertrieb')
-            ->call('addDrive')->assertSet('driveEditing', 2)->assertSet('drives.2.letter', 'H')->assertSet('drives.2.condition', 'all')
-            ->assertSet('drives.2.reconnect', true)->assertSeeHtml('placeholder="\\\\nas\\freigabe"')
+            ->call('addGpp', 'drives')->assertSet('gppEditing', 'drives.2')->assertSet('gpp.drives.2.letter', 'H')->assertSet('gpp.drives.2.condition', 'all')
+            ->assertSet('gpp.drives.2.reconnect', true)->assertSeeHtml('placeholder="\\\\nas\\freigabe"')
             ->assertSee('Alle Benutzer, für die diese Gruppenrichtlinie gilt, bekommen dieses Laufwerk.')
-            ->set('drives.2.path', '\\\\nas\\technik')->set('drives.2.label', 'Technik')
-            ->set('drives.2.condition', 'not_member')->assertSee('Wähle die Sicherheitsgruppe.')
-            ->set('drives.2.group', 'g-v')->assertSee('Alle außer Mitgliedern von Vertrieb bekommen dieses Laufwerk.')
-            ->call('closeDrive')->assertSet('driveEditing', null)->assertSee('Alle außer Mitgliedern von Vertrieb')->assertSee('neu')
-            ->call('moveDrive', 2, -1)->assertSet('drives.1.label', 'Technik')
-            ->call('moveDrive', 0, -1)->assertSet('drives.0.uid', '{A1}')
-            ->call('editDrive', 0)->set('drives.0.label', 'Verkauf')->set('drives.0.visibility', 'hide')
+            ->set('gpp.drives.2.path', '\\\\nas\\technik')->set('gpp.drives.2.label', 'Technik')
+            ->set('gpp.drives.2.condition', 'not_member')->assertSee('Wähle die Sicherheitsgruppe.')
+            ->set('gpp.drives.2.group', 'g-v')->assertSee('Alle außer Mitgliedern von Vertrieb bekommen dieses Laufwerk.')
+            ->call('closeGpp')->assertSet('gppEditing', null)->assertSee('Alle außer Mitgliedern von Vertrieb')->assertSee('neu')
+            ->call('moveGpp', 'drives', 2, -1)->assertSet('gpp.drives.1.label', 'Technik')
+            ->call('moveGpp', 'drives', 0, -1)->assertSet('gpp.drives.0.uid', '{A1}')
+            ->call('editGpp', 'drives', 0)->set('gpp.drives.0.label', 'Verkauf')->set('gpp.drives.0.visibility', 'hide')
             ->assertSee('2 Änderungen')
             ->call('saveSettings')->assertHasNoErrors()->assertSet('settingsFor', null)
             ->assertDispatched('notice', kind: 'success', text: 'Einstellungen gespeichert. Windows-Rechner übernehmen sie bei der nächsten Aktualisierung (etwa alle 90 Minuten oder mit gpupdate).');
@@ -1001,9 +1298,9 @@ class AdModuleTest extends FeatureTestCase
         $this->assertSame(1, $this->state['gpos']['gp-2']['version']['user']);
 
         // "Alle Benutzer" drops the group; removing the read-only item deletes it (leaving it out)
-        $page->call('openSettings', 'gp-2')->assertCount('drives', 3)->set('settingsTab', 'user')
-            ->call('editDrive', 0)->set('drives.0.condition', 'all')->assertSet('drives.0.group', '')
-            ->call('removeDrive', 2)->assertSee('2 Änderungen')->call('saveSettings')->assertSet('settingsFor', null);
+        $page->call('openSettings', 'gp-2')->assertCount('gpp.drives', 3)->set('settingsTab', 'user')
+            ->call('editGpp', 'drives', 0)->set('gpp.drives.0.condition', 'all')->assertSet('gpp.drives.0.group', '')
+            ->call('removeGpp', 'drives', 2)->assertSee('2 Änderungen')->call('saveSettings')->assertSet('settingsFor', null);
         $sent = last($this->sent('PUT', '/api/gpos/gp-2/drives'))['body']['items'];
         $this->assertSame(['{A1}', '{NEW-1}'], array_column($sent, 'uid'));
         $this->assertNull($sent[0]['target']);
@@ -1013,30 +1310,30 @@ class AdModuleTest extends FeatureTestCase
     {
         // a condition without a group is caught before anything is sent, also from another tab
         $page = Livewire::test(Gpos::class, ['installedApp' => $this->installed])
-            ->call('openSettings', 'gp-2')->set('settingsTab', 'user')->call('addDrive')->call('closeDrive')
-            ->set('drives.2.path', '\\\\nas\\x')->set('drives.2.condition', 'member')->set('settings.deny_cmd', '1')
+            ->call('openSettings', 'gp-2')->set('settingsTab', 'user')->call('addGpp', 'drives')->call('closeGpp')
+            ->set('gpp.drives.2.path', '\\\\nas\\x')->set('gpp.drives.2.condition', 'member')->set('settings.deny_cmd', '1')
             ->set('settingsTab', 'computer')->set('settingsSearch', 'update')
-            ->call('saveSettings')->assertHasErrors('drives.2.group')->assertSet('settingsTab', 'user')->assertSet('settingsSearch', '')->assertSet('driveEditing', 2)
-            ->assertSeeHtml('data-drive-editor')
+            ->call('saveSettings')->assertHasErrors('gpp.drives.2.group')->assertSet('settingsTab', 'user')->assertSet('settingsSearch', '')->assertSet('gppEditing', 'drives.2')
+            ->assertSeeHtml('data-gpp-editor')
             ->assertSee('Wähle die Sicherheitsgruppe für die Bedingung.');
         $this->assertSame([], $this->sent('PUT', '/api/gpos/gp-2/settings'));
         $this->assertSame([], $this->sent('PUT', '/api/gpos/gp-2/drives'));
 
-        $page->set('drives.2.condition', 'all')->set('settings.deny_cmd', '')
-            ->set('drives.2.letter', 'V')->call('saveSettings')
-            ->assertHasErrors('drives.2.letter')->assertSet('settingsFor', 'gp-2')->assertSet('driveEditing', 2)
+        $page->set('gpp.drives.2.condition', 'all')->set('settings.deny_cmd', '')
+            ->set('gpp.drives.2.letter', 'V')->call('saveSettings')
+            ->assertHasErrors('gpp.drives.2.letter')->assertSet('settingsFor', 'gp-2')->assertSet('gppEditing', 'drives.2')
             ->assertSee('Der Buchstabe V: ist in dieser Gruppenrichtlinie schon vergeben.');
 
-        $page->set('drives.2.first_available', true)->set('drives.2.path', 'nas\\x')->call('saveSettings')->assertHasErrors('drives.2.path')
-            ->set('drives.2.path', '\\\\nas\\x')->set('drives.2.condition', 'member')->set('drives.2.group', 'g-weg')->call('saveSettings')->assertHasErrors('drives.2.group')
+        $page->set('gpp.drives.2.first_available', true)->set('gpp.drives.2.path', 'nas\\x')->call('saveSettings')->assertHasErrors('gpp.drives.2.path')
+            ->set('gpp.drives.2.path', '\\\\nas\\x')->set('gpp.drives.2.condition', 'member')->set('gpp.drives.2.group', 'g-weg')->call('saveSettings')->assertHasErrors('gpp.drives.2.group')
             ->assertSee('Die Gruppe gibt es nicht.')
-            ->set('drives.2.condition', 'all')->call('saveSettings')->assertHasNoErrors()->assertSet('settingsFor', null);
+            ->set('gpp.drives.2.condition', 'all')->call('saveSettings')->assertHasNoErrors()->assertSet('settingsFor', null);
         $this->assertSame(['letter' => 'V', 'first_available' => true, 'target' => null],
             array_intersect_key(last($this->sent('PUT', '/api/gpos/gp-2/drives'))['body']['items'][2], ['letter' => 0, 'first_available' => 0, 'target' => 0]));
 
         // at most 50
-        $page->call('openSettings', 'gp-2')->set('settingsTab', 'user')->set('drives', array_fill(0, 50, Gpos::driveToForm(['letter' => 'X', 'first_available' => true, 'path' => '\\\\nas\\x'])))
-            ->call('addDrive')->assertHasErrors('drives')->assertCount('drives', 50)->assertSee('Höchstens 50 Netzlaufwerke je Gruppenrichtlinie.');
+        $page->call('openSettings', 'gp-2')->set('settingsTab', 'user')->set('gpp.drives', array_fill(0, 50, Kinds::get('drives')->toForm(['letter' => 'X', 'first_available' => true, 'path' => '\\\\nas\\x'])))
+            ->call('addGpp', 'drives')->assertHasErrors('gpp.drives')->assertCount('gpp.drives', 50)->assertSee('Höchstens 50 Netzlaufwerke je Gruppenrichtlinie.');
     }
 
     public function test_gpo_create_links_enforce_order_and_block_inheritance(): void
