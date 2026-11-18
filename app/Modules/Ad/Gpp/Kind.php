@@ -39,6 +39,12 @@ abstract class Kind
     /** count in the section head and the GPO list: "1 Laufwerk" / "4 Laufwerke" */
     abstract public function count(int $n): string;
 
+    /** count in the GPO list, where the section title is missing: "2 Netzlaufwerke" */
+    public function listCount(int $n): string
+    {
+        return $this->count($n);
+    }
+
     /** PK95 AD version that brought the list */
     abstract public function since(): string;
 
@@ -251,11 +257,12 @@ abstract class Kind
     }
 
     /**
-     * Form field of a 422 field below "items.": "2.audience.group_id" → "2.group"; a kind maps
-     * its own nested fields (e.g. "2.add.1.id" → "2.add").
+     * Form field of a 422 field below "items.": "2.audience.group_id" → "2.group" (only the
+     * kind's own condition field: a shortcut has a field "target" of its own); a kind maps its
+     * own nested fields (e.g. "2.add.1.id" → "2.add_ids").
      */
     public function errorField(string $rest): string
     {
-        return (string) preg_replace('/\.(target|audience)(\.group_id)?$/', '.group', $rest);
+        return (string) preg_replace('/\.'.preg_quote($this->audienceField(), '/').'(\.group_id)?$/', '.group', $rest);
     }
 }

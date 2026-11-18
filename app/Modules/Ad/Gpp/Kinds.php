@@ -16,7 +16,7 @@ final class Kinds
     {
         if (self::$all === null) {
             self::$all = [];
-            foreach ([new DriveMaps] as $kind) {
+            foreach ([new LocalGroups, new DriveMaps, new Printers, new Shortcuts] as $kind) {
                 self::$all[$kind->key()] = $kind;
             }
         }

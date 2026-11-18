@@ -447,6 +447,33 @@ class Gpos extends Component
         return array_values($options);
     }
 
+    /**
+     * Members for local groups: users and groups of the domain (no local accounts); a member a
+     * row names that the lists do not carry stays selectable under "Andere".
+     *
+     * @return list<array{value: string, label: string, hint?: string, group: string}>
+     */
+    private function memberOptions(): array
+    {
+        $options = [];
+        [$users] = $this->fetch('/api/users');
+        foreach ((array) ($users['items'] ?? []) as $user) {
+            $label = (string) (($user['display_name'] ?? '') ?: ($user['username'] ?? ''));
+            $options[(string) $user['id']] = ['value' => (string) $user['id'], 'label' => $label, 'hint' => (string) ($user['username'] ?? ''), 'group' => 'Benutzer'];
+        }
+        [$groups] = $this->fetch('/api/groups');
+        foreach ((array) ($groups['items'] ?? []) as $group) {
+            $options[(string) $group['id']] = ['value' => (string) $group['id'], 'label' => (string) $group['name'], 'hint' => (string) ($group['ou_path'] ?? ''), 'group' => 'Gruppen'];
+        }
+        foreach ($this->gpp['local_groups'] ?? [] as $row) {
+            foreach ((array) $row['names'] as $id => $name) {
+                $options[(string) $id] ??= ['value' => (string) $id, 'label' => $name !== '' ? $name : (string) $id, 'group' => 'Andere'];
+            }
+        }
+
+        return array_values($options);
+    }
+
     /** @return list<array<string, mixed>> */
     private function catalog(): array
     {
@@ -462,6 +489,7 @@ class Gpos extends Component
         $loadError = null;
         $catalog = [];
         $groupOptions = [];
+        $memberOptions = [];
         $inheritance = null;
         if (! $this->notReady) {
             [$list, $loadError] = $this->fetch('/api/gpos');
@@ -470,6 +498,9 @@ class Gpos extends Component
                 $catalog = $this->catalog();
                 if (in_array(true, $this->gppSupported, true)) {
                     $groupOptions = $this->securityGroups();
+                }
+                if (! empty($this->gppSupported['local_groups'])) {
+                    $memberOptions = $this->memberOptions();
                 }
             }
             $this->target = $this->target !== '' ? $this->target : (string) ($ous[0]['id'] ?? '');
@@ -498,6 +529,7 @@ class Gpos extends Component
             'targetNode' => collect($ous)->firstWhere('id', $this->target),
             'inheritance' => $inheritance,
             'groupOptions' => $groupOptions,
+            'memberOptions' => $memberOptions,
             // settings dialog: what changed (footer "n Änderungen", marked rows)
             'gppChangeCount' => $this->settingsFor !== null ? $this->gppChangeCount() : 0,
             'settingChanges' => count(array_filter(array_keys($this->settings), fn ($k) => ($this->settings[$k] ?? null) !== ($this->settingsOriginal[$k] ?? null))),

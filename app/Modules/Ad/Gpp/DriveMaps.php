@@ -41,6 +41,11 @@ final class DriveMaps extends Kind
         return $n === 1 ? '1 Laufwerk' : $n.' Laufwerke';
     }
 
+    public function listCount(int $n): string
+    {
+        return $n === 1 ? '1 Netzlaufwerk' : $n.' Netzlaufwerke';
+    }
+
     public function since(): string
     {
         return '1.1.0';
