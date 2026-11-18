@@ -12,6 +12,7 @@ use App\Modules\Ad\DnsForward;
 use App\Modules\Ad\DnsRecords;
 use App\Modules\Ad\Domain;
 use App\Modules\Ad\Gpos;
+use App\Modules\Ad\Gpp\Kinds;
 use App\Modules\Ad\Groups;
 use App\Modules\Ad\Ous;
 use App\Modules\Ad\Scripts;
@@ -922,18 +923,18 @@ class AdModuleTest extends FeatureTestCase
         $this->get(route('apps.page', [$this->installed, 'gpo']))->assertOk()->assertSee('2 Netzlaufwerke');
 
         Livewire::test(Gpos::class, ['installedApp' => $this->installed])
-            ->call('openSettings', 'gp-2')->assertSet('drivesSupported', true)->assertCount('drives', 2)
+            ->call('openSettings', 'gp-2')->assertSet('gppSupported.drives', true)->assertCount('gpp.drives', 2)
             // a section of "Benutzer", open with entries, not on "Computer"
-            ->assertSet('settingsTab', 'user')->assertSeeHtml('data-drive-table')->assertSee('Einstellungen (Laufwerkszuordnungen)')->assertSee('2 Laufwerke')
-            ->set('settingsTab', 'computer')->assertDontSeeHtml('data-drives-section')
-            ->set('settingsTab', 'user')->assertSeeHtml('data-drive-table')
+            ->assertSet('settingsTab', 'user')->assertSeeHtml('data-gpp-table')->assertSee('Einstellungen (Laufwerkszuordnungen)')->assertSee('2 Laufwerke')
+            ->set('settingsTab', 'computer')->assertDontSeeHtml('data-gpp-section')
+            ->set('settingsTab', 'user')->assertSeeHtml('data-gpp-table')
             ->assertSeeInOrder(['Laufwerk', 'Pfad', 'Bezeichnung', 'Aktion'])->assertSee('Gilt für')
             ->assertSee('Mitglieder von Vertrieb')->assertSee('Alle Benutzer')
             // the hint is a tooltip now
-            ->assertSeeHtml('data-drives-hint')->assertSee('Fileserver oder NAS')->assertSee('Kennwörter für Laufwerke speichert PK95 AD bewusst nicht')
+            ->assertSeeHtml('data-gpp-hint')->assertSee('Fileserver oder NAS')->assertSee('Kennwörter für Laufwerke speichert PK95 AD bewusst nicht')
             ->assertSee('\\nas.example.com\vertrieb')
-            ->assertSee('Enthält ein gespeichertes Kennwort (unsicher, MS14-025). Bitte in der GPMC entfernen.')->assertSeeHtml('data-drive-readonly')
-            ->call('editDrive', 1)->assertSet('driveEditing', null)
+            ->assertSee('Enthält ein gespeichertes Kennwort (unsicher, MS14-025). Bitte in der GPMC entfernen.')->assertSeeHtml('data-gpp-readonly')
+            ->call('editGpp', 'drives', 1)->assertSet('gppEditing', null)
             ->call('saveSettings')->assertSet('settingsFor', null);
         $this->assertSame([], $this->sent('PUT', '/api/gpos/gp-2/drives'));
         $this->assertSame([], $this->sent('PUT', '/api/gpos/gp-2/settings'));
@@ -942,17 +943,17 @@ class AdModuleTest extends FeatureTestCase
     public function test_drive_maps_section_follows_search_and_only_configured(): void
     {
         $page = Livewire::test(Gpos::class, ['installedApp' => $this->installed])->call('openSettings', 'gp-2')
-            ->set('settingsSearch', 'laufwerk')->assertSeeHtml('data-drives-section')->assertDontSee('Bildschirmsperre nach Inaktivität')
-            ->set('settingsSearch', 'netz')->assertSeeHtml('data-drives-section')
-            ->set('settingsSearch', 'vertrieb')->assertSeeHtml('data-drives-section')
-            ->set('settingsSearch', 'v:')->assertSeeHtml('data-drives-section')
-            ->set('settingsSearch', 'kennwortschutz')->assertDontSeeHtml('data-drives-section')->assertSee('Bildschirmsperre nach Inaktivität')
-            ->set('settingsSearch', '')->set('onlyConfigured', true)->assertSeeHtml('data-drives-section');
+            ->set('settingsSearch', 'laufwerk')->assertSeeHtml('data-gpp-section')->assertDontSee('Bildschirmsperre nach Inaktivität')
+            ->set('settingsSearch', 'netz')->assertSeeHtml('data-gpp-section')
+            ->set('settingsSearch', 'vertrieb')->assertSeeHtml('data-gpp-section')
+            ->set('settingsSearch', 'v:')->assertSeeHtml('data-gpp-section')
+            ->set('settingsSearch', 'kennwortschutz')->assertDontSeeHtml('data-gpp-section')->assertSee('Bildschirmsperre nach Inaktivität')
+            ->set('settingsSearch', '')->set('onlyConfigured', true)->assertSeeHtml('data-gpp-section');
 
         // without drive maps: "Nur konfigurierte" hides the section, the count says 0
         $this->state['drives']['gp-2'] = [];
         $page->call('openSettings', 'gp-2')->assertSet('onlyConfigured', false)->assertSee('0 Laufwerke')->assertSeeInOrder(['Benutzer', '1'])
-            ->set('onlyConfigured', true)->assertDontSeeHtml('data-drives-section');
+            ->set('onlyConfigured', true)->assertDontSeeHtml('data-gpp-section');
         // gp-1 has nothing configured: it opens on Computer
         $page->call('openSettings', 'gp-1')->assertSet('settingsTab', 'computer');
     }
@@ -962,7 +963,7 @@ class AdModuleTest extends FeatureTestCase
         $this->state['drives404'] = true;
         $this->get(route('apps.page', [$this->installed, 'gpo']))->assertOk()->assertDontSee('Netzlaufwerke');
         Livewire::test(Gpos::class, ['installedApp' => $this->installed])
-            ->call('openSettings', 'gp-2')->assertSet('drivesSupported', false)
+            ->call('openSettings', 'gp-2')->assertSet('gppSupported.drives', false)
             ->set('settingsTab', 'user')->assertSee('ab PK95 AD 1.1.0')->assertSee('Netzlaufwerke per Gruppenrichtlinie gibt es ab PK95 AD 1.1.0.')->assertDontSee('Netzlaufwerk hinzufügen')
             ->set('settings.deny_cmd', '1')->call('saveSettings')->assertSet('settingsFor', null);
         $this->assertCount(1, $this->sent('PUT', '/api/gpos/gp-2/settings'));
@@ -974,19 +975,19 @@ class AdModuleTest extends FeatureTestCase
         $readonly = $this->state['drives']['gp-2'][1];
         $page = Livewire::test(Gpos::class, ['installedApp' => $this->installed])
             ->call('openSettings', 'gp-2')->set('settingsTab', 'user')
-            ->call('editDrive', 0)->assertSet('drives.0.condition', 'member')->assertSeeHtml('data-drive-condition')
+            ->call('editGpp', 'drives', 0)->assertSet('gpp.drives.0.condition', 'member')->assertSeeHtml('data-gpp-condition')
             ->assertSee('Bedingung')->assertSee('Nur Mitglieder der Gruppe')->assertSee('Alle außer Mitgliedern der Gruppe')->assertDontSee('Sicherheitsgruppe …')->assertSeeHtml('data-group-link')
             ->assertSeeHtml(route('apps.page', [$this->installed, 'groups']).'?q=Vertrieb')
-            ->call('addDrive')->assertSet('driveEditing', 2)->assertSet('drives.2.letter', 'H')->assertSet('drives.2.condition', 'all')
-            ->assertSet('drives.2.reconnect', true)->assertSeeHtml('placeholder="\\\\nas\\freigabe"')
+            ->call('addGpp', 'drives')->assertSet('gppEditing', 'drives.2')->assertSet('gpp.drives.2.letter', 'H')->assertSet('gpp.drives.2.condition', 'all')
+            ->assertSet('gpp.drives.2.reconnect', true)->assertSeeHtml('placeholder="\\\\nas\\freigabe"')
             ->assertSee('Alle Benutzer, für die diese Gruppenrichtlinie gilt, bekommen dieses Laufwerk.')
-            ->set('drives.2.path', '\\\\nas\\technik')->set('drives.2.label', 'Technik')
-            ->set('drives.2.condition', 'not_member')->assertSee('Wähle die Sicherheitsgruppe.')
-            ->set('drives.2.group', 'g-v')->assertSee('Alle außer Mitgliedern von Vertrieb bekommen dieses Laufwerk.')
-            ->call('closeDrive')->assertSet('driveEditing', null)->assertSee('Alle außer Mitgliedern von Vertrieb')->assertSee('neu')
-            ->call('moveDrive', 2, -1)->assertSet('drives.1.label', 'Technik')
-            ->call('moveDrive', 0, -1)->assertSet('drives.0.uid', '{A1}')
-            ->call('editDrive', 0)->set('drives.0.label', 'Verkauf')->set('drives.0.visibility', 'hide')
+            ->set('gpp.drives.2.path', '\\\\nas\\technik')->set('gpp.drives.2.label', 'Technik')
+            ->set('gpp.drives.2.condition', 'not_member')->assertSee('Wähle die Sicherheitsgruppe.')
+            ->set('gpp.drives.2.group', 'g-v')->assertSee('Alle außer Mitgliedern von Vertrieb bekommen dieses Laufwerk.')
+            ->call('closeGpp')->assertSet('gppEditing', null)->assertSee('Alle außer Mitgliedern von Vertrieb')->assertSee('neu')
+            ->call('moveGpp', 'drives', 2, -1)->assertSet('gpp.drives.1.label', 'Technik')
+            ->call('moveGpp', 'drives', 0, -1)->assertSet('gpp.drives.0.uid', '{A1}')
+            ->call('editGpp', 'drives', 0)->set('gpp.drives.0.label', 'Verkauf')->set('gpp.drives.0.visibility', 'hide')
             ->assertSee('2 Änderungen')
             ->call('saveSettings')->assertHasNoErrors()->assertSet('settingsFor', null)
             ->assertDispatched('notice', kind: 'success', text: 'Einstellungen gespeichert. Windows-Rechner übernehmen sie bei der nächsten Aktualisierung (etwa alle 90 Minuten oder mit gpupdate).');
@@ -1001,9 +1002,9 @@ class AdModuleTest extends FeatureTestCase
         $this->assertSame(1, $this->state['gpos']['gp-2']['version']['user']);
 
         // "Alle Benutzer" drops the group; removing the read-only item deletes it (leaving it out)
-        $page->call('openSettings', 'gp-2')->assertCount('drives', 3)->set('settingsTab', 'user')
-            ->call('editDrive', 0)->set('drives.0.condition', 'all')->assertSet('drives.0.group', '')
-            ->call('removeDrive', 2)->assertSee('2 Änderungen')->call('saveSettings')->assertSet('settingsFor', null);
+        $page->call('openSettings', 'gp-2')->assertCount('gpp.drives', 3)->set('settingsTab', 'user')
+            ->call('editGpp', 'drives', 0)->set('gpp.drives.0.condition', 'all')->assertSet('gpp.drives.0.group', '')
+            ->call('removeGpp', 'drives', 2)->assertSee('2 Änderungen')->call('saveSettings')->assertSet('settingsFor', null);
         $sent = last($this->sent('PUT', '/api/gpos/gp-2/drives'))['body']['items'];
         $this->assertSame(['{A1}', '{NEW-1}'], array_column($sent, 'uid'));
         $this->assertNull($sent[0]['target']);
@@ -1013,30 +1014,30 @@ class AdModuleTest extends FeatureTestCase
     {
         // a condition without a group is caught before anything is sent, also from another tab
         $page = Livewire::test(Gpos::class, ['installedApp' => $this->installed])
-            ->call('openSettings', 'gp-2')->set('settingsTab', 'user')->call('addDrive')->call('closeDrive')
-            ->set('drives.2.path', '\\\\nas\\x')->set('drives.2.condition', 'member')->set('settings.deny_cmd', '1')
+            ->call('openSettings', 'gp-2')->set('settingsTab', 'user')->call('addGpp', 'drives')->call('closeGpp')
+            ->set('gpp.drives.2.path', '\\\\nas\\x')->set('gpp.drives.2.condition', 'member')->set('settings.deny_cmd', '1')
             ->set('settingsTab', 'computer')->set('settingsSearch', 'update')
-            ->call('saveSettings')->assertHasErrors('drives.2.group')->assertSet('settingsTab', 'user')->assertSet('settingsSearch', '')->assertSet('driveEditing', 2)
-            ->assertSeeHtml('data-drive-editor')
+            ->call('saveSettings')->assertHasErrors('gpp.drives.2.group')->assertSet('settingsTab', 'user')->assertSet('settingsSearch', '')->assertSet('gppEditing', 'drives.2')
+            ->assertSeeHtml('data-gpp-editor')
             ->assertSee('Wähle die Sicherheitsgruppe für die Bedingung.');
         $this->assertSame([], $this->sent('PUT', '/api/gpos/gp-2/settings'));
         $this->assertSame([], $this->sent('PUT', '/api/gpos/gp-2/drives'));
 
-        $page->set('drives.2.condition', 'all')->set('settings.deny_cmd', '')
-            ->set('drives.2.letter', 'V')->call('saveSettings')
-            ->assertHasErrors('drives.2.letter')->assertSet('settingsFor', 'gp-2')->assertSet('driveEditing', 2)
+        $page->set('gpp.drives.2.condition', 'all')->set('settings.deny_cmd', '')
+            ->set('gpp.drives.2.letter', 'V')->call('saveSettings')
+            ->assertHasErrors('gpp.drives.2.letter')->assertSet('settingsFor', 'gp-2')->assertSet('gppEditing', 'drives.2')
             ->assertSee('Der Buchstabe V: ist in dieser Gruppenrichtlinie schon vergeben.');
 
-        $page->set('drives.2.first_available', true)->set('drives.2.path', 'nas\\x')->call('saveSettings')->assertHasErrors('drives.2.path')
-            ->set('drives.2.path', '\\\\nas\\x')->set('drives.2.condition', 'member')->set('drives.2.group', 'g-weg')->call('saveSettings')->assertHasErrors('drives.2.group')
+        $page->set('gpp.drives.2.first_available', true)->set('gpp.drives.2.path', 'nas\\x')->call('saveSettings')->assertHasErrors('gpp.drives.2.path')
+            ->set('gpp.drives.2.path', '\\\\nas\\x')->set('gpp.drives.2.condition', 'member')->set('gpp.drives.2.group', 'g-weg')->call('saveSettings')->assertHasErrors('gpp.drives.2.group')
             ->assertSee('Die Gruppe gibt es nicht.')
-            ->set('drives.2.condition', 'all')->call('saveSettings')->assertHasNoErrors()->assertSet('settingsFor', null);
+            ->set('gpp.drives.2.condition', 'all')->call('saveSettings')->assertHasNoErrors()->assertSet('settingsFor', null);
         $this->assertSame(['letter' => 'V', 'first_available' => true, 'target' => null],
             array_intersect_key(last($this->sent('PUT', '/api/gpos/gp-2/drives'))['body']['items'][2], ['letter' => 0, 'first_available' => 0, 'target' => 0]));
 
         // at most 50
-        $page->call('openSettings', 'gp-2')->set('settingsTab', 'user')->set('drives', array_fill(0, 50, Gpos::driveToForm(['letter' => 'X', 'first_available' => true, 'path' => '\\\\nas\\x'])))
-            ->call('addDrive')->assertHasErrors('drives')->assertCount('drives', 50)->assertSee('Höchstens 50 Netzlaufwerke je Gruppenrichtlinie.');
+        $page->call('openSettings', 'gp-2')->set('settingsTab', 'user')->set('gpp.drives', array_fill(0, 50, Kinds::get('drives')->toForm(['letter' => 'X', 'first_available' => true, 'path' => '\\\\nas\\x'])))
+            ->call('addGpp', 'drives')->assertHasErrors('gpp.drives')->assertCount('gpp.drives', 50)->assertSee('Höchstens 50 Netzlaufwerke je Gruppenrichtlinie.');
     }
 
     public function test_gpo_create_links_enforce_order_and_block_inheritance(): void

@@ -1,9 +1,9 @@
 {{--
     GPO settings dialog: tabs Computer / Benutzer. Settings come from the catalog, grouped by
     its "group" into sections that open when something in them is configured; one compact row
-    per setting with a status badge, a click opens its editor. The drive maps are the last
-    section of "Benutzer" (Group Policy Preferences, like the GPMC: user configuration →
-    preferences → drive maps). The footer counts the changes; "Speichern" sends only those.
+    per setting with a status badge, a click opens its editor. The Group Policy Preferences
+    lists (Gpp\Kinds, e.g. drive maps) are the last sections of their tab, like the GPMC:
+    configuration → preferences. The footer counts the changes; "Speichern" sends only those.
 --}}
 @php
     use App\Modules\Ad\Gpos;
@@ -16,13 +16,11 @@
     foreach (['computer', 'user'] as $scope) {
         $counts[$scope] = $catalog->get($scope, collect())->flatten(1)->filter($configured)->count();
     }
-    [$changedDrives, $driveChangeCount] = $driveChanges;
-    $changes = $settingChanges + $driveChangeCount;
-    $driveCount = $drivesSupported ? count($drives) : 0;
+    $changes = $settingChanges + $gppChangeCount;
     $tabs = [
-        'computer' => ['Computer', $counts['computer']],
-        // the user configuration counts its settings and the drive maps
-        'user' => ['Benutzer', $counts['user'] + $driveCount],
+        // a tab counts its configured settings and the rows of its preferences lists
+        'computer' => ['Computer', $counts['computer'] + $this->gppRowCount('computer')],
+        'user' => ['Benutzer', $counts['user'] + $this->gppRowCount('user')],
     ];
     $tones = [
         'gray' => 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
@@ -198,38 +196,27 @@
                 </section>
             @endforeach
 
-            {{-- user configuration → preferences → drive maps, the last section of "Benutzer" --}}
-            @if ($settingsTab === 'user')
-                @php
-                    $driveHaystack = 'netzlaufwerke laufwerkszuordnungen laufwerke einstellungen';
-                    $driveMatch = $needle === '' || str_contains($driveHaystack, $needle)
-                        || collect($drives)->contains(fn ($d) => str_contains(mb_strtolower($d['letter'].': '.$d['path'].' '.$d['label'].' '.$d['group_name']), $needle));
-                    $driveVisible = $driveMatch && (! $onlyConfigured || $driveCount > 0);
-                    $driveErrors = $errors->has('drives') || $errors->has('drives.*');
-                    $driveOpen = $driveCount > 0 || $driveErrors || $driveChangeCount > 0 || $driveEditing !== null;
-                    $shown += $driveVisible ? 1 : 0;
-                @endphp
-                @if ($driveVisible)
-                    <div class="mt-5 mb-2 flex items-center gap-2 text-xs font-DINPro-bold uppercase tracking-wide text-gray-500 dark:text-gray-400" data-drives-heading>
-                        Einstellungen (Laufwerkszuordnungen)<span class="h-px flex-1 bg-gray-200 dark:bg-gray-700" aria-hidden="true"></span>
-                    </div>
-                    <section x-data="{ open: @js($driveOpen) }" wire:key="sec-drives-{{ $filterKey }}{{ $driveErrors ? '-e' : '' }}"
-                        class="mb-3 overflow-hidden rounded-lg border border-cerulean-200 dark:border-cerulean-800" data-gpo-group="Netzlaufwerke" data-drives-section>
-                        <h3>
-                            <button type="button" x-on:click="open = ! open" :aria-expanded="open.toString()"
-                                class="flex w-full items-center gap-3 bg-cerulean-50/60 px-4 py-3 text-left hover:bg-cerulean-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cerulean-500 dark:bg-cerulean-900/15 dark:hover:bg-cerulean-900/25">
-                                <span class="min-w-0 flex-1 font-DINPro-bold text-gray-900 dark:text-gray-100">Netzlaufwerke</span>
-                                <span @class(['text-xs', 'text-cerulean-700 dark:text-cerulean-300' => $driveCount > 0, 'text-gray-500 dark:text-gray-400' => $driveCount === 0]) data-group-count>
-                                    {{ ! $drivesSupported ? 'ab PK95 AD 1.1.0' : ($driveCount === 1 ? '1 Laufwerk' : $driveCount.' Laufwerke') }}
-                                </span>
-                                <x-icon name="chevron-down" class="h-4 w-4 shrink-0 text-gray-500 transition-transform dark:text-gray-400" ::class="open && 'rotate-180'" />
-                            </button>
-                        </h3>
-                        <div x-show="open" x-cloak class="border-t border-cerulean-200 p-4 dark:border-cerulean-800">
-                            @include('modules.ad.partials.drives')
-                        </div>
-                    </section>
-                @endif
+            {{-- the preferences lists of this tab (Gpp\Kinds) after the catalog groups, like the GPMC:
+                 configuration → preferences → drive maps, printers, … --}}
+            @php
+                $visibleKinds = [];
+                foreach (\App\Modules\Ad\Gpp\Kinds::of($settingsTab) as $kindKey => $listKind) {
+                    $kindRows = $gpp[$kindKey] ?? [];
+                    $kindMatch = $needle === '' || str_contains($listKind->searchWords(), $needle)
+                        || collect($kindRows)->contains(fn ($r) => str_contains(mb_strtolower($listKind->searchText($r).' '.$r['group_name']), $needle));
+                    if ($kindMatch && (! $onlyConfigured || (! empty($gppSupported[$kindKey]) && $kindRows !== []))) {
+                        $visibleKinds[$kindKey] = $listKind;
+                    }
+                }
+                $shown += count($visibleKinds);
+            @endphp
+            @if ($visibleKinds)
+                <div class="mt-5 mb-2 flex items-center gap-2 text-xs font-DINPro-bold uppercase tracking-wide text-gray-500 dark:text-gray-400" data-gpp-heading>
+                    Einstellungen ({{ implode(', ', array_map(fn ($k) => $k->area(), $visibleKinds)) }})<span class="h-px flex-1 bg-gray-200 dark:bg-gray-700" aria-hidden="true"></span>
+                </div>
+                @foreach ($visibleKinds as $kind)
+                    @include('modules.ad.partials.gpp.section')
+                @endforeach
             @endif
 
             @if ($catalog->isEmpty() && $settingsTab !== 'user')
