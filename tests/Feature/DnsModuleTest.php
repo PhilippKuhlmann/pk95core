@@ -676,6 +676,31 @@ class DnsModuleTest extends FeatureTestCase
         $page->call('edit', 6)->assertDispatched('notice', kind: 'error', text: 'Den Eintrag gibt es nicht mehr.')->assertSet('editing', null);
     }
 
+    public function test_records_page_lists_the_conditional_forwarding_with_the_rule_of_pk95_ad(): void
+    {
+        $settings = route('apps.page', [$this->installed, 'settings']).'#weiterleitung';
+        $this->get(route('apps.page', [$this->installed, 'records']))->assertOk()
+            ->assertSee('Weiterleitungen')->assertSeeText('fritz.box')->assertSeeText('192.168.178.1')
+            ->assertSee($settings, false)->assertDontSee('data-forward-ad', false);
+        $this->get(route('apps.page', [$this->installed, 'settings']))->assertOk()->assertSee('id="weiterleitung"', false);
+
+        // PK95 AD runs with the realm intern.example.de: its rule gets the badge, a rule for another upstream does not
+        InstalledApp::factory()->create(['app_id' => 'ad', 'version' => '1.1.0']);
+        Http::fake(['host.docker.internal:8389/*' => Http::response(['realm' => 'intern.example.de', 'dns_port' => 5300])]);
+        $this->state['settings']['conditional'] = [
+            ['domain' => 'fritz.box', 'upstream' => '192.168.178.1'],
+            ['domain' => 'Intern.Example.de.', 'upstream' => '127.0.0.1:5300'],
+            ['domain' => 'lab.example.de', 'upstream' => '127.0.0.1:5301'],
+        ];
+        $html = $this->get(route('apps.page', [$this->installed, 'records']))->assertOk()
+            ->assertSeeText('Intern.Example.de.')->assertSee('PK95 AD')->getContent();
+        $this->assertSame(1, substr_count($html, 'data-forward-ad'));
+        $this->assertSame(3, substr_count($html, 'data-forward>'));
+
+        $this->state['settings']['conditional'] = [];
+        $this->get(route('apps.page', [$this->installed, 'records']))->assertOk()->assertSee('Keine Weiterleitungen.');
+    }
+
     public function test_record_filters(): void
     {
         $page = Livewire::test(Records::class, ['installedApp' => $this->installed])

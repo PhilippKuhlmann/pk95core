@@ -3,6 +3,7 @@
 namespace App\Modules\Dns;
 
 use App\Models\InstalledApp;
+use App\Modules\Ad\DnsForward;
 use App\Modules\Concerns\TalksToApp;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -312,8 +313,13 @@ class Records extends Component
         [$zones, $zonesError] = $this->load('/api/zones');
         $zones = is_array($zones) ? array_values($zones) : [];
         [$rows, $rowsError] = $this->load('/api/records', $this->query());
+        // conditional forwarding (read-only here, edited under Einstellungen); a failure only hides the section
+        [$settings] = $this->load('/api/settings');
+        $forwards = is_array($settings) ? array_values(array_filter((array) ($settings['conditional'] ?? []), 'is_array')) : null;
 
         return view('modules.dns.records', [
+            'forwards' => $forwards,
+            'adRule' => $forwards ? DnsForward::adRule() : null,
             'zones' => $zones,
             'zoneNames' => array_column($zones, 'name', 'id'),
             'rows' => is_array($rows) ? array_values($rows) : [],

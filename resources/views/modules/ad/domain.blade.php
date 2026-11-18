@@ -126,7 +126,12 @@
 
         {{-- PK95 DNS forwards the realm to Samba's DNS --}}
         <x-panel class="m-3" data-dns-forward>
-            <div class="font-DINPro-bold text-gray-900 dark:text-gray-100">Weiterleitung in PK95 DNS</div>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="font-DINPro-bold text-gray-900 dark:text-gray-100">Weiterleitung in PK95 DNS</div>
+                @if ($dnsLink)
+                    <a href="{{ $dnsLink }}" class="text-sm text-cerulean-700 hover:underline dark:text-cerulean-300" data-dns-forward-link>In PK95 DNS ansehen</a>
+                @endif
+            </div>
             @php $rule = $domain['realm'].' → '.($forward['upstream'] ?? ''); @endphp
             @switch ($forward['state'] ?? 'no_dns')
                 @case('present')

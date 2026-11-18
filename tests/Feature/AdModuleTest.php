@@ -731,6 +731,17 @@ class AdModuleTest extends FeatureTestCase
             ->assertSee('Domäne einrichten');
     }
 
+    public function test_domain_page_links_to_the_forwarding_in_pk95_dns(): void
+    {
+        $this->get(route('apps.page', [$this->installed, 'domain']))->assertOk()->assertDontSee('data-dns-forward-link', false);
+
+        $dns = $this->installDns();
+        $this->conditional[] = ['domain' => 'ad.example.com', 'upstream' => '127.0.0.1:5300'];
+        $this->get(route('apps.page', [$this->installed, 'domain']))->assertOk()
+            ->assertSee('Eingetragen:')->assertSee('In PK95 DNS ansehen')
+            ->assertSee(route('apps.page', [$dns, 'records']).'#weiterleitungen', false);
+    }
+
     public function test_dns_forwarding_states(): void
     {
         // no PK95 DNS: the needed entry is shown as a hint

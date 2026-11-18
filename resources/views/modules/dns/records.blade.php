@@ -171,6 +171,41 @@
         </x-panel>
     @endif
 
+    {{-- conditional forwarding: read-only here, edited under Einstellungen --}}
+    @if ($forwards !== null)
+        <x-panel class="relative m-3 overflow-x-auto scroll-mt-20" polster="keins" id="weiterleitungen" data-forwards>
+            <div class="flex flex-wrap items-start justify-between gap-3 p-4">
+                <div>
+                    <div class="font-DINPro-bold text-gray-900 dark:text-gray-100">Weiterleitungen</div>
+                    <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">Anfragen für diese Domains und ihre Subdomains beantwortet PK95 DNS nicht selbst, sondern fragt den genannten Server, etwa die Active-Directory-Domäne bei PK95 AD.</p>
+                </div>
+                <x-input.linkbutton :href="route('apps.page', [$installedApp, 'settings']).'#weiterleitung'" wire:navigate color="gray" size="sm">In den Einstellungen bearbeiten</x-input.linkbutton>
+            </div>
+            @if (! $forwards)
+                <p class="border-t border-gray-100 px-4 py-3 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">Keine Weiterleitungen.</p>
+            @else
+                <table class="w-full border-t border-gray-100 text-left text-sm text-gray-900 dark:border-gray-700 dark:text-gray-100">
+                    <thead class="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                        <tr><th class="px-4 py-2">Domain</th><th class="px-4 py-2">Server</th></tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                        @foreach ($forwards as $i => $f)
+                            <tr wire:key="fwd-{{ $i }}" data-forward>
+                                <td class="px-4 py-3 align-top">
+                                    <span class="font-mono">{{ Fmt::breakable((string) ($f['domain'] ?? '')) }}</span>
+                                    @if (\App\Modules\Ad\DnsForward::isAdRule($f, $adRule))
+                                        <span class="{{ $badge }} ml-1 bg-violet-100 text-violet-800 dark:bg-violet-900/70 dark:text-violet-100" data-tip="Von PK95 Core für die Domäne von PK95 AD angelegt" data-forward-ad>PK95 AD<span class="sr-only">: von PK95 Core für die Domäne von PK95 AD angelegt</span></span>
+                                    @endif
+                                </td>
+                                <td class="px-4 py-3 align-top font-mono">{{ Fmt::breakable((string) ($f['upstream'] ?? '')) }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            @endif
+        </x-panel>
+    @endif
+
     {{-- records --}}
     <div class="mx-3 mt-4 flex flex-wrap items-center gap-2">
         <x-input.combobox wire:model.live="zone" label="Zone" :options="['0' => 'Einzeleinträge'] + collect($zones)->mapWithKeys(fn ($z) => [(string) $z['id'] => $z['name']])->all()"
