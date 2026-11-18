@@ -229,14 +229,18 @@ class Gpos extends Component
     public const EDITIONS = ['home' => 'Home', 'pro' => 'Pro', 'enterprise' => 'Enterprise', 'education' => 'Education'];
 
     /**
-     * "nur Enterprise/Education" for the Windows editions a setting or enum option works on
-     * (PK95 AD 1.2.0); null when the field is missing or names every edition.
+     * The Windows editions a setting or enum option works on (PK95 AD 1.2.0): "ab Pro" for every
+     * edition but Home, else "nur Enterprise/Education"; null when the field is missing or names
+     * every edition.
      */
     public static function editionsLabel(mixed $editions): ?string
     {
-        $names = array_values(array_intersect_key(self::EDITIONS, array_flip(array_map('strval', (array) $editions))));
+        $names = array_intersect_key(self::EDITIONS, array_flip(array_map('strval', (array) $editions)));
+        if (! $names || count($names) === count(self::EDITIONS)) {
+            return null;
+        }
 
-        return $names && count($names) < count(self::EDITIONS) ? 'nur '.implode('/', $names) : null;
+        return array_keys($names) === ['pro', 'enterprise', 'education'] ? 'ab Pro' : 'nur '.implode('/', $names);
     }
 
     /** an enum option's text with its editions, unless the label already says so */

@@ -588,7 +588,11 @@ class AdModuleTest extends FeatureTestCase
         return $gpo;
     }
 
-    /** GET/PUT /api/gpos/{id}/local-groups|printers|shortcuts with the rules of the 1.3.0 contract */
+    /**
+     * GET/PUT /api/gpos/{id}/local-groups|printers|shortcuts as in pk95ad docs/api.md → "Preferences: local groups,
+     * printers, shortcuts" (1.3.0, a918dc9), with the field names and German messages of pk95ad/gpp.py. All field
+     * errors of a PUT come back together, like the app's Fields.
+     */
     private function preferenceList(string $list, string $id, string $method, array $body)
     {
         $s = &$this->state;
@@ -598,57 +602,109 @@ class AdModuleTest extends FeatureTestCase
         if ($method !== 'PUT') {
             return Http::response(['items' => array_values($s['gpp'][$list][$id] ?? [])]);
         }
-        $invalid = fn (string $field, string $msg) => Http::response(['error' => 'Bitte Eingaben prüfen.', 'fields' => [$field => $msg]], 422);
+        $items = (array) ($body['items'] ?? []);
+        $fields = [];
+        $add = function (string $field, string $msg) use (&$fields) {
+            $fields[$field] ??= $msg;
+        };
+        if (count($items) > 50) {
+            return Http::response(['error' => 'Bitte Eingaben prüfen.', 'fields' => ['items' => 'Höchstens 50 Einträge.']], 422);
+        }
         $stored = collect($s['gpp'][$list][$id] ?? [])->keyBy('uid');
-        $names = array_column($s['users'], 'display_name', 'id') + array_column($s['groups'], 'name', 'id');
+        $accounts = array_column($s['users'], 'display_name', 'id') + array_column($s['groups'], 'name', 'id');
+        $builtin = ['administrators', 'users', 'backup_operators', 'remote_desktop_users', 'network_configuration_operators', 'event_log_readers', 'remote_management_users'];
+        [$uniqueField, $uniqueError, $unique] = match ($list) {
+            'local-groups' => ['group', 'Diese lokale Gruppe steht schon in der Richtlinie.', fn ($v) => $v['group'] ?? null],
+            'printers' => ['path', 'Dieser Drucker steht schon in der Richtlinie.', fn ($v) => mb_strtolower((string) ($v['path'] ?? ''))],
+            'shortcuts' => ['name', 'Eine Verknüpfung mit diesem Namen gibt es hier schon.', fn ($v) => ($v['location'] ?? '').'|'.mb_strtolower((string) ($v['name'] ?? ''))],
+        };
+        $keys = [];
         $out = [];
-        $groups = [];
-        foreach ((array) ($body['items'] ?? []) as $n => $item) {
+        foreach ($items as $n => $item) {
+            $name = "items.$n";
             $old = isset($item['uid']) ? $stored->get($item['uid']) : null;
             if ($old && $old['readonly']) {
                 $out[] = $old;
 
                 continue;
             }
-            $target = $item['target'];
+            $target = $item['target'] ?? null;
             if ($target !== null) {
-                if (! isset($s['groups'][$target['group_id']])) {
-                    return $invalid("items.$n.target.group_id", 'Die Gruppe gibt es nicht.');
+                if (! isset($s['groups'][$target['group_id'] ?? ''])) {
+                    $add("$name.target.group_id", 'Die Gruppe gibt es nicht.');
+                } else {
+                    $target = ['group_id' => $target['group_id'], 'group_name' => $s['groups'][$target['group_id']]['name'], 'not' => (bool) ($target['not'] ?? false)];
                 }
-                $target['group_name'] = $s['groups'][$target['group_id']]['name'];
             }
             if ($list === 'local-groups') {
-                if (in_array($item['group'], $groups, true)) {
-                    return $invalid("items.$n.group", 'Diese lokale Gruppe kommt schon vor.');
+                if (! in_array($item['group'] ?? null, $builtin, true)) {
+                    $add("$name.group", 'Erlaubt: '.implode(', ', $builtin).'.');
                 }
-                $groups[] = $item['group'];
+                if (count($item['members'] ?? []) > 100) {
+                    $add("$name.members", 'Höchstens 100 Mitglieder.');
+                }
                 $seen = [];
                 $members = [];
-                foreach ($item['members'] as $k => $m) {
-                    if (in_array($m['id'], $seen, true)) {
-                        return $invalid("items.$n.members.$k.id", 'Dieses Konto kommt schon vor.');
-                    }
-                    $seen[] = $m['id'];
+                foreach ((array) ($item['members'] ?? []) as $j => $m) {
+                    $mname = "$name.members.$j";
                     $action = $m['action'] ?? 'add';
-                    if ($item['group'] === 'administrators' && $m['id'] === 'g-da' && $action === 'remove') {
-                        return $invalid("items.$n.members.$k.action", 'Domain Admins bleibt Mitglied der Administratoren.');
+                    if (! isset($accounts[$m['id'] ?? ''])) {
+                        $add("$mname.id", 'Das Konto gibt es nicht.');
+                    } elseif (! in_array($action, ['add', 'remove'], true)) {
+                        $add("$mname.action", 'Erlaubt: add, remove.');
+                    } elseif (in_array($m['id'], $seen, true)) {
+                        $add("$mname.id", 'Dieses Konto steht schon in der Liste.');
+                    } elseif ($item['group'] === 'administrators' && $m['id'] === 'g-da' && $action === 'remove') {
+                        $seen[] = $m['id'];
+                        $add("$mname.action", 'Domain Admins kann nicht aus den lokalen Administratoren entfernt werden.');
+                    } else {
+                        $seen[] = $m['id'];
+                        $members[] = ['id' => $m['id'], 'name' => $accounts[$m['id']], 'kind' => isset($s['groups'][$m['id']]) ? 'group' : 'user', 'action' => $action];
                     }
-                    $members[] = ['id' => $m['id'], 'name' => $names[$m['id']] ?? $m['id'], 'kind' => isset($s['groups'][$m['id']]) ? 'group' : 'user', 'action' => $action];
                 }
-                // a switch on the administrators keeps Domain Admins
-                if ($item['group'] === 'administrators' && ($item['remove_other_users'] || $item['remove_other_groups']) && ! in_array('g-da', $seen, true)) {
-                    $members[] = ['id' => 'g-da', 'name' => 'Domain Admins', 'kind' => 'group', 'action' => 'add'];
+                // never lock out: with a switch on, the administrators keep Domain Admins (first, like the app)
+                if ($item['group'] === 'administrators' && (($item['remove_other_users'] ?? false) || ($item['remove_other_groups'] ?? false)) && ! in_array('g-da', $seen, true)) {
+                    array_unshift($members, ['id' => 'g-da', 'name' => 'Domain Admins', 'kind' => 'group', 'action' => 'add']);
                 }
-                $item['members'] = $members;
+                $item = ['group' => $item['group'], 'members' => $members,
+                    'remove_other_users' => (bool) ($item['remove_other_users'] ?? false), 'remove_other_groups' => (bool) ($item['remove_other_groups'] ?? false)];
             }
-            if ($list === 'printers' && ! str_starts_with((string) $item['path'], '\\\\')) {
-                return $invalid("items.$n.path", 'Bitte einen freigegebenen Drucker wie \\\\server\\drucker angeben.');
+            if ($list === 'printers') {
+                if (! preg_match('#^\\\\\\\\[^\\\\]+\\\\[^\\\\]+$#', (string) ($item['path'] ?? ''))) {
+                    $add("$name.path", 'Bitte die Freigabe angeben: \\\\server\\drucker.');
+                }
+                $item = ['path' => (string) $item['path'], 'action' => $item['action'] ?? 'update', 'default' => (bool) ($item['default'] ?? false)];
             }
-            if ($list === 'shortcuts' && $item['target_type'] === 'url' && ! preg_match('#^https?://#', (string) $item['target_path'])) {
-                return $invalid("items.$n.target_path", 'Eine Webadresse beginnt mit http:// oder https://.');
+            if ($list === 'shortcuts') {
+                if (! preg_match('/^[^\\\\\/:*?"<>|\x00-\x1f]{1,100}$/u', (string) ($item['name'] ?? ''))) {
+                    $add("$name.name", 'Name mit 1–100 Zeichen, ohne \\ / : * ? " < > |.');
+                }
+                $isUrl = ($item['target_type'] ?? '') === 'url';
+                if ($isUrl && ! preg_match('#^https?://\S+$#', (string) ($item['target_path'] ?? ''))) {
+                    $add("$name.target_path", 'Bitte eine Adresse angeben (https://…).');
+                } elseif (! $isUrl && ! str_starts_with((string) ($item['target_path'] ?? ''), '\\\\')) {
+                    $add("$name.target_path", 'Bitte einen UNC-Pfad angeben, z. B. \\\\server\\freigabe\\datei.');
+                }
+                if (! in_array($item['location'] ?? '', ['desktop', 'start_menu', 'programs'], true)) {
+                    $add("$name.location", 'Erlaubt: desktop, start_menu, programs.');
+                }
+                if ($isUrl && ($item['arguments'] ?? '') !== '') {
+                    $add("$name.arguments", 'Nur bei Verknüpfungen auf Dateien.');
+                }
+                if (! is_int($item['icon_index'] ?? 0) || $item['icon_index'] < 0 || $item['icon_index'] > 255) {
+                    $add("$name.icon_index", 'Bitte eine Zahl von 0 bis 255.');
+                }
+                $item = array_intersect_key($item, array_flip(['name', 'target_type', 'target_path', 'location', 'arguments', 'icon_path', 'icon_index', 'action']));
             }
-            $out[] = ['uid' => $old ? $old['uid'] : '{NEW-'.$n.'}'] + $item + ['changed_at' => 1763000000000, 'readonly' => false, 'warning' => ''];
-            $out[array_key_last($out)]['target'] = $target;
+            $key = $unique($item);
+            if ($key !== null && in_array($key, $keys, true)) {
+                $add("$name.$uniqueField", $uniqueError);
+            }
+            $keys[] = $key;
+            $out[] = ['uid' => $old ? $old['uid'] : '{NEW-'.$n.'}'] + $item + ['target' => $target, 'changed_at' => 1763000000000, 'readonly' => false, 'warning' => ''];
+        }
+        if ($fields) {
+            return Http::response(['error' => 'Bitte Eingaben prüfen.', 'fields' => $fields], 422);
         }
         $s['gpp'][$list][$id] = $out;
         $s['gpos'][$id]['version'][$list === 'local-groups' ? 'computer' : 'user']++;
@@ -989,6 +1045,8 @@ class AdModuleTest extends FeatureTestCase
     {
         $this->assertSame('nur Enterprise/Education', Gpos::editionsLabel(['education', 'enterprise']));
         $this->assertSame('nur Pro', Gpos::editionsLabel(['pro', 'unknown']));
+        $this->assertSame('ab Pro', Gpos::editionsLabel(['education', 'pro', 'enterprise']));
+        $this->assertSame('nur Home/Pro', Gpos::editionsLabel(['pro', 'home']), 'in edition order');
         $this->assertNull(Gpos::editionsLabel(null), 'missing: all editions');
         $this->assertNull(Gpos::editionsLabel([]));
         $this->assertNull(Gpos::editionsLabel(['home', 'pro', 'enterprise', 'education']));
@@ -1005,7 +1063,7 @@ class AdModuleTest extends FeatureTestCase
         $this->assertStringContainsString('>Alle Editionen</option>', $html);
         // a hint under the select while a restricted option is chosen
         $page->assertDontSeeHtml('data-option-editions')
-            ->set('settings.telemetry_level', '0')->assertSeeHtml('data-option-editions')->assertSee('Dieser Wert wirkt nur Enterprise')
+            ->set('settings.telemetry_level', '0')->assertSeeHtml('data-option-editions')->assertSee('Dieser Wert wirkt nicht auf allen Windows-Editionen (nur Enterprise/Education)')
             ->set('settings.telemetry_level', '1')->assertDontSeeHtml('data-option-editions');
     }
 
@@ -1113,23 +1171,23 @@ class AdModuleTest extends FeatureTestCase
             ->call('addGpp', 'local_groups')->assertSet('gpp.local_groups.1.local_group', 'remote_desktop_users')
             ->assertSee('Administratoren (schon in dieser Gruppenrichtlinie)')
             // the condition group is "group", the local group "local_group": choosing "all" keeps the local group
-            ->set('gpp.local_groups.1.add_ids', ['g-b'])->set('gpp.local_groups.1.condition', 'member')->set('gpp.local_groups.1.group', 'g-gl')
+            ->set('gpp.local_groups.1.add_ids', ['g-du'])->set('gpp.local_groups.1.condition', 'member')->set('gpp.local_groups.1.group', 'g-gl')
             ->set('gpp.local_groups.1.condition', 'all')->assertSet('gpp.local_groups.1.group', '')->assertSet('gpp.local_groups.1.local_group', 'remote_desktop_users');
         $page->call('saveSettings')->assertHasNoErrors()->assertSet('settingsFor', null);
         $items = last($this->sent('PUT', '/api/gpos/gp-1/local-groups'))['body']['items'];
         $this->assertSame(['uid' => '{L1}', 'group' => 'administrators', 'members' => [['id' => 'g-v', 'action' => 'add'], ['id' => 'm-1', 'action' => 'add']],
             'remove_other_users' => true, 'remove_other_groups' => true, 'target' => null], $items[0]);
-        $this->assertSame(['group' => 'remote_desktop_users', 'members' => [['id' => 'g-b', 'action' => 'add']],
+        $this->assertSame(['group' => 'remote_desktop_users', 'members' => [['id' => 'g-du', 'action' => 'add']],
             'remove_other_users' => false, 'remove_other_groups' => false, 'target' => null], $items[1]);
-        $this->assertSame('Max Muster', $this->state['gpp']['local-groups']['gp-1'][0]['members'][1]['name']);
-        // the app adds Domain Admins to the administrators when a switch is on: the row shows it on reopening
-        $page->call('openSettings', 'gp-1')->assertSet('gpp.local_groups.0.add_ids', ['g-v', 'm-1', 'g-da'])->assertSee('Domain Admins');
+        $this->assertSame('Max Muster', $this->state['gpp']['local-groups']['gp-1'][0]['members'][2]['name']);
+        // the app adds Domain Admins (first) to the administrators when a switch is on: the row shows it on reopening
+        $page->call('openSettings', 'gp-1')->assertSet('gpp.local_groups.0.add_ids', ['g-da', 'g-v', 'm-1'])->assertSee('Domain Admins');
 
         // 422 on members: mapped to the selection, the computer tab and the row open
         $page->call('openSettings', 'gp-1')->set('settingsTab', 'user')
             ->call('editGpp', 'local_groups', 0)->set('gpp.local_groups.0.add_ids', ['g-v'])->set('gpp.local_groups.0.remove_ids', ['g-da'])->call('closeGpp')
             ->call('saveSettings')->assertHasErrors('gpp.local_groups.0.members')->assertSet('settingsTab', 'computer')
-            ->assertSet('gppEditing', 'local_groups.0')->assertSee('Domain Admins bleibt Mitglied der Administratoren.');
+            ->assertSet('gppEditing', 'local_groups.0')->assertSee('Domain Admins kann nicht aus den lokalen Administratoren entfernt werden.');
         // checked before sending: an account in both lists, more than 100 members
         $sent = count($this->sent('PUT', '/api/gpos/gp-1/local-groups'));
         $page->set('gpp.local_groups.0.remove_ids', ['g-v'])->call('saveSettings')->assertHasErrors('gpp.local_groups.0.members')
@@ -1147,10 +1205,12 @@ class AdModuleTest extends FeatureTestCase
             ->call('addGpp', 'shortcuts')->assertSet('gppEditing', 'shortcuts.0')->assertSet('gpp.shortcuts.0.target_type', 'url')
             ->set('gpp.shortcuts.0.name', 'Intranet')->set('gpp.shortcuts.0.target_path', 'ftp://intranet')->set('gpp.shortcuts.0.arguments', '-x')
             ->set('settingsTab', 'computer')->call('saveSettings')
-            // the first list with an error: the printer (unknown group), on the user tab
-            ->assertHasErrors('gpp.printers.1.group')->assertSet('settingsTab', 'user')->assertSet('gppEditing', 'printers.1')
-            ->set('gpp.printers.1.group', 'g-v')->call('saveSettings')->assertHasErrors('gpp.printers.1.path')
-            ->assertSee('Bitte einen freigegebenen Drucker wie')
+            // the first list with an error: the printer (unknown group, no share), on the user tab; all its errors at once
+            ->assertHasErrors(['gpp.printers.1.group', 'gpp.printers.1.path'])->assertSet('settingsTab', 'user')->assertSet('gppEditing', 'printers.1')
+            ->assertSee('Die Gruppe gibt es nicht.')->assertSee('Bitte die Freigabe angeben')
+            // a printer only once per GPO
+            ->set('gpp.printers.1.group', 'g-v')->set('gpp.printers.1.path', '\\\\PRINT\\Buero')->call('saveSettings')->assertHasErrors('gpp.printers.1.path')
+            ->assertSee('Dieser Drucker steht schon in der Richtlinie.')
             ->set('gpp.printers.1.path', '\\\\print\\lager')->call('saveSettings')->assertHasErrors('gpp.shortcuts.0.target_path')->assertSet('gppEditing', 'shortcuts.0')
             ->set('gpp.shortcuts.0.target_path', 'https://intranet.example.de')
             // the icon index is an unsigned byte
@@ -1170,6 +1230,14 @@ class AdModuleTest extends FeatureTestCase
             ->set('gpp.shortcuts.0.target_type', 'file')->assertSee('Argumente')->set('gpp.shortcuts.0.target_path', '\\\\srv\\apps\\tool.exe')->set('gpp.shortcuts.0.arguments', '/silent')
             ->call('saveSettings')->assertSet('settingsFor', null);
         $this->assertSame(['file', '/silent'], [last($this->sent('PUT', '/api/gpos/gp-1/shortcuts'))['body']['items'][0]['target_type'], last($this->sent('PUT', '/api/gpos/gp-1/shortcuts'))['body']['items'][0]['arguments']]);
+
+        // a name only once per location: the same name in the start menu is taken, on the desktop it is free
+        $page->call('openSettings', 'gp-1')->set('settingsTab', 'user')->call('addGpp', 'shortcuts')
+            ->set('gpp.shortcuts.1.name', 'intranet')->set('gpp.shortcuts.1.target_path', 'https://intranet.example.de')->set('gpp.shortcuts.1.location', 'start_menu')
+            ->call('saveSettings')->assertHasErrors('gpp.shortcuts.1.name')->assertSet('gppEditing', 'shortcuts.1')
+            ->assertSee('Eine Verknüpfung mit diesem Namen gibt es hier schon.')
+            ->set('gpp.shortcuts.1.location', 'desktop')->call('saveSettings')->assertHasNoErrors()->assertSet('settingsFor', null);
+        $this->assertCount(2, $this->state['gpp']['shortcuts']['gp-1']);
     }
 
     public function test_preferences_lists_before_pk95_ad_1_3(): void

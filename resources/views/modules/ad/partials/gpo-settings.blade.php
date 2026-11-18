@@ -164,7 +164,7 @@
                                                 $chosenOnly = $chosen ? Gpos::editionsLabel($chosen['editions'] ?? null) : null;
                                             @endphp
                                             @if ($chosenOnly)
-                                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" data-option-editions>Dieser Wert wirkt {{ $chosenOnly }}; andere Editionen übergehen ihn.</p>
+                                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" data-option-editions>Dieser Wert wirkt nicht auf allen Windows-Editionen ({{ $chosenOnly }}); die anderen übergehen ihn.</p>
                                             @endif
                                             @break
                                         @case('int')
