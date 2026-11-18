@@ -87,6 +87,8 @@ class AdModuleTest extends FeatureTestCase
             // accounts whose primary group it is (members[].primary: true, untouched by PUT /members)
             'primary' => ['g-du' => ['a-1', 'm-1']],
             'ntp' => ['running' => true, 'available' => true, 'message' => ''],
+            // null: PK95 AD 1.0.0 without the field idmap in /api/domain
+            'idmap' => null,
             'computers' => [
                 'pc-dc' => ['id' => 'pc-dc', 'name' => 'DC1', 'dns_hostname' => 'dc1.ad.example.com', 'os' => 'Samba', 'os_version' => '4.22', 'description' => '',
                     'enabled' => true, 'is_dc' => true, 'ou_id' => 'dc', 'ou_path' => 'Domain Controllers', 'last_logon' => 0, 'created_at' => 1762000000000],
@@ -221,7 +223,7 @@ class AdModuleTest extends FeatureTestCase
                 'dc' => ['hostname' => 'dc1', 'fqdn' => 'dc1.ad.example.com', 'ip' => '192.168.1.10'], 'domain_level' => '2008_R2', 'forest_level' => '2008_R2',
                 'samba_version' => '4.22.3-Debian', 'fsmo' => ['schema' => 'dc1', 'pdc' => 'dc1'], 'upn_suffixes' => ['ad.example.com'],
                 'counts' => ['users' => count($s['users']), 'groups' => count($s['groups']), 'computers' => count($s['computers']), 'ous' => 3, 'gpos' => count($s['gpos'])],
-                'dns_forwarder' => '127.0.0.1', 'dns_port' => 5300, 'ntp' => $s['ntp']]);
+                'dns_forwarder' => '127.0.0.1', 'dns_port' => 5300, 'ntp' => $s['ntp']] + ($s['idmap'] !== null ? ['idmap' => $s['idmap']] : []));
         }
         if ($path === '/api/domain/dbcheck') {
             return $method === 'POST' ? Http::response(['running' => true], 202)
@@ -898,6 +900,23 @@ class AdModuleTest extends FeatureTestCase
         $event = AppEvent::query()->where('type', 'core.dns_forward.failed')->sole();
         $this->assertSame(['ad', 'warning'], [$event->app_id, $event->severity]);
         $this->assertStringContainsString('Upstream nicht erlaubt.', $event->body);
+    }
+
+    public function test_idmap_problem_is_a_warning_on_the_domain_page(): void
+    {
+        // PK95 AD 1.0.0 has no idmap: no hint
+        $this->get(route('apps.page', [$this->installed, 'domain']))->assertOk()->assertDontSee('data-idmap-warning', false);
+
+        $idmap = ['xid_range' => [20000, 59999], 'rfc2307_range' => [10000, 19999], 'next_xid' => 20123, 'allocated' => 42, 'ok' => true, 'message' => ''];
+        $this->state['idmap'] = $idmap;
+        $this->get(route('apps.page', [$this->installed, 'domain']))->assertOk()->assertDontSee('data-idmap-warning', false)->assertDontSee('Unix-IDs der Domäne');
+
+        $this->state['idmap'] = ['next_xid' => 3000012, 'allocated' => 12, 'ok' => false,
+            'message' => 'Die Domäne vergibt Unix-IDs ab 3000000; im LXC gibt es nur 0 bis 65535. Bitte die Domäne neu einrichten.'] + $idmap;
+        $this->get(route('apps.page', [$this->installed, 'domain']))->assertOk()
+            ->assertSee('data-idmap-warning', false)->assertSee('Unix-IDs der Domäne')
+            ->assertSee('Die Domäne vergibt Unix-IDs ab 3000000; im LXC gibt es nur 0 bis 65535. Bitte die Domäne neu einrichten.')
+            ->assertSee('Bereich 20.000 bis 59.999, vergeben 12, nächste ID 3.000.012.');
     }
 
     public function test_ntp_unavailable_is_a_warning_on_the_domain_page(): void
