@@ -50,7 +50,8 @@
             </div>
             <div class="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-gray-200 px-5 py-3 max-sm:pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-gray-700">
                 @isset($actions)
-                    <div class="mr-auto flex flex-wrap gap-2">{{ $actions }}</div>
+                    {{-- below sm a row of its own above the buttons --}}
+                    <div class="mr-auto flex flex-wrap items-center gap-2 max-sm:w-full max-sm:justify-between">{{ $actions }}</div>
                 @endisset
                 @if ($submit)
                     <x-input.button type="button" color="gray" x-on:click="requestClose()" class="max-sm:min-h-11">Abbrechen</x-input.button>

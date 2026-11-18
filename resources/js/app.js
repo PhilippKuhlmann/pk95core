@@ -317,6 +317,13 @@ document.addEventListener('alpine:init', () => {
                 .filter((el) => el.getClientRects().length > 0);
         },
         focusFirst() {
+            // [data-modal-focus] picks the start element (e.g. the active tab instead of a search
+            // field, which would open the keyboard on a phone)
+            const preferred = this.$refs.body.querySelector('[data-modal-focus]');
+            if (preferred && preferred.getClientRects().length > 0) {
+                preferred.focus();
+                return;
+            }
             const fields = [...this.$refs.body.querySelectorAll('input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), button[role=combobox]')]
                 .filter((el) => el.getClientRects().length > 0);
             (fields[0] ?? this.focusables()[0])?.focus();
