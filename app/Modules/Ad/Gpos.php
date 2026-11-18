@@ -68,9 +68,9 @@ class Gpos extends Component
 
     /** who a drive map applies to (form field "condition" ↔ target {group_id, not}) */
     public const DRIVE_CONDITIONS = [
-        'all' => 'Alle Benutzer, für die die Gruppenrichtlinie gilt',
-        'member' => 'Nur Mitglieder der Sicherheitsgruppe …',
-        'not_member' => 'Alle außer Mitglieder der Sicherheitsgruppe …',
+        'all' => 'Alle Benutzer',
+        'member' => 'Nur Mitglieder der Gruppe',
+        'not_member' => 'Alle außer Mitgliedern der Gruppe',
     ];
 
     public const STATUS = [
@@ -491,7 +491,7 @@ class Gpos extends Component
         }
     }
 
-    /** "Gilt für" of a drive row: Alle Benutzer / Mitglieder von X / Alle außer X */
+    /** "Gilt für" of a drive row: Alle Benutzer / Mitglieder von X / Alle außer Mitgliedern von X */
     public static function driveAudience(array $drive, ?string $groupName = null): string
     {
         if ($drive['condition'] === 'all' || $drive['group'] === '') {
@@ -499,7 +499,7 @@ class Gpos extends Component
         }
         $name = $groupName ?: ($drive['group_name'] ?: $drive['group']);
 
-        return $drive['condition'] === 'not_member' ? 'Alle außer '.$name : 'Mitglieder von '.$name;
+        return $drive['condition'] === 'not_member' ? 'Alle außer Mitgliedern von '.$name : 'Mitglieder von '.$name;
     }
 
     /** item fields of 422 answers ("items.2.target.group_id") → the form ("drives.2.group") */
