@@ -57,7 +57,7 @@ class Gpos extends Component
     /** index in $drives whose editor is open */
     public ?int $driveEditing = null;
 
-    /** tab of the settings dialog: computer | user | drives */
+    /** tab of the settings dialog: computer | user (the drive maps are a section of user) */
     public string $settingsTab = 'computer';
 
     /** filter of the settings dialog: label or help contains it */
@@ -241,23 +241,15 @@ class Gpos extends Component
         $this->loadDrives($id);
         $this->settingsSearch = '';
         $this->onlyConfigured = false;
-        // start where something is configured: computer, user, then the drive maps
-        $this->settingsTab = 'computer';
-        foreach (['computer', 'user'] as $scope) {
-            if ($this->configuredCount($scope) > 0) {
-                $this->settingsTab = $scope;
-                break;
-            }
-            if ($scope === 'user' && $this->drives !== []) {
-                $this->settingsTab = 'drives';
-            }
-        }
+        // start where something is configured: computer, else user (its settings or drive maps)
+        $this->settingsTab = $this->configuredCount('computer') === 0 && ($this->configuredCount('user') > 0 || $this->drives !== [])
+            ? 'user' : 'computer';
         $this->settingsFor = $id;
     }
 
     public function updatedSettingsTab(string $tab): void
     {
-        if (! in_array($tab, ['computer', 'user', 'drives'], true)) {
+        if (! in_array($tab, ['computer', 'user'], true)) {
             $this->settingsTab = 'computer';
         }
     }
@@ -592,7 +584,10 @@ class Gpos extends Component
         $scopes = array_column($catalog, 'scope', 'key');
         foreach (array_keys($this->getErrorBag()->messages()) as $key) {
             if (preg_match('/^drives(\.(\d+))?/', $key, $m)) {
-                $this->settingsTab = 'drives';
+                // drive maps are part of the user configuration; the filter must not hide them
+                $this->settingsTab = 'user';
+                $this->settingsSearch = '';
+                $this->onlyConfigured = false;
                 $this->driveEditing = isset($m[2]) ? (int) $m[2] : $this->driveEditing;
 
                 return true;

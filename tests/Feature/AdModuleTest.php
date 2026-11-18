@@ -852,8 +852,9 @@ class AdModuleTest extends FeatureTestCase
             ->call('openSettings', 'gp-2')
             // opens where something is configured; tabs count the configured entries
             ->assertSet('settingsTab', 'user')
-            ->assertSeeHtml('data-tab="computer"')->assertSeeHtml('data-tab="user"')->assertSeeHtml('data-tab="drives"')
-            ->assertSeeInOrder(['Computer', '0', 'Benutzer', '1', 'Netzlaufwerke', '2'])
+            // two tabs; "Benutzer" counts its settings (1) and the drive maps (2)
+            ->assertSeeHtml('data-tab="computer"')->assertSeeHtml('data-tab="user"')->assertDontSeeHtml('data-tab="drives"')
+            ->assertSeeInOrder(['Computer', '0', 'Benutzer', '3'])
             // sections by catalog group with "n von m konfiguriert", rows with a status badge and the editor
             ->assertSee('Desktop')->assertSee('1 von 2 konfiguriert')->assertSee('0 von 1 konfiguriert')
             ->assertSee('Bildschirmsperre nach Inaktivität')->assertSee('10 Minuten')->assertSee('Nicht konfiguriert')
@@ -922,8 +923,10 @@ class AdModuleTest extends FeatureTestCase
 
         Livewire::test(Gpos::class, ['installedApp' => $this->installed])
             ->call('openSettings', 'gp-2')->assertSet('drivesSupported', true)->assertCount('drives', 2)
-            ->assertDontSeeHtml('data-drive-table')
-            ->set('settingsTab', 'drives')->assertSeeHtml('data-drive-table')
+            // a section of "Benutzer", open with entries, not on "Computer"
+            ->assertSet('settingsTab', 'user')->assertSeeHtml('data-drive-table')->assertSee('Einstellungen (Laufwerkszuordnungen)')->assertSee('2 Laufwerke')
+            ->set('settingsTab', 'computer')->assertDontSeeHtml('data-drives-section')
+            ->set('settingsTab', 'user')->assertSeeHtml('data-drive-table')
             ->assertSeeInOrder(['Laufwerk', 'Pfad', 'Bezeichnung', 'Aktion'])->assertSee('Gilt für')
             ->assertSee('Mitglieder von Vertrieb')->assertSee('Alle Benutzer')
             // the hint is a tooltip now
@@ -936,13 +939,31 @@ class AdModuleTest extends FeatureTestCase
         $this->assertSame([], $this->sent('PUT', '/api/gpos/gp-2/settings'));
     }
 
+    public function test_drive_maps_section_follows_search_and_only_configured(): void
+    {
+        $page = Livewire::test(Gpos::class, ['installedApp' => $this->installed])->call('openSettings', 'gp-2')
+            ->set('settingsSearch', 'laufwerk')->assertSeeHtml('data-drives-section')->assertDontSee('Bildschirmsperre nach Inaktivität')
+            ->set('settingsSearch', 'netz')->assertSeeHtml('data-drives-section')
+            ->set('settingsSearch', 'vertrieb')->assertSeeHtml('data-drives-section')
+            ->set('settingsSearch', 'v:')->assertSeeHtml('data-drives-section')
+            ->set('settingsSearch', 'kennwortschutz')->assertDontSeeHtml('data-drives-section')->assertSee('Bildschirmsperre nach Inaktivität')
+            ->set('settingsSearch', '')->set('onlyConfigured', true)->assertSeeHtml('data-drives-section');
+
+        // without drive maps: "Nur konfigurierte" hides the section, the count says 0
+        $this->state['drives']['gp-2'] = [];
+        $page->call('openSettings', 'gp-2')->assertSet('onlyConfigured', false)->assertSee('0 Laufwerke')->assertSeeInOrder(['Benutzer', '1'])
+            ->set('onlyConfigured', true)->assertDontSeeHtml('data-drives-section');
+        // gp-1 has nothing configured: it opens on Computer
+        $page->call('openSettings', 'gp-1')->assertSet('settingsTab', 'computer');
+    }
+
     public function test_drive_maps_are_hidden_before_pk95_ad_1_1(): void
     {
         $this->state['drives404'] = true;
         $this->get(route('apps.page', [$this->installed, 'gpo']))->assertOk()->assertDontSee('Netzlaufwerke');
         Livewire::test(Gpos::class, ['installedApp' => $this->installed])
             ->call('openSettings', 'gp-2')->assertSet('drivesSupported', false)
-            ->set('settingsTab', 'drives')->assertSee('Netzlaufwerke per Gruppenrichtlinie gibt es ab PK95 AD 1.1.0.')->assertDontSee('Netzlaufwerk hinzufügen')
+            ->set('settingsTab', 'user')->assertSee('ab PK95 AD 1.1.0')->assertSee('Netzlaufwerke per Gruppenrichtlinie gibt es ab PK95 AD 1.1.0.')->assertDontSee('Netzlaufwerk hinzufügen')
             ->set('settings.deny_cmd', '1')->call('saveSettings')->assertSet('settingsFor', null);
         $this->assertCount(1, $this->sent('PUT', '/api/gpos/gp-2/settings'));
         $this->assertSame([], $this->sent('PUT', '/api/gpos/gp-2/drives'));
@@ -952,7 +973,7 @@ class AdModuleTest extends FeatureTestCase
     {
         $readonly = $this->state['drives']['gp-2'][1];
         $page = Livewire::test(Gpos::class, ['installedApp' => $this->installed])
-            ->call('openSettings', 'gp-2')->set('settingsTab', 'drives')
+            ->call('openSettings', 'gp-2')->set('settingsTab', 'user')
             ->call('editDrive', 0)->assertSet('drives.0.condition', 'member')->assertSeeHtml('data-drive-condition')
             ->assertSee('Bedingung')->assertSee('Nur Mitglieder der Gruppe')->assertSee('Alle außer Mitgliedern der Gruppe')->assertDontSee('Sicherheitsgruppe …')->assertSeeHtml('data-group-link')
             ->assertSeeHtml(route('apps.page', [$this->installed, 'groups']).'?q=Vertrieb')
@@ -980,7 +1001,7 @@ class AdModuleTest extends FeatureTestCase
         $this->assertSame(1, $this->state['gpos']['gp-2']['version']['user']);
 
         // "Alle Benutzer" drops the group; removing the read-only item deletes it (leaving it out)
-        $page->call('openSettings', 'gp-2')->assertCount('drives', 3)->set('settingsTab', 'drives')
+        $page->call('openSettings', 'gp-2')->assertCount('drives', 3)->set('settingsTab', 'user')
             ->call('editDrive', 0)->set('drives.0.condition', 'all')->assertSet('drives.0.group', '')
             ->call('removeDrive', 2)->assertSee('2 Änderungen')->call('saveSettings')->assertSet('settingsFor', null);
         $sent = last($this->sent('PUT', '/api/gpos/gp-2/drives'))['body']['items'];
@@ -992,9 +1013,11 @@ class AdModuleTest extends FeatureTestCase
     {
         // a condition without a group is caught before anything is sent, also from another tab
         $page = Livewire::test(Gpos::class, ['installedApp' => $this->installed])
-            ->call('openSettings', 'gp-2')->set('settingsTab', 'drives')->call('addDrive')->call('closeDrive')
-            ->set('drives.2.path', '\\\\nas\\x')->set('drives.2.condition', 'member')->set('settings.deny_cmd', '1')->set('settingsTab', 'user')
-            ->call('saveSettings')->assertHasErrors('drives.2.group')->assertSet('settingsTab', 'drives')->assertSet('driveEditing', 2)
+            ->call('openSettings', 'gp-2')->set('settingsTab', 'user')->call('addDrive')->call('closeDrive')
+            ->set('drives.2.path', '\\\\nas\\x')->set('drives.2.condition', 'member')->set('settings.deny_cmd', '1')
+            ->set('settingsTab', 'computer')->set('settingsSearch', 'update')
+            ->call('saveSettings')->assertHasErrors('drives.2.group')->assertSet('settingsTab', 'user')->assertSet('settingsSearch', '')->assertSet('driveEditing', 2)
+            ->assertSeeHtml('data-drive-editor')
             ->assertSee('Wähle die Sicherheitsgruppe für die Bedingung.');
         $this->assertSame([], $this->sent('PUT', '/api/gpos/gp-2/settings'));
         $this->assertSame([], $this->sent('PUT', '/api/gpos/gp-2/drives'));
@@ -1012,7 +1035,7 @@ class AdModuleTest extends FeatureTestCase
             array_intersect_key(last($this->sent('PUT', '/api/gpos/gp-2/drives'))['body']['items'][2], ['letter' => 0, 'first_available' => 0, 'target' => 0]));
 
         // at most 50
-        $page->call('openSettings', 'gp-2')->set('settingsTab', 'drives')->set('drives', array_fill(0, 50, Gpos::driveToForm(['letter' => 'X', 'first_available' => true, 'path' => '\\\\nas\\x'])))
+        $page->call('openSettings', 'gp-2')->set('settingsTab', 'user')->set('drives', array_fill(0, 50, Gpos::driveToForm(['letter' => 'X', 'first_available' => true, 'path' => '\\\\nas\\x'])))
             ->call('addDrive')->assertHasErrors('drives')->assertCount('drives', 50)->assertSee('Höchstens 50 Netzlaufwerke je Gruppenrichtlinie.');
     }
 

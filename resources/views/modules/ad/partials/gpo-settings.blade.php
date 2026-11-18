@@ -1,8 +1,9 @@
 {{--
-    GPO settings dialog: tabs Computer / Benutzer / Netzlaufwerke. Settings come from the
-    catalog, grouped by its "group" into sections that open when something in them is
-    configured; one compact row per setting with a status badge, a click opens its editor.
-    The footer counts the changes; "Speichern" sends only those.
+    GPO settings dialog: tabs Computer / Benutzer. Settings come from the catalog, grouped by
+    its "group" into sections that open when something in them is configured; one compact row
+    per setting with a status badge, a click opens its editor. The drive maps are the last
+    section of "Benutzer" (Group Policy Preferences, like the GPMC: user configuration →
+    preferences → drive maps). The footer counts the changes; "Speichern" sends only those.
 --}}
 @php
     use App\Modules\Ad\Gpos;
@@ -17,10 +18,11 @@
     }
     [$changedDrives, $driveChangeCount] = $driveChanges;
     $changes = $settingChanges + $driveChangeCount;
+    $driveCount = $drivesSupported ? count($drives) : 0;
     $tabs = [
-        'computer' => ['Computer', 'Computer', $counts['computer']],
-        'user' => ['Benutzer', 'Benutzer', $counts['user']],
-        'drives' => ['Netzlaufwerke', 'Laufwerke', $drivesSupported ? count($drives) : null],
+        'computer' => ['Computer', $counts['computer']],
+        // the user configuration counts its settings and the drive maps
+        'user' => ['Benutzer', $counts['user'] + $driveCount],
     ];
     $tones = [
         'gray' => 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
@@ -48,26 +50,24 @@
         @endif
     </x-slot:actions>
 
-    {{-- one height for all tabs (no jumping dialog); tabs and filter stay on top while the body scrolls --}}
-    <div class="sm:min-h-[min(40rem,calc(100dvh-13rem))]">
+    {{-- the dialog is as high as its content (x-modal limits it and scrolls); tabs and filter stay on top --}}
     <div class="sticky -top-4 z-10 -mx-5 border-b border-gray-200 bg-white px-5 pt-4 pb-3 dark:border-gray-700 dark:bg-gray-800" style="margin-top: -1rem">
         <div role="tablist" aria-label="Bereiche" class="flex gap-1 overflow-x-auto rounded-lg bg-gray-100 p-1 dark:bg-gray-900/60">
-            @foreach ($tabs as $tab => [$tabLabel, $tabShort, $tabCount])
+            @foreach ($tabs as $tab => [$tabLabel, $tabCount])
                 <button type="button" role="tab" id="gpo-tab-{{ $tab }}" aria-controls="gpo-panel" aria-selected="{{ $settingsTab === $tab ? 'true' : 'false' }}"
                     wire:click="$set('settingsTab', '{{ $tab }}')" data-tab="{{ $tab }}" @if ($settingsTab === $tab) data-modal-focus @endif
                     @class(['flex min-h-9 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-cerulean-500 max-sm:min-h-11 max-sm:gap-1 max-sm:px-1.5 max-sm:text-[13px]',
                         'bg-white font-DINPro-bold text-gray-900 shadow-xs dark:bg-gray-700 dark:text-white' => $settingsTab === $tab,
                         'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white' => $settingsTab !== $tab])>
-                    {{-- on a phone the short label, so all three tabs fit --}}
-                    <span class="max-sm:hidden">{{ $tabLabel }}</span><span class="sm:hidden">{{ $tabShort }}</span>
-                    @if ($tabCount !== null)
-                        <span @class([$badge, 'rounded-full', $tabCount > 0 ? $tones['blue'] : $tones['gray']]) data-tab-count>{{ $tabCount }}<span class="sr-only"> konfiguriert</span></span>
-                    @endif
+                    {{ $tabLabel }}
+                    {{-- the same round badge for every count; 0 in grey, visible on the grey bar too --}}
+                    <span @class(['inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-xs font-medium tabular-nums',
+                        $tones['blue'] => $tabCount > 0,
+                        'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-200' => $tabCount === 0]) data-tab-count>{{ $tabCount }}<span class="sr-only"> konfiguriert</span></span>
                 </button>
             @endforeach
         </div>
-        @if ($settingsTab !== 'drives')
-            <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
                 <input type="search" wire:model.live.debounce.300ms="settingsSearch" placeholder="Einstellung suchen …" aria-label="Einstellung suchen"
                     class="min-w-0 flex-1 basis-56 rounded-lg border-gray-300 bg-white py-2 text-sm text-gray-900 focus:border-cerulean-500 focus:ring-cerulean-500 dark:border-gray-700 dark:bg-gray-700 dark:text-gray-100">
                 <label class="inline-flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 sm:min-h-0 dark:text-gray-300">
@@ -76,13 +76,9 @@
                     Nur konfigurierte
                 </label>
             </div>
-        @endif
     </div>
 
     <div id="gpo-panel" role="tabpanel" aria-labelledby="gpo-tab-{{ $settingsTab }}" class="pt-3">
-        @if ($settingsTab === 'drives')
-            @include('modules.ad.partials.drives')
-        @else
             @if (($otherSettings[$settingsTab] ?? 0) > 0 || ($otherCount === 0 && ! empty($otherSettings['extensions']) && $settingsTab === 'computer'))
                 <x-callout title="Weitere Einstellungen" class="mb-3" data-other-settings>
                     Diese Gruppenrichtlinie enthält {{ $otherCount }} weitere Einträge{{ ! empty($otherSettings['extensions']) ? ' ('.implode(', ', $otherSettings['extensions']).')' : '' }}, die nur mit den Windows-Werkzeugen (GPMC) bearbeitet werden können. Sie bleiben unverändert.
@@ -202,14 +198,46 @@
                 </section>
             @endforeach
 
-            @if ($catalog->isEmpty())
+            {{-- user configuration → preferences → drive maps, the last section of "Benutzer" --}}
+            @if ($settingsTab === 'user')
+                @php
+                    $driveHaystack = 'netzlaufwerke laufwerkszuordnungen laufwerke einstellungen';
+                    $driveMatch = $needle === '' || str_contains($driveHaystack, $needle)
+                        || collect($drives)->contains(fn ($d) => str_contains(mb_strtolower($d['letter'].': '.$d['path'].' '.$d['label'].' '.$d['group_name']), $needle));
+                    $driveVisible = $driveMatch && (! $onlyConfigured || $driveCount > 0);
+                    $driveErrors = $errors->has('drives') || $errors->has('drives.*');
+                    $driveOpen = $driveCount > 0 || $driveErrors || $driveChangeCount > 0 || $driveEditing !== null;
+                    $shown += $driveVisible ? 1 : 0;
+                @endphp
+                @if ($driveVisible)
+                    <div class="mt-5 mb-2 flex items-center gap-2 text-xs font-DINPro-bold uppercase tracking-wide text-gray-500 dark:text-gray-400" data-drives-heading>
+                        Einstellungen (Laufwerkszuordnungen)<span class="h-px flex-1 bg-gray-200 dark:bg-gray-700" aria-hidden="true"></span>
+                    </div>
+                    <section x-data="{ open: @js($driveOpen) }" wire:key="sec-drives-{{ $filterKey }}{{ $driveErrors ? '-e' : '' }}"
+                        class="mb-3 overflow-hidden rounded-lg border border-cerulean-200 dark:border-cerulean-800" data-gpo-group="Netzlaufwerke" data-drives-section>
+                        <h3>
+                            <button type="button" x-on:click="open = ! open" :aria-expanded="open.toString()"
+                                class="flex w-full items-center gap-3 bg-cerulean-50/60 px-4 py-3 text-left hover:bg-cerulean-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cerulean-500 dark:bg-cerulean-900/15 dark:hover:bg-cerulean-900/25">
+                                <span class="min-w-0 flex-1 font-DINPro-bold text-gray-900 dark:text-gray-100">Netzlaufwerke</span>
+                                <span @class(['text-xs', 'text-cerulean-700 dark:text-cerulean-300' => $driveCount > 0, 'text-gray-500 dark:text-gray-400' => $driveCount === 0]) data-group-count>
+                                    {{ ! $drivesSupported ? 'ab PK95 AD 1.1.0' : ($driveCount === 1 ? '1 Laufwerk' : $driveCount.' Laufwerke') }}
+                                </span>
+                                <x-icon name="chevron-down" class="h-4 w-4 shrink-0 text-gray-500 transition-transform dark:text-gray-400" ::class="open && 'rotate-180'" />
+                            </button>
+                        </h3>
+                        <div x-show="open" x-cloak class="border-t border-cerulean-200 p-4 dark:border-cerulean-800">
+                            @include('modules.ad.partials.drives')
+                        </div>
+                    </section>
+                @endif
+            @endif
+
+            @if ($catalog->isEmpty() && $settingsTab !== 'user')
                 <p class="text-sm text-gray-500 dark:text-gray-400">PK95 AD hat keinen Einstellungskatalog geliefert.</p>
             @elseif ($shown === 0)
                 <p class="rounded-lg border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400" data-settings-empty>
                     {{ $filtering ? 'Keine Einstellung passt zum Filter.' : 'In diesem Bereich gibt es keine Einstellungen.' }}
                 </p>
             @endif
-        @endif
-    </div>
     </div>
 </x-modal>
