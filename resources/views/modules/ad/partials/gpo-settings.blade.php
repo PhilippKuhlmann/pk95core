@@ -117,6 +117,7 @@
                                 $unit = ! empty($item['unit']) ? ' '.$item['unit'] : '';
                                 $range = isset($item['min'], $item['max']) ? $item['min'].' bis '.$item['max'].$unit.'.' : '';
                                 $help = trim(($item['help'] ?? '').' '.$range);
+                                $only = Gpos::editionsLabel($item['editions'] ?? null);
                             @endphp
                             <div x-data="{ open: @js($hasError) }" wire:key="set-{{ $key }}{{ $hasError ? '-e' : '' }}" data-setting="{{ $key }}"
                                 @class(['relative', 'bg-cerulean-50/60 dark:bg-cerulean-900/15' => $changed]) @if ($changed) data-changed @endif>
@@ -127,6 +128,7 @@
                                     class="flex min-h-11 w-full items-center gap-3 px-4 py-2 text-left hover:bg-gray-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cerulean-500 dark:hover:bg-gray-700/40">
                                     <span class="min-w-0 flex-1 text-sm text-gray-900 dark:text-gray-100">
                                         {{ $item['label'] }}
+                                        @if ($only)<span class="ml-1 inline-block rounded bg-gray-100 px-1.5 py-0.5 align-middle text-xs whitespace-nowrap text-gray-700 dark:bg-gray-700 dark:text-gray-200" data-editions data-tip="Wirkt nur auf diesen Windows-Editionen, andere übergehen die Einstellung.">{{ $only }}</span>@endif
                                         @if ($changed)<span class="ml-1 text-xs text-cerulean-700 dark:text-cerulean-300">geändert</span>@endif
                                         @if ($hasError)<span class="ml-1 text-xs text-red-700 dark:text-red-300">Fehler</span>@endif
                                     </span>
@@ -155,8 +157,15 @@
                                         @case('enum')
                                             <x-input.select :id="$id" :feld="'settings.'.$key" wire:model.live="settings.{{ $key }}" aria-label="{{ $item['label'] }}">
                                                 <option value="">Nicht konfiguriert</option>
-                                                @foreach ((array) ($item['options'] ?? []) as $option)<option value="{{ $option['value'] }}">{{ $option['label'] }}</option>@endforeach
+                                                @foreach ((array) ($item['options'] ?? []) as $option)<option value="{{ $option['value'] }}">{{ Gpos::optionLabel($option) }}</option>@endforeach
                                             </x-input.select>
+                                            @php
+                                                $chosen = collect((array) ($item['options'] ?? []))->first(fn ($o) => $value !== null && (string) $o['value'] === (string) $value);
+                                                $chosenOnly = $chosen ? Gpos::editionsLabel($chosen['editions'] ?? null) : null;
+                                            @endphp
+                                            @if ($chosenOnly)
+                                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" data-option-editions>Dieser Wert wirkt {{ $chosenOnly }}; andere Editionen übergehen ihn.</p>
+                                            @endif
                                             @break
                                         @case('int')
                                             <div class="flex items-center gap-2">

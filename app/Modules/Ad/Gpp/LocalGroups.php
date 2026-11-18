@@ -4,9 +4,11 @@ namespace App\Modules\Ad\Gpp;
 
 /**
  * Local groups (PK95 AD 1.3.0): computer configuration → preferences → control panel settings
- * → local users and groups. Each row changes the members of one built-in local group:
- * domain users or groups to add and to remove, optionally removing all other members. The
- * action is always "update". With "administrators" the app keeps Domain Admins in the group.
+ * → local users and groups, Machine\Preferences\Groups\Groups.xml. Each row changes the members
+ * of one built-in local group: domain users or security groups to add and to remove (the API
+ * list "members" with action add | remove; the form keeps two lists), optionally removing every
+ * other member user and/or group (GPMC "Delete all member users / groups"). The action is
+ * always "update". With "administrators" and a switch on the app adds Domain Admins itself.
  * The API field "group" (the local group) is "local_group" in the form: "group" there is the
  * security group of the condition.
  */
@@ -72,6 +74,21 @@ final class LocalGroups extends Kind
         return 'Jede lokale Gruppe kommt je Gruppenrichtlinie höchstens einmal vor.';
     }
 
+    /** members per row */
+    public const MEMBERS_MAX = 100;
+
+    public function check(array $row): array
+    {
+        $errors = [];
+        if (array_intersect((array) $row['add_ids'], (array) $row['remove_ids'])) {
+            $errors['members'] = 'Ein Konto kann nicht zugleich hinzugefügt und entfernt werden.';
+        } elseif (count((array) $row['add_ids']) + count((array) $row['remove_ids']) > self::MEMBERS_MAX) {
+            $errors['members'] = 'Höchstens '.self::MEMBERS_MAX.' Mitglieder je lokaler Gruppe.';
+        }
+
+        return $errors;
+    }
+
     public function intro(): string
     {
         return 'Ändert auf den Computern die Mitglieder lokaler Gruppen, etwa wer Administrator ist oder sich per Remotedesktop anmelden darf.';
@@ -79,7 +96,7 @@ final class LocalGroups extends Kind
 
     public function hint(): ?string
     {
-        return 'Mitglieder sind Benutzer und Gruppen der Domäne; lokale Konten der Rechner lassen sich hier nicht wählen. Bei den Administratoren nimmt PK95 AD Domain Admins immer auf.';
+        return 'Mitglieder sind Benutzer und Sicherheitsgruppen der Domäne; lokale Konten der Rechner lassen sich hier nicht wählen. Entfernt eine Zeile bei den Administratoren alle anderen Mitglieder, nimmt PK95 AD Domain Admins immer auf.';
     }
 
     public function searchWords(): string
@@ -141,18 +158,25 @@ final class LocalGroups extends Kind
 
     public function fieldsFromApi(array $item): array
     {
+        $add = [];
+        $remove = [];
         $names = [];
-        foreach (['add', 'remove'] as $list) {
-            foreach ((array) ($item[$list] ?? []) as $member) {
-                $names[(string) ($member['id'] ?? '')] = (string) ($member['name'] ?? '');
+        foreach ((array) ($item['members'] ?? []) as $member) {
+            $id = (string) ($member['id'] ?? '');
+            if (($member['action'] ?? 'add') === 'remove') {
+                $remove[] = $id;
+            } else {
+                $add[] = $id;
             }
+            $names[$id] = (string) ($member['name'] ?? '');
         }
 
         return [
             'local_group' => (string) ($item['group'] ?? 'administrators'),
-            'add_ids' => array_values(array_map(fn ($m) => (string) ($m['id'] ?? ''), (array) ($item['add'] ?? []))),
-            'remove_ids' => array_values(array_map(fn ($m) => (string) ($m['id'] ?? ''), (array) ($item['remove'] ?? []))),
-            'remove_others' => (bool) ($item['remove_others'] ?? false),
+            'add_ids' => $add,
+            'remove_ids' => $remove,
+            'remove_other_users' => (bool) ($item['remove_other_users'] ?? false),
+            'remove_other_groups' => (bool) ($item['remove_other_groups'] ?? false),
             // names of the members as the app knows them (the selection fields know the rest)
             'names' => $names,
         ];
@@ -160,12 +184,30 @@ final class LocalGroups extends Kind
 
     public function fieldsToApi(array $row): array
     {
+        $members = [];
+        foreach (['add' => 'add_ids', 'remove' => 'remove_ids'] as $action => $field) {
+            foreach ((array) $row[$field] as $id) {
+                $members[] = ['id' => (string) $id, 'action' => $action];
+            }
+        }
+
         return [
             'group' => (string) $row['local_group'],
-            'add' => array_values(array_map(fn ($id) => ['id' => (string) $id], (array) $row['add_ids'])),
-            'remove' => array_values(array_map(fn ($id) => ['id' => (string) $id], (array) $row['remove_ids'])),
-            'remove_others' => (bool) $row['remove_others'],
+            'members' => $members,
+            'remove_other_users' => (bool) $row['remove_other_users'],
+            'remove_other_groups' => (bool) $row['remove_other_groups'],
         ];
+    }
+
+    /** what the switches remove: "" | "Benutzer" | "Gruppen" | "Benutzer und Gruppen" */
+    public static function removesOthers(array $row): string
+    {
+        return match (true) {
+            $row['remove_other_users'] && $row['remove_other_groups'] => 'Benutzer und Gruppen',
+            $row['remove_other_users'] => 'Benutzer',
+            $row['remove_other_groups'] => 'Gruppen',
+            default => '',
+        };
     }
 
     public function searchText(array $row): string
@@ -173,10 +215,10 @@ final class LocalGroups extends Kind
         return $this->rowLabel($row).' '.$row['local_group'].' '.implode(' ', (array) $row['names']);
     }
 
-    /** "2.add.1.id" → "2.add_ids", "2.remove" → "2.remove_ids", "2.group" → "2.local_group" */
+    /** "2.members.1.id" → "2.members" (shown under both selections), "2.group" → "2.local_group" */
     public function errorField(string $rest): string
     {
-        $rest = (string) preg_replace('/^(\d+)\.(add|remove)(\..*)?$/', '$1.$2_ids', $rest);
+        $rest = (string) preg_replace('/^(\d+)\.members(\..*)?$/', '$1.members', $rest);
         $rest = (string) preg_replace('/^(\d+)\.group$/', '$1.local_group', $rest);
 
         return parent::errorField($rest);

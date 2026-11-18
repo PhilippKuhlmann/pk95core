@@ -226,6 +226,28 @@ class Gpos extends Component
         $this->resetErrorBag();
     }
 
+    public const EDITIONS = ['home' => 'Home', 'pro' => 'Pro', 'enterprise' => 'Enterprise', 'education' => 'Education'];
+
+    /**
+     * "nur Enterprise/Education" for the Windows editions a setting or enum option works on
+     * (PK95 AD 1.2.0); null when the field is missing or names every edition.
+     */
+    public static function editionsLabel(mixed $editions): ?string
+    {
+        $names = array_values(array_intersect_key(self::EDITIONS, array_flip(array_map('strval', (array) $editions))));
+
+        return $names && count($names) < count(self::EDITIONS) ? 'nur '.implode('/', $names) : null;
+    }
+
+    /** an enum option's text with its editions, unless the label already says so */
+    public static function optionLabel(array $option): string
+    {
+        $label = (string) $option['label'];
+        $only = self::editionsLabel($option['editions'] ?? null);
+
+        return $only === null || str_contains($label, $only) ? $label : $label.' ('.$only.')';
+    }
+
     /**
      * The badge of a setting row: label and tone (gray = not configured, green/red = bool,
      * blue = a value).
@@ -448,8 +470,8 @@ class Gpos extends Component
     }
 
     /**
-     * Members for local groups: users and groups of the domain (no local accounts); a member a
-     * row names that the lists do not carry stays selectable under "Andere".
+     * Members for local groups: users and security groups of the domain (no local accounts); a
+     * member a row names that the lists do not carry stays selectable under "Andere".
      *
      * @return list<array{value: string, label: string, hint?: string, group: string}>
      */
@@ -461,7 +483,7 @@ class Gpos extends Component
             $label = (string) (($user['display_name'] ?? '') ?: ($user['username'] ?? ''));
             $options[(string) $user['id']] = ['value' => (string) $user['id'], 'label' => $label, 'hint' => (string) ($user['username'] ?? ''), 'group' => 'Benutzer'];
         }
-        [$groups] = $this->fetch('/api/groups');
+        [$groups] = $this->fetch('/api/groups', ['type' => 'security']);
         foreach ((array) ($groups['items'] ?? []) as $group) {
             $options[(string) $group['id']] = ['value' => (string) $group['id'], 'label' => (string) $group['name'], 'hint' => (string) ($group['ou_path'] ?? ''), 'group' => 'Gruppen'];
         }

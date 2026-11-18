@@ -5,7 +5,7 @@ namespace App\Modules\Ad\Gpp;
 /**
  * Shortcuts (PK95 AD 1.3.0): user configuration → preferences → Windows settings → shortcuts.
  * A link to a web address (http/https) or to a file or program on a share (UNC), placed on
- * the desktop or in the start menu.
+ * the desktop or in the start menu. Its target is "target_path" ("target" is the condition).
  */
 final class Shortcuts extends Kind
 {
@@ -114,6 +114,17 @@ final class Shortcuts extends Kind
         ];
     }
 
+    /** the icon index is an unsigned byte in MS-GPPREF */
+    public const ICON_INDEX_MAX = 255;
+
+    public function check(array $row): array
+    {
+        $index = trim((string) $row['icon_index']);
+
+        return $index !== '' && (! preg_match('/^\d+$/', $index) || (int) $index > self::ICON_INDEX_MAX)
+            ? ['icon_index' => 'Der Index ist eine Zahl von 0 bis '.self::ICON_INDEX_MAX.'.'] : [];
+    }
+
     public function blank(array $rows): array
     {
         return ['target_type' => 'url', 'location' => 'desktop'];
@@ -124,7 +135,7 @@ final class Shortcuts extends Kind
         return [
             'name' => (string) ($item['name'] ?? ''),
             'target_type' => (string) ($item['target_type'] ?? 'url'),
-            'target' => (string) ($item['target'] ?? ''),
+            'target_path' => (string) ($item['target_path'] ?? ''),
             'location' => (string) ($item['location'] ?? 'desktop'),
             'arguments' => (string) ($item['arguments'] ?? ''),
             'icon_path' => (string) ($item['icon_path'] ?? ''),
@@ -140,7 +151,7 @@ final class Shortcuts extends Kind
         return [
             'name' => trim((string) $row['name']),
             'target_type' => (string) $row['target_type'],
-            'target' => trim((string) $row['target']),
+            'target_path' => trim((string) $row['target_path']),
             'location' => (string) $row['location'],
             // arguments only for files and programs
             'arguments' => $row['target_type'] === 'file' ? trim((string) $row['arguments']) : '',
@@ -152,6 +163,6 @@ final class Shortcuts extends Kind
 
     public function searchText(array $row): string
     {
-        return $row['name'].' '.$row['target'].' '.(self::LOCATIONS[$row['location']] ?? '');
+        return $row['name'].' '.$row['target_path'].' '.(self::LOCATIONS[$row['location']] ?? '');
     }
 }

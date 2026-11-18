@@ -106,9 +106,9 @@
                                     <button type="button" wire:click="openSettings({{ Js::from($gpo['id']) }})" class="text-left font-DINPro-bold text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $gpo['name'] }}</button>
                                     <span class="mt-1 flex flex-wrap gap-1">
                                         @if ($gpo['builtin'])<span class="{{ $badge }} bg-violet-100 text-violet-800 dark:bg-violet-900/70 dark:text-violet-100">Built-in</span>@endif
-                                        {{-- preferences lists (counts from "preferences", drive maps before 1.3.0 from "drive_count") --}}
+                                        {{-- preferences lists (counts from "preference_counts", drive maps before 1.3.0 from "drive_count") --}}
                                         @foreach (\App\Modules\Ad\Gpp\Kinds::all() as $kindKey => $listKind)
-                                            @php $listCount = (int) ($gpo['preferences'][$kindKey] ?? ($kindKey === 'drives' ? ($gpo['drive_count'] ?? 0) : 0)); @endphp
+                                            @php $listCount = (int) ($gpo['preference_counts'][$kindKey] ?? ($kindKey === 'drives' ? ($gpo['drive_count'] ?? 0) : 0)); @endphp
                                             @if ($listCount > 0)<span class="{{ $badge }} bg-cerulean-100 text-cerulean-800 dark:bg-cerulean-900 dark:text-cerulean-100" data-gpp-count="{{ $kindKey }}">{{ $listKind->listCount($listCount) }}</span>@endif
                                         @endforeach
                                         @if ($gpo['status'] !== 'enabled')<span class="{{ $badge }} bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">{{ Gpos::STATUS[$gpo['status']] ?? $gpo['status'] }}</span>@endif

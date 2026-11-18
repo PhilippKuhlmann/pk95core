@@ -170,16 +170,22 @@ trait EditsPreferences
         return ! empty($this->gppSupported[$key]) && ($this->gpp[$key] ?? []) !== ($this->gppOriginal[$key] ?? []);
     }
 
-    /** a condition on a group needs the group; checked before anything is written */
+    /** a condition on a group needs the group, and the kind's own checks; before anything is written */
     protected function checkPreferences(): void
     {
-        foreach (array_keys(Kinds::all()) as $key) {
+        foreach (Kinds::all() as $key => $kind) {
             if (! $this->gppChanged($key)) {
                 continue;
             }
             foreach ($this->gpp[$key] as $i => $row) {
-                if (! $row['readonly'] && $row['condition'] !== 'all' && $row['group'] === '') {
+                if ($row['readonly']) {
+                    continue;
+                }
+                if ($row['condition'] !== 'all' && $row['group'] === '') {
                     $this->addError('gpp.'.$key.'.'.$i.'.group', 'Wähle die Sicherheitsgruppe für die Bedingung.');
+                }
+                foreach ($kind->check($row) as $field => $message) {
+                    $this->addError('gpp.'.$key.'.'.$i.'.'.$field, $message);
                 }
             }
         }

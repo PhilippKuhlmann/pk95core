@@ -20,8 +20,8 @@
             @foreach (Shortcuts::TARGET_TYPES as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach
         </x-input.select>
     </x-field>
-    <x-field :label="$isFile ? 'Pfad' : 'Adresse'" :for="'sc-target-'.$e" :feld="$p.'target'" :hilfe="$isFile ? 'UNC-Pfad, etwa einer Datei oder eines Programms auf einer Freigabe.' : 'Beginnt mit http:// oder https://.'" :required="true">
-        <x-input.text :id="'sc-target-'.$e" :feld="$p.'target'" wire:model.live.debounce.500ms="{{ $p }}target" :placeholder="$targetExample" class="mt-1 w-full font-mono text-sm" />
+    <x-field :label="$isFile ? 'Pfad' : 'Adresse'" :for="'sc-target-'.$e" :feld="$p.'target_path'" :hilfe="$isFile ? 'UNC-Pfad, etwa einer Datei oder eines Programms auf einer Freigabe.' : 'Beginnt mit http:// oder https://.'" :required="true">
+        <x-input.text :id="'sc-target-'.$e" :feld="$p.'target_path'" wire:model.live.debounce.500ms="{{ $p }}target_path" :placeholder="$targetExample" class="mt-1 w-full font-mono text-sm" />
     </x-field>
     @if ($isFile)
         <x-field label="Argumente" :for="'sc-args-'.$e" :feld="$p.'arguments'" hilfe="Optional, bis 260 Zeichen." class="md:col-span-2">
@@ -35,8 +35,8 @@
         <x-field label="Symboldatei" :for="'sc-icon-'.$e" :feld="$p.'icon_path'" hilfe="Optional, etwa eine .ico- oder .exe-Datei; leer: das Symbol des Ziels.">
             <x-input.text :id="'sc-icon-'.$e" :feld="$p.'icon_path'" wire:model.live.debounce.500ms="{{ $p }}icon_path" maxlength="260" class="mt-1 w-full font-mono text-sm" />
         </x-field>
-        <x-field label="Index" :for="'sc-index-'.$e" :feld="$p.'icon_index'" hilfe="0 bis 999.">
-            <x-input.text :id="'sc-index-'.$e" :feld="$p.'icon_index'" type="number" min="0" max="999" wire:model.live.debounce.500ms="{{ $p }}icon_index" class="mt-1 w-full tabular-nums" />
+        <x-field label="Index" :for="'sc-index-'.$e" :feld="$p.'icon_index'" hilfe="0 bis 255.">
+            <x-input.text :id="'sc-index-'.$e" :feld="$p.'icon_index'" type="number" min="0" max="255" wire:model.live.debounce.500ms="{{ $p }}icon_index" class="mt-1 w-full tabular-nums" />
         </x-field>
     </div>
 </details>

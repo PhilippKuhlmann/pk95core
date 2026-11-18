@@ -26,16 +26,20 @@
     </x-field>
 </div>
 
-<div class="mt-3">
-    <x-input.checkbox label="Alle anderen Mitglieder entfernen" hilfe="Danach sind nur noch die Konten unter „Hinzufügen“ Mitglied." wire:model.live="{{ $p }}remove_others" />
+<x-input.fehler :feld="$p.'members'" class="mt-1" />
+
+{{-- GPMC "Delete all member users / groups" --}}
+<div class="mt-3 flex flex-col gap-1">
+    <x-input.checkbox label="Alle anderen Benutzer entfernen" hilfe="Benutzer, die nicht unter „Hinzufügen“ stehen, verlieren die Mitgliedschaft." wire:model.live="{{ $p }}remove_other_users" />
+    <x-input.checkbox label="Alle anderen Gruppen entfernen" hilfe="Gruppen, die nicht unter „Hinzufügen“ stehen, verlieren die Mitgliedschaft." wire:model.live="{{ $p }}remove_other_groups" />
 </div>
-@if ($current['remove_others'])
-    <x-callout title="Achtung: alle anderen Mitglieder werden entfernt" ton="gelb" class="mt-2" data-remove-others-warning>
-        Auf jedem Rechner, für den diese Gruppenrichtlinie gilt, verlieren alle Mitglieder der lokalen Gruppe {{ $groupLabel }} ihre Mitgliedschaft, die hier nicht unter „Hinzufügen“ stehen, auch lokale Konten und Gruppen der Rechner.
-        @if ($current['local_group'] === 'administrators') Domain Admins bleibt immer Mitglied. @endif
+@if ($removes = LocalGroups::removesOthers($current))
+    <x-callout title="Achtung: alle anderen {{ $removes }} werden entfernt" ton="gelb" class="mt-2" data-remove-others-warning>
+        Auf jedem Rechner, für den diese Gruppenrichtlinie gilt, verlieren alle {{ $removes }} der lokalen Gruppe {{ $groupLabel }} ihre Mitgliedschaft, die hier nicht unter „Hinzufügen“ stehen, auch lokale Konten und Gruppen der Rechner.
+        @if ($current['local_group'] === 'administrators') Domain Admins nimmt PK95 AD dabei immer auf. @endif
     </x-callout>
 @elseif ($current['local_group'] === 'administrators')
-    <p class="mt-2 text-xs text-gray-600 dark:text-gray-300" data-domain-admins-hint>Domain Admins bleibt immer Mitglied der Administratoren und lässt sich nicht entfernen.</p>
+    <p class="mt-2 text-xs text-gray-600 dark:text-gray-300" data-domain-admins-hint>Domain Admins lässt sich aus den Administratoren nicht entfernen.</p>
 @endif
 
 @include('modules.ad.partials.gpp.condition')

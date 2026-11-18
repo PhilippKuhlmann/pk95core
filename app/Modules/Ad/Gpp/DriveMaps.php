@@ -4,8 +4,7 @@ namespace App\Modules\Ad\Gpp;
 
 /**
  * Drive maps (PK95 AD 1.1.0): user configuration → preferences → Windows settings → drive
- * maps, User\Preferences\Drives\Drives.xml. The condition is "target" here (the other
- * lists call it "audience").
+ * maps, User\Preferences\Drives\Drives.xml.
  */
 final class DriveMaps extends Kind
 {
@@ -49,11 +48,6 @@ final class DriveMaps extends Kind
     public function since(): string
     {
         return '1.1.0';
-    }
-
-    public function audienceField(): string
-    {
-        return 'target';
     }
 
     public function intro(): string

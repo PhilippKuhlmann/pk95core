@@ -114,12 +114,12 @@ class AdModuleTest extends FeatureTestCase
             // the other preferences lists (PK95 AD 1.3.0) on gp-1; gpp404: an app before 1.3.0
             'gpp' => [
                 'local-groups' => ['gp-1' => [
-                    ['uid' => '{L1}', 'group' => 'administrators', 'add' => [['id' => 'g-v', 'name' => 'Vertrieb', 'kind' => 'group']], 'remove' => [], 'remove_others' => false,
-                        'audience' => null, 'changed_at' => 1762900000000, 'readonly' => false, 'warning' => ''],
+                    ['uid' => '{L1}', 'group' => 'administrators', 'members' => [['id' => 'g-v', 'name' => 'Vertrieb', 'kind' => 'group', 'action' => 'add']],
+                        'remove_other_users' => false, 'remove_other_groups' => false, 'target' => null, 'changed_at' => 1762900000000, 'readonly' => false, 'warning' => ''],
                 ]],
                 'printers' => ['gp-1' => [
                     ['uid' => '{P1}', 'path' => '\\\\print\\buero', 'action' => 'update', 'default' => true,
-                        'audience' => ['group_id' => 'g-v', 'group_name' => 'Vertrieb', 'not' => false], 'changed_at' => 1762900000000, 'readonly' => false, 'warning' => ''],
+                        'target' => ['group_id' => 'g-v', 'group_name' => 'Vertrieb', 'not' => false], 'changed_at' => 1762900000000, 'readonly' => false, 'warning' => ''],
                 ]],
                 'shortcuts' => [],
             ],
@@ -168,6 +168,11 @@ class AdModuleTest extends FeatureTestCase
             ['key' => 'screen_lock_minutes', 'scope' => 'user', 'group' => 'Desktop', 'label' => 'Bildschirmsperre nach Inaktivität', 'type' => 'int', 'min' => 1, 'max' => 600, 'unit' => 'Minuten', 'help' => 'Startet den Bildschirmschoner mit Kennwortschutz.'],
             ['key' => 'wallpaper_path', 'scope' => 'user', 'group' => 'Desktop', 'label' => 'Hintergrundbild', 'type' => 'string', 'max' => 260],
             ['key' => 'deny_cmd', 'scope' => 'user', 'group' => 'System', 'label' => 'Eingabeaufforderung sperren', 'type' => 'bool'],
+            // editions (PK95 AD 1.2.0) on an entry and on an enum option
+            ['key' => 'store_off', 'editions' => ['enterprise', 'education'], 'scope' => 'computer', 'group' => 'Datenschutz', 'label' => 'Microsoft Store abschalten', 'type' => 'bool'],
+            ['key' => 'telemetry_level', 'scope' => 'computer', 'group' => 'Datenschutz', 'label' => 'Diagnosedaten', 'type' => 'enum',
+                'options' => [['value' => 0, 'label' => 'Sicherheit', 'editions' => ['enterprise', 'education']], ['value' => 1, 'label' => 'Erforderlich'],
+                    ['value' => 2, 'label' => 'Alle Editionen', 'editions' => ['home', 'pro', 'enterprise', 'education']]]],
             ['key' => 'logon_scripts', 'scope' => 'user', 'group' => 'Skripte', 'label' => 'Anmeldeskripte', 'type' => 'scripts'],
             ['key' => 'windows_update_mode', 'scope' => 'computer', 'group' => 'Windows Update', 'label' => 'Automatische Updates', 'type' => 'enum',
                 'options' => [['value' => 'off', 'label' => 'Aus'], ['value' => 'notify', 'label' => 'Nur melden'], ['value' => 'auto', 'label' => 'Automatisch installieren']]],
@@ -577,7 +582,7 @@ class AdModuleTest extends FeatureTestCase
         $gpo = $this->state['drives404'] ? $gpo : $gpo + ['drive_count' => count($this->state['drives'][$gpo['id']] ?? [])];
         if (! $this->state['gpp404']) {
             $count = fn (string $list) => count($this->state['gpp'][$list][$gpo['id']] ?? []);
-            $gpo['preferences'] = ['drives' => $gpo['drive_count'] ?? 0, 'local_groups' => $count('local-groups'), 'printers' => $count('printers'), 'shortcuts' => $count('shortcuts')];
+            $gpo['preference_counts'] = ['drives' => $gpo['drive_count'] ?? 0, 'local_groups' => $count('local-groups'), 'printers' => $count('printers'), 'shortcuts' => $count('shortcuts')];
         }
 
         return $gpo;
@@ -605,38 +610,45 @@ class AdModuleTest extends FeatureTestCase
 
                 continue;
             }
-            $audience = $item['audience'];
-            if ($audience !== null) {
-                if (! isset($s['groups'][$audience['group_id']])) {
-                    return $invalid("items.$n.audience.group_id", 'Die Gruppe gibt es nicht.');
+            $target = $item['target'];
+            if ($target !== null) {
+                if (! isset($s['groups'][$target['group_id']])) {
+                    return $invalid("items.$n.target.group_id", 'Die Gruppe gibt es nicht.');
                 }
-                $audience['group_name'] = $s['groups'][$audience['group_id']]['name'];
+                $target['group_name'] = $s['groups'][$target['group_id']]['name'];
             }
             if ($list === 'local-groups') {
                 if (in_array($item['group'], $groups, true)) {
                     return $invalid("items.$n.group", 'Diese lokale Gruppe kommt schon vor.');
                 }
                 $groups[] = $item['group'];
-                $add = array_column($item['add'], 'id');
-                $remove = array_column($item['remove'], 'id');
-                if (array_intersect($add, $remove)) {
-                    return $invalid("items.$n.remove", 'Ein Konto kann nicht zugleich hinzugefügt und entfernt werden.');
+                $seen = [];
+                $members = [];
+                foreach ($item['members'] as $k => $m) {
+                    if (in_array($m['id'], $seen, true)) {
+                        return $invalid("items.$n.members.$k.id", 'Dieses Konto kommt schon vor.');
+                    }
+                    $seen[] = $m['id'];
+                    $action = $m['action'] ?? 'add';
+                    if ($item['group'] === 'administrators' && $m['id'] === 'g-da' && $action === 'remove') {
+                        return $invalid("items.$n.members.$k.action", 'Domain Admins bleibt Mitglied der Administratoren.');
+                    }
+                    $members[] = ['id' => $m['id'], 'name' => $names[$m['id']] ?? $m['id'], 'kind' => isset($s['groups'][$m['id']]) ? 'group' : 'user', 'action' => $action];
                 }
-                if ($item['group'] === 'administrators' && ($k = array_search('g-da', $remove, true)) !== false) {
-                    return $invalid("items.$n.remove.$k.id", 'Domain Admins bleibt Mitglied der Administratoren.');
+                // a switch on the administrators keeps Domain Admins
+                if ($item['group'] === 'administrators' && ($item['remove_other_users'] || $item['remove_other_groups']) && ! in_array('g-da', $seen, true)) {
+                    $members[] = ['id' => 'g-da', 'name' => 'Domain Admins', 'kind' => 'group', 'action' => 'add'];
                 }
-                $member = fn ($mid) => ['id' => $mid, 'name' => $names[$mid] ?? $mid, 'kind' => isset($s['groups'][$mid]) ? 'group' : 'user'];
-                $item['add'] = array_map($member, $add);
-                $item['remove'] = array_map($member, $remove);
+                $item['members'] = $members;
             }
             if ($list === 'printers' && ! str_starts_with((string) $item['path'], '\\\\')) {
                 return $invalid("items.$n.path", 'Bitte einen freigegebenen Drucker wie \\\\server\\drucker angeben.');
             }
-            if ($list === 'shortcuts' && $item['target_type'] === 'url' && ! preg_match('#^https?://#', (string) $item['target'])) {
-                return $invalid("items.$n.target", 'Eine Webadresse beginnt mit http:// oder https://.');
+            if ($list === 'shortcuts' && $item['target_type'] === 'url' && ! preg_match('#^https?://#', (string) $item['target_path'])) {
+                return $invalid("items.$n.target_path", 'Eine Webadresse beginnt mit http:// oder https://.');
             }
             $out[] = ['uid' => $old ? $old['uid'] : '{NEW-'.$n.'}'] + $item + ['changed_at' => 1763000000000, 'readonly' => false, 'warning' => ''];
-            $out[array_key_last($out)]['audience'] = $audience;
+            $out[array_key_last($out)]['target'] = $target;
         }
         $s['gpp'][$list][$id] = $out;
         $s['gpos'][$id]['version'][$list === 'local-groups' ? 'computer' : 'user']++;
@@ -973,6 +985,30 @@ class AdModuleTest extends FeatureTestCase
         $this->assertSame(['2 Skripte', 'blue'], Gpos::settingStatus(['type' => 'scripts'], [['path' => 'a.bat'], ['path' => 'b.bat'], ['path' => ' ']]));
     }
 
+    public function test_gpo_settings_show_the_windows_editions_of_pk95_ad_1_2(): void
+    {
+        $this->assertSame('nur Enterprise/Education', Gpos::editionsLabel(['education', 'enterprise']));
+        $this->assertSame('nur Pro', Gpos::editionsLabel(['pro', 'unknown']));
+        $this->assertNull(Gpos::editionsLabel(null), 'missing: all editions');
+        $this->assertNull(Gpos::editionsLabel([]));
+        $this->assertNull(Gpos::editionsLabel(['home', 'pro', 'enterprise', 'education']));
+        $this->assertSame('Sicherheit (nur Enterprise)', Gpos::optionLabel(['label' => 'Sicherheit', 'editions' => ['enterprise']]));
+        $this->assertSame('Sicherheit (nur Enterprise)', Gpos::optionLabel(['label' => 'Sicherheit (nur Enterprise)', 'editions' => ['enterprise']]), 'not twice');
+
+        $page = Livewire::test(Gpos::class, ['installedApp' => $this->installed])->call('openSettings', 'gp-2')->set('settingsTab', 'computer');
+        // a badge on the restricted entry only (the rendered HTML: the JSON of the response escapes "/")
+        $html = $page->html();
+        $this->assertSame(1, substr_count($html, 'data-editions '));
+        $this->assertMatchesRegularExpression('#Microsoft Store abschalten(\s|<!--.*?-->)*<span[^>]*data-editions[^>]*>nur Enterprise/Education</span>#', $html);
+        $this->assertStringContainsString('>Sicherheit (nur Enterprise/Education)</option>', $html);
+        $this->assertStringContainsString('>Erforderlich</option>', $html);
+        $this->assertStringContainsString('>Alle Editionen</option>', $html);
+        // a hint under the select while a restricted option is chosen
+        $page->assertDontSeeHtml('data-option-editions')
+            ->set('settings.telemetry_level', '0')->assertSeeHtml('data-option-editions')->assertSee('Dieser Wert wirkt nur Enterprise')
+            ->set('settings.telemetry_level', '1')->assertDontSeeHtml('data-option-editions');
+    }
+
     public function test_gpo_settings_save_sends_only_the_changes(): void
     {
         // a 422 on a field of the other tab switches there
@@ -1068,9 +1104,11 @@ class AdModuleTest extends FeatureTestCase
     {
         $page = Livewire::test(Gpos::class, ['installedApp' => $this->installed])->call('openSettings', 'gp-1')
             ->call('editGpp', 'local_groups', 0)->assertSet('gpp.local_groups.0.add_ids', ['g-v'])
-            ->assertSee('Hinzufügen')->assertSee('Entfernen')->assertSee('Domain Admins bleibt immer Mitglied der Administratoren')
-            ->set('gpp.local_groups.0.add_ids', ['g-v', 'm-1'])->set('gpp.local_groups.0.remove_others', true)
-            ->assertSeeHtml('data-remove-others-warning')->assertSee('Achtung: alle anderen Mitglieder werden entfernt')
+            ->assertSee('Hinzufügen')->assertSee('Entfernen')->assertSeeHtml('data-domain-admins-hint')->assertDontSeeHtml('data-remove-others-warning')
+            ->set('gpp.local_groups.0.add_ids', ['g-v', 'm-1'])->set('gpp.local_groups.0.remove_other_users', true)
+            ->assertSeeHtml('data-remove-others-warning')->assertSee('Achtung: alle anderen Benutzer werden entfernt')->assertSee('Domain Admins nimmt PK95 AD dabei immer auf.')
+            ->set('gpp.local_groups.0.remove_other_groups', true)->assertSee('Achtung: alle anderen Benutzer und Gruppen werden entfernt')
+            ->call('closeGpp')->assertSeeHtml('data-remove-others')->assertSee('Alle anderen Benutzer und Gruppen werden entfernt')
             // a new row takes the first local group not used yet
             ->call('addGpp', 'local_groups')->assertSet('gpp.local_groups.1.local_group', 'remote_desktop_users')
             ->assertSee('Administratoren (schon in dieser Gruppenrichtlinie)')
@@ -1079,17 +1117,26 @@ class AdModuleTest extends FeatureTestCase
             ->set('gpp.local_groups.1.condition', 'all')->assertSet('gpp.local_groups.1.group', '')->assertSet('gpp.local_groups.1.local_group', 'remote_desktop_users');
         $page->call('saveSettings')->assertHasNoErrors()->assertSet('settingsFor', null);
         $items = last($this->sent('PUT', '/api/gpos/gp-1/local-groups'))['body']['items'];
-        $this->assertSame(['uid' => '{L1}', 'group' => 'administrators', 'add' => [['id' => 'g-v'], ['id' => 'm-1']], 'remove' => [], 'remove_others' => true, 'audience' => null], $items[0]);
-        $this->assertSame(['group' => 'remote_desktop_users', 'add' => [['id' => 'g-b']], 'remove' => [], 'remove_others' => false, 'audience' => null], $items[1]);
-        $this->assertSame('Max Muster', $this->state['gpp']['local-groups']['gp-1'][0]['add'][1]['name']);
+        $this->assertSame(['uid' => '{L1}', 'group' => 'administrators', 'members' => [['id' => 'g-v', 'action' => 'add'], ['id' => 'm-1', 'action' => 'add']],
+            'remove_other_users' => true, 'remove_other_groups' => true, 'target' => null], $items[0]);
+        $this->assertSame(['group' => 'remote_desktop_users', 'members' => [['id' => 'g-b', 'action' => 'add']],
+            'remove_other_users' => false, 'remove_other_groups' => false, 'target' => null], $items[1]);
+        $this->assertSame('Max Muster', $this->state['gpp']['local-groups']['gp-1'][0]['members'][1]['name']);
+        // the app adds Domain Admins to the administrators when a switch is on: the row shows it on reopening
+        $page->call('openSettings', 'gp-1')->assertSet('gpp.local_groups.0.add_ids', ['g-v', 'm-1', 'g-da'])->assertSee('Domain Admins');
 
         // 422 on members: mapped to the selection, the computer tab and the row open
         $page->call('openSettings', 'gp-1')->set('settingsTab', 'user')
-            ->call('editGpp', 'local_groups', 0)->set('gpp.local_groups.0.remove_ids', ['g-da'])->call('closeGpp')
-            ->call('saveSettings')->assertHasErrors('gpp.local_groups.0.remove_ids')->assertSet('settingsTab', 'computer')
-            ->assertSet('gppEditing', 'local_groups.0')->assertSee('Domain Admins bleibt Mitglied der Administratoren.')
-            ->set('gpp.local_groups.0.remove_ids', ['g-v'])->call('saveSettings')->assertHasErrors('gpp.local_groups.0.remove_ids')
-            ->assertSee('Ein Konto kann nicht zugleich hinzugefügt und entfernt werden.');
+            ->call('editGpp', 'local_groups', 0)->set('gpp.local_groups.0.add_ids', ['g-v'])->set('gpp.local_groups.0.remove_ids', ['g-da'])->call('closeGpp')
+            ->call('saveSettings')->assertHasErrors('gpp.local_groups.0.members')->assertSet('settingsTab', 'computer')
+            ->assertSet('gppEditing', 'local_groups.0')->assertSee('Domain Admins bleibt Mitglied der Administratoren.');
+        // checked before sending: an account in both lists, more than 100 members
+        $sent = count($this->sent('PUT', '/api/gpos/gp-1/local-groups'));
+        $page->set('gpp.local_groups.0.remove_ids', ['g-v'])->call('saveSettings')->assertHasErrors('gpp.local_groups.0.members')
+            ->assertSee('Ein Konto kann nicht zugleich hinzugefügt und entfernt werden.')
+            ->set('gpp.local_groups.0.remove_ids', array_map(fn ($i) => 'x-'.$i, range(1, 100)))->call('saveSettings')
+            ->assertHasErrors('gpp.local_groups.0.members')->assertSee('Höchstens 100 Mitglieder je lokaler Gruppe.');
+        $this->assertCount($sent, $this->sent('PUT', '/api/gpos/gp-1/local-groups'));
     }
 
     public function test_printers_and_shortcuts_round_trip(): void
@@ -1098,26 +1145,29 @@ class AdModuleTest extends FeatureTestCase
             ->call('addGpp', 'printers')->assertSet('gppEditing', 'printers.1')->assertSee('Neuer Drucker')
             ->set('gpp.printers.1.path', '10.0.0.5')->set('gpp.printers.1.condition', 'not_member')->set('gpp.printers.1.group', 'g-gl-unknown')
             ->call('addGpp', 'shortcuts')->assertSet('gppEditing', 'shortcuts.0')->assertSet('gpp.shortcuts.0.target_type', 'url')
-            ->set('gpp.shortcuts.0.name', 'Intranet')->set('gpp.shortcuts.0.target', 'ftp://intranet')->set('gpp.shortcuts.0.arguments', '-x')
+            ->set('gpp.shortcuts.0.name', 'Intranet')->set('gpp.shortcuts.0.target_path', 'ftp://intranet')->set('gpp.shortcuts.0.arguments', '-x')
             ->set('settingsTab', 'computer')->call('saveSettings')
             // the first list with an error: the printer (unknown group), on the user tab
             ->assertHasErrors('gpp.printers.1.group')->assertSet('settingsTab', 'user')->assertSet('gppEditing', 'printers.1')
             ->set('gpp.printers.1.group', 'g-v')->call('saveSettings')->assertHasErrors('gpp.printers.1.path')
             ->assertSee('Bitte einen freigegebenen Drucker wie')
-            ->set('gpp.printers.1.path', '\\\\print\\lager')->call('saveSettings')->assertHasErrors('gpp.shortcuts.0.target')->assertSet('gppEditing', 'shortcuts.0')
-            ->set('gpp.shortcuts.0.target', 'https://intranet.example.de')->set('gpp.shortcuts.0.icon_index', '3')->set('gpp.shortcuts.0.location', 'start_menu')
+            ->set('gpp.printers.1.path', '\\\\print\\lager')->call('saveSettings')->assertHasErrors('gpp.shortcuts.0.target_path')->assertSet('gppEditing', 'shortcuts.0')
+            ->set('gpp.shortcuts.0.target_path', 'https://intranet.example.de')
+            // the icon index is an unsigned byte
+            ->set('gpp.shortcuts.0.icon_index', '256')->call('saveSettings')->assertHasErrors('gpp.shortcuts.0.icon_index')->assertSee('Der Index ist eine Zahl von 0 bis 255.')
+            ->set('gpp.shortcuts.0.icon_index', '3')->set('gpp.shortcuts.0.location', 'start_menu')
             ->call('saveSettings')->assertHasNoErrors()->assertSet('settingsFor', null);
 
         $printers = last($this->sent('PUT', '/api/gpos/gp-1/printers'))['body']['items'];
         $this->assertSame('{P1}', $printers[0]['uid']);
-        $this->assertSame(['path' => '\\\\print\\lager', 'action' => 'update', 'default' => false, 'audience' => ['group_id' => 'g-v', 'not' => true]], $printers[1]);
-        $this->assertSame(['name' => 'Intranet', 'target_type' => 'url', 'target' => 'https://intranet.example.de', 'location' => 'start_menu',
-            'arguments' => '', 'icon_path' => '', 'icon_index' => 3, 'action' => 'update', 'audience' => null],
+        $this->assertSame(['path' => '\\\\print\\lager', 'action' => 'update', 'default' => false, 'target' => ['group_id' => 'g-v', 'not' => true]], $printers[1]);
+        $this->assertSame(['name' => 'Intranet', 'target_type' => 'url', 'target_path' => 'https://intranet.example.de', 'location' => 'start_menu',
+            'arguments' => '', 'icon_path' => '', 'icon_index' => 3, 'action' => 'update', 'target' => null],
             last($this->sent('PUT', '/api/gpos/gp-1/shortcuts'))['body']['items'][0], 'arguments only for files');
 
         // a file shortcut keeps its arguments
         $page->call('openSettings', 'gp-1')->set('settingsTab', 'user')->call('editGpp', 'shortcuts', 0)
-            ->set('gpp.shortcuts.0.target_type', 'file')->assertSee('Argumente')->set('gpp.shortcuts.0.target', '\\\\srv\\apps\\tool.exe')->set('gpp.shortcuts.0.arguments', '/silent')
+            ->set('gpp.shortcuts.0.target_type', 'file')->assertSee('Argumente')->set('gpp.shortcuts.0.target_path', '\\\\srv\\apps\\tool.exe')->set('gpp.shortcuts.0.arguments', '/silent')
             ->call('saveSettings')->assertSet('settingsFor', null);
         $this->assertSame(['file', '/silent'], [last($this->sent('PUT', '/api/gpos/gp-1/shortcuts'))['body']['items'][0]['target_type'], last($this->sent('PUT', '/api/gpos/gp-1/shortcuts'))['body']['items'][0]['arguments']]);
     }

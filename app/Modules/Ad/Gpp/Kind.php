@@ -7,7 +7,7 @@ namespace App\Modules\Ad\Gpp;
  * shortcuts): GET/PUT /api/gpos/{id}/<endpoint> with {items} in file order, at most max()
  * items. What all kinds share lives here and in Concerns\EditsPreferences and the partials
  * in views/modules/ad/partials/gpp: uid (left out for new items), read-only items sent back
- * as they came (leaving one out deletes it), the condition on a security group
+ * as they came (leaving one out deletes it), the condition on a security group in "target"
  * (all | member | not_member ↔ {group_id, group_name, not} or null), changed_at, warning.
  * A kind only adds its own fields, columns and editor (views gpp/<key>/cells and fields).
  */
@@ -121,10 +121,21 @@ abstract class Kind
      */
     abstract public function columns(): array;
 
-    /** the field of the condition in the API: "target" (drive maps) or "audience" */
+    /** the field of the condition in the API ("target" in every list of PK95 AD) */
     public function audienceField(): string
     {
-        return 'audience';
+        return 'target';
+    }
+
+    /**
+     * Checks before anything is sent: field (below the row) → message.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, string>
+     */
+    public function check(array $row): array
+    {
+        return [];
     }
 
     public function max(): int
@@ -257,9 +268,8 @@ abstract class Kind
     }
 
     /**
-     * Form field of a 422 field below "items.": "2.audience.group_id" → "2.group" (only the
-     * kind's own condition field: a shortcut has a field "target" of its own); a kind maps its
-     * own nested fields (e.g. "2.add.1.id" → "2.add_ids").
+     * Form field of a 422 field below "items.": "2.target.group_id" → "2.group"; a kind maps its
+     * own nested fields (e.g. "2.members.1.id" → "2.members").
      */
     public function errorField(string $rest): string
     {
