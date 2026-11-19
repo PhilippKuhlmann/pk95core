@@ -42,6 +42,7 @@
                 <x-aside.toplink label="Ereignisse" icon="list" :href="route('events.index')" :aktiv="request()->routeIs('events.*')" />
                 <x-aside.toplink label="Benachrichtigungen" icon="signal" :href="route('notifications.index')" :aktiv="request()->routeIs('notifications.*')" />
                 <x-aside.toplink label="Automatik" icon="sparkles" :href="route('automation')" :aktiv="request()->routeIs('automation')" />
+                <x-aside.toplink label="Updates" icon="refresh" :href="route('settings.updates')" :aktiv="request()->routeIs('settings.updates')" />
                 <x-aside.toplink label="Einstellungen" icon="cog" :href="route('settings')" :aktiv="request()->routeIs('settings')" />
             </ul>
         </div>

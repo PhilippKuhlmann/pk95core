@@ -9,6 +9,7 @@ use App\Models\Backup;
 use App\Models\InstalledApp;
 use App\Services\Apps\AppManager;
 use App\Services\Backups\BackupService;
+use App\Services\Updates\AutoUpdates;
 use App\Services\Updates\Registry;
 use App\Services\Updates\UpdateService;
 use App\Support\Settings;
@@ -237,6 +238,18 @@ class BackupUpdateTest extends FeatureTestCase
         $app->update(['update_policy' => 'notify', 'available_version' => '2.0.0']);
         $this->artisan('pk95:maintenance --force')->expectsOutputToContain('demo: Sicherung eingeplant')->assertSuccessful();
         $this->assertSame('1.1.0', $app->refresh()->tag);
+    }
+
+    public function test_a_new_app_starts_with_the_default_update_policy(): void
+    {
+        Settings::put(AutoUpdates::APP_POLICY, 'minor');
+        $app = $this->runningDemo();
+        $this->assertSame('minor', $app->update_policy);
+
+        // a reinstallation keeps the app's own policy
+        $app->update(['update_policy' => 'off']);
+        Settings::put(AutoUpdates::APP_POLICY, 'all');
+        $this->assertSame('off', app(AppManager::class)->activate('demo')->refresh()->update_policy);
     }
 
     public function test_app_page_offers_backups_and_updates(): void

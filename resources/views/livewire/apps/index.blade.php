@@ -23,7 +23,7 @@
     </x-page-header>
 
     @if ($run)
-        <x-callout title="Alle Updates laufen" class="m-3" data-update-run>
+        <x-callout :title="($run['automatic'] ?? false) ? 'Automatische Updates laufen' : 'Alle Updates laufen'" class="m-3" data-update-run>
             Eins nach dem anderen, PK95 Core zuletzt. Du kannst die Seite verlassen, Core macht im Hintergrund weiter.
             <ol class="mt-2 flex flex-wrap gap-x-4 gap-y-1">
                 @foreach ($progress as $i => $p)

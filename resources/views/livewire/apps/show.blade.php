@@ -91,7 +91,7 @@
                         @endunless
                     </div>
                 @endif
-                <x-field label="Update-Regel" for="u-policy" hilfe="Automatische Updates laufen im Wartungsfenster (Einstellungen).">
+                <x-field label="Update-Regel" for="u-policy" hilfe="Automatische Updates laufen im Wartungsfenster (Updates).">
                     <x-input.select id="u-policy" wire:model.live="updatePolicy" class="mt-1">
                         @foreach ($policies as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach
                     </x-input.select>

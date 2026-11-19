@@ -117,6 +117,10 @@ return [
         // Daily maintenance window (HH:MM): scheduled backups and automatic updates.
         'maintenance_time' => '03:30',
         'maintenance_last_run' => '',
+        // Update policies (Einstellungen → Updates): Core itself (notify, patch, minor, all; never
+        // a new major version) and the policy a newly installed app starts with.
+        'core_update_policy' => 'notify',
+        'app_update_policy' => 'notify',
         // Backups kept per app (older ones are deleted; failed ones do not count).
         'backup_keep' => 7,
         // Automation: a deployed app (ProxApps) gets a proxy host <subdomain>.<base domain>

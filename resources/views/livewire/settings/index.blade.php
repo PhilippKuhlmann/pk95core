@@ -6,7 +6,8 @@
             <div class="text-lg font-CoconPro text-gray-900 dark:text-gray-100">Wartungsfenster</div>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Einmal am Tag zu dieser Uhrzeit sichert Core die Apps (wo „Tägliche Sicherung“ an ist) und spielt automatische Updates ein
-                (wo die Update-Regel es erlaubt). Ein Update sichert vorher selbst.
+                (wo die Update-Regel es erlaubt). Ein Update sichert vorher selbst. Welche Updates von selbst laufen, steht unter
+                <a href="{{ route('settings.updates') }}" wire:navigate class="text-cerulean-700 hover:underline dark:text-cerulean-300">Updates</a>.
             </p>
             <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <x-field label="Uhrzeit" for="s-time" feld="maintenanceTime" :hilfe="$lastRun ? 'Zuletzt am '.\Illuminate\Support\Carbon::parse($lastRun)->format('d.m.Y') : 'Noch nie gelaufen'">
