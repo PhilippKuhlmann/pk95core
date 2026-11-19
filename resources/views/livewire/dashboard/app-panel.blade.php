@@ -8,7 +8,9 @@
     use App\Modules\Proxy\Fmt as ProxyFmt;
     use App\Modules\Proxy\Overview as ProxyOverview;
 
-    $home = ['dns' => 'overview', 'proxy' => 'overview', 'uptime' => 'monitors', 'proxapps' => 'dashboard'][$app?->app_id] ?? null;
+    $home = ['dns' => 'overview', 'proxy' => 'overview', 'uptime' => 'monitors', 'proxapps' => 'dashboard', 'ad' => 'domain'][$app?->app_id] ?? null;
+    // PK95 AD shows the state of the domain, not figures of 24 h: the realm stands there instead
+    $corner = $appId === 'ad' ? (($f['ok'] ?? false) ? ($f['realm'] ?? '') : '') : '24 h';
     $href = $app ? ($home ? route('apps.page', [$app, $home]) : route('apps.show', $app)) : route('apps.index');
     $label = 'text-xs text-gray-500 dark:text-gray-400';
     $value = 'text-xl font-DINPro-bold text-gray-900 dark:text-gray-100';
@@ -19,7 +21,7 @@
         <a href="{{ $href }}" wire:navigate class="group flex items-center gap-2">
             <x-icon :name="$app?->manifest['icon'] ?? $app?->definition()?->icon ?? 'box'" class="h-5 w-5 shrink-0 text-cerulean-600 dark:text-cerulean-400" />
             <span class="min-w-0 flex-1 truncate font-DINPro-bold text-gray-900 group-hover:text-cerulean-700 dark:text-gray-100 dark:group-hover:text-cerulean-300">{{ $app?->displayName() ?? $appId }}</span>
-            <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">24 h</span>
+            @if ($corner !== '')<span class="min-w-0 shrink truncate text-xs text-gray-500 dark:text-gray-400" @if ($appId === 'ad') data-realm @endif>{{ $corner }}</span>@endif
         </a>
 
         @if (! $f['ok'])
@@ -93,6 +95,33 @@
                     @endforeach
                 </ul>
             @endif
+        @elseif ($appId === 'ad' && ! ($f['ready'] ?? false))
+            <p class="mt-3 flex items-start gap-2 text-sm text-amber-800 dark:text-amber-200" data-ad-unconfigured>
+                <x-icon name="warn" class="mt-0.5 h-4 w-4 shrink-0" sw="2" />
+                <span>{{ ($f['state'] ?? '') === 'provisioning' ? 'Die Domäne wird gerade eingerichtet.' : 'Die Domäne ist noch nicht eingerichtet.' }}
+                    <a href="{{ $href }}" wire:navigate class="font-medium underline">Zum Einrichtungsassistenten</a></span>
+            </p>
+        @elseif ($appId === 'ad')
+            <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div><div class="{{ $label }}">Benutzer</div><div class="{{ $value }}">{{ $f['users'] }}</div></div>
+                <div><div class="{{ $label }}">Gruppen</div><div class="{{ $value }}">{{ $f['groups'] }}</div></div>
+                <div><div class="{{ $label }}">Computer</div><div class="{{ $value }}">{{ $f['computers'] }}</div></div>
+                <div><div class="{{ $label }}">Gruppenrichtlinien</div><div class="{{ $value }}">{{ $f['gpos'] }}</div></div>
+            </div>
+            {{-- status line: each check with a dot, the app's message as tooltip when it fails --}}
+            <ul class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-700 dark:text-gray-300" data-ad-checks>
+                @foreach ($f['checks'] as $check)
+                    <li class="inline-flex items-center gap-1.5" @unless ($check['ok']) data-tip="{{ $check['message'] }}" data-check-failed @endunless>
+                        <span @class(['h-2 w-2 shrink-0 rounded-full', 'bg-green-500' => $check['ok'], 'bg-amber-500' => ! $check['ok']]) aria-hidden="true"></span>
+                        {{ $check['label'] }}<span class="sr-only">: {{ $check['ok'] ? 'in Ordnung' : $check['message'] }}</span>
+                    </li>
+                @endforeach
+                @if ($f['locked'] !== null)
+                    <li @class(['inline-flex items-center gap-1.5', 'font-medium text-rose-700 dark:text-rose-300' => $f['locked'] > 0]) data-ad-locked>
+                        <x-icon name="lock" class="h-3.5 w-3.5 shrink-0" />{{ $f['locked'] === 1 ? '1 gesperrtes Konto' : $f['locked'].' gesperrte Konten' }}
+                    </li>
+                @endif
+            </ul>
         @elseif ($appId === 'proxapps')
             <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div><div class="{{ $label }}">Apps (LXC)</div><div class="{{ $value }}">{{ $f['deployed'] }}</div></div>

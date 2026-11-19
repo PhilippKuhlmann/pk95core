@@ -11,7 +11,8 @@ use Illuminate\Support\Carbon;
 /**
  * Everything on the dashboard that needs a look, worst first, each with the page to go to:
  * apps that do not run or do not answer, failed proxy hosts and monitors, certificates that
- * expire soon, known vulnerabilities, failed backups and updates.
+ * expire soon, known vulnerabilities, the warnings an app's figures carry (PK95 AD: domain not
+ * set up, Samba, NTP, resolver, Unix IDs), failed backups and updates.
  */
 class Problems
 {
@@ -40,12 +41,18 @@ class Problems
                 continue; // installing, updating: shown on the app cards
             }
             $f = $this->figures->for($app);
-            if (! $f['ok'] && $app->definition()?->module) {
-                $out[] = ['tone' => 'warn', 'text' => "{$name} antwortet nicht: {$f['error']}", 'href' => route('apps.show', $app)];
+            // only real failures: an app Core has no figures for ({ok: true, none: true}) is fine
+            if (! $f['ok']) {
+                if ($app->definition()?->module) {
+                    $out[] = ['tone' => 'warn', 'text' => "{$name} antwortet nicht: {$f['error']}", 'href' => route('apps.show', $app)];
+                }
 
                 continue;
             }
             $page = fn (string $key) => route('apps.page', [$app, $key]);
+            foreach ($f['warnings'] ?? [] as $warning) {
+                $out[] = ['tone' => 'warn', 'text' => $warning['text'], 'href' => $page($warning['page'])];
+            }
             foreach ($f['downHosts'] ?? [] as $host) {
                 $out[] = ['tone' => 'bad', 'text' => "Proxy-Host {$host['domain']} ist nicht erreichbar".($host['error'] !== '' ? ": {$host['error']}" : '.'), 'href' => $page('hosts')];
             }

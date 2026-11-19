@@ -14,7 +14,10 @@ use Throwable;
 /**
  * Figures of the last 24 h per app for the dashboard, from the apps' own APIs. Each app is
  * read at most every TTL seconds (the tiles and the problem list share the cached result), and
- * a failing app only gives {ok: false, error} for its own tile.
+ * a failing app only gives {ok: false, error} for its own tile. An app Core has no figures for
+ * gives {ok: true, none: true}: nothing to show, and nothing wrong.
+ *
+ * "warnings" (optional, any app): [{text, page}] for "Probleme & Warnungen", page = module page.
  */
 class AppFigures
 {
@@ -27,7 +30,7 @@ class AppFigures
     public const PROXY_CLIENT_FILTER = '1.3.0';
 
     /**
-     * @return array<string, mixed> {ok: true, ...} or {ok: false, error: string}
+     * @return array<string, mixed> {ok: true, ...}, {ok: true, none: true} or {ok: false, error: string}
      */
     public function for(InstalledApp $app): array
     {
@@ -35,11 +38,11 @@ class AppFigures
             return ['ok' => false, 'error' => 'Die App läuft gerade nicht.'];
         }
         $method = match ($app->app_id) {
-            'dns' => 'dns', 'proxy' => 'proxy', 'uptime' => 'uptime', 'proxapps' => 'proxapps',
+            'dns' => 'dns', 'proxy' => 'proxy', 'uptime' => 'uptime', 'proxapps' => 'proxapps', 'ad' => 'ad',
             default => null,
         };
         if ($method === null) {
-            return ['ok' => false, 'error' => 'Für diese App gibt es keine Kennzahlen.'];
+            return ['ok' => true, 'none' => true];
         }
         $key = "dashboard.figures.{$app->app_id}.".md5((string) json_encode(self::hiddenClients($app)));
 
@@ -180,6 +183,79 @@ class AppFigures
             'active' => ($counts['queued'] ?? 0) + ($counts['running'] ?? 0),
             'failed' => $counts['failed'] ?? 0,
             'connections' => count((array) ($view['connections'] ?? [])),
+        ];
+    }
+
+    /** names of the Samba services in /api/status */
+    private const AD_SERVICES = ['ldap' => 'LDAP', 'kerberos' => 'Kerberos', 'smb' => 'SMB', 'dns' => 'DNS'];
+
+    /**
+     * PK95 AD: the counts of /api/domain, a status line from /api/status and /api/domain (Samba
+     * and its services, NTP, the DC's resolver, Unix IDs) and the locked accounts of the user list.
+     * Every check that fails is a warning with the app's own message.
+     *
+     * @return array<string, mixed>
+     */
+    private function ad(InstalledApp $app): array
+    {
+        $client = $app->client();
+        $status = self::json($client->get('/api/status'));
+        $state = (string) ($status['state'] ?? '');
+        if ($state !== 'ready') {
+            $text = $state === 'provisioning' ? 'PK95 AD: Die Domäne wird gerade eingerichtet.' : 'PK95 AD: Domäne noch nicht eingerichtet';
+
+            return ['ok' => true, 'ready' => false, 'state' => $state, 'warnings' => [['text' => $text, 'page' => 'domain']]];
+        }
+        $domain = self::json($client->get('/api/domain'));
+        $counts = (array) ($domain['counts'] ?? []);
+
+        $checks = [];
+        $samba = (array) ($status['samba'] ?? []);
+        $sambaState = (string) ($samba['state'] ?? 'running');
+        $down = array_values(array_map(fn ($k) => self::AD_SERVICES[$k] ?? strtoupper((string) $k),
+            array_keys(array_filter((array) ($samba['services'] ?? []), fn ($up) => ! $up))));
+        $checks['samba'] = match (true) {
+            // starting, or stopped for a backup: on its way, not a problem
+            in_array($sambaState, ['starting', 'backup'], true) => ['label' => 'Samba', 'ok' => true, 'message' => ''],
+            $sambaState !== 'running' => ['label' => 'Samba', 'ok' => false,
+                'message' => 'Samba läuft nicht'.($sambaState === 'restarting' ? ' und wird neu gestartet' : '').(($samba['last_exit'] ?? '') !== '' ? ': '.$samba['last_exit'] : '.')],
+            $down !== [] => ['label' => 'Samba', 'ok' => false,
+                'message' => (count($down) === 1 ? 'Der Dienst '.$down[0].' antwortet nicht.' : 'Die Dienste '.implode(', ', $down).' antworten nicht.')],
+            default => ['label' => 'Samba', 'ok' => true, 'message' => ''],
+        };
+        $ntp = (array) ($domain['ntp'] ?? $status['ntp'] ?? []);
+        if ($ntp !== []) {
+            $checks['ntp'] = ['label' => 'NTP', 'ok' => (bool) ($ntp['available'] ?? true), 'message' => (string) (($ntp['message'] ?? '') ?: 'NTP ist nicht verfügbar.')];
+        }
+        foreach (['resolver' => 'DNS-Auflösung', 'idmap' => 'Unix-IDs'] as $key => $label) {
+            if (is_array($domain[$key] ?? null)) {
+                $checks[$key] = ['label' => $label, 'ok' => (bool) ($domain[$key]['ok'] ?? true), 'message' => (string) (($domain[$key]['message'] ?? '') ?: "{$label}: Problem.")];
+            }
+        }
+
+        // locked accounts from the user list (at most 2000 items): a bonus, empty when it fails
+        $locked = null;
+        try {
+            $users = $client->get('/api/users');
+            if ($users->successful()) {
+                $locked = collect((array) $users->json('items'))->where('locked', true)->count();
+            }
+        } catch (AppException) {
+            // shown as "–"
+        }
+
+        return [
+            'ok' => true,
+            'ready' => true,
+            'realm' => (string) ($domain['realm'] ?? $status['domain']['realm'] ?? ''),
+            'users' => (int) ($counts['users'] ?? 0),
+            'groups' => (int) ($counts['groups'] ?? 0),
+            'computers' => (int) ($counts['computers'] ?? 0),
+            'gpos' => (int) ($counts['gpos'] ?? 0),
+            'locked' => $locked,
+            'checks' => array_values($checks),
+            'warnings' => array_values(array_map(fn ($c) => ['text' => 'PK95 AD: '.$c['message'], 'page' => 'domain'],
+                array_filter($checks, fn ($c) => ! $c['ok']))),
         ];
     }
 
