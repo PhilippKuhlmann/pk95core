@@ -12,6 +12,7 @@ use App\Livewire\Dashboard;
 use App\Livewire\Events\Index as EventsIndex;
 use App\Livewire\Notifications\Index as NotificationsIndex;
 use App\Livewire\Settings\Index as SettingsIndex;
+use App\Livewire\Settings\Updates as SettingsUpdates;
 use Illuminate\Support\Facades\Route;
 
 // --- first run + authentication ---------------------------------------------------
@@ -34,6 +35,7 @@ Route::middleware('auth')->group(function () {
     Route::livewire('/events', EventsIndex::class)->name('events.index');
     Route::livewire('/notifications', NotificationsIndex::class)->name('notifications.index');
     Route::livewire('/settings', SettingsIndex::class)->name('settings');
+    Route::livewire('/settings/updates', SettingsUpdates::class)->name('settings.updates');
     Route::livewire('/automation', AutomationIndex::class)->name('automation');
 
     // Catalog + lifecycle of the app containers

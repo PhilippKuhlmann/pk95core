@@ -6,9 +6,9 @@ use App\Jobs\AppOperation;
 use App\Models\AppLink;
 use App\Models\InstalledApp;
 use App\Services\Apps\AppManager;
-use App\Services\Apps\AppRegistry;
 use App\Services\Automation\Linker;
 use App\Services\Docker\DockerClient;
+use App\Services\Updates\AutoUpdates;
 use App\Services\Updates\CoreUpdater;
 use App\Services\Updates\UpdateAll;
 use App\Services\Updates\UpdateService;
@@ -43,10 +43,10 @@ Artisan::command('pk95:check-updates', function (UpdateService $updates, CoreUpd
 })->purpose('Registry nach neuen Versionen der Apps fragen');
 
 // Once a day at the maintenance time: automatic updates (with their own backup) per the
-// app's policy, otherwise the scheduled backup.
+// policies of the apps and of Core, otherwise the scheduled backup.
 // The time is local (display timezone); due within the hour from it on, so a time the clocks
 // skip in spring still runs and a missed minute (Core restarting) does not cost the day.
-Artisan::command('pk95:maintenance {--force : Unabhängig von der Uhrzeit ausführen}', function () {
+Artisan::command('pk95:maintenance {--force : Unabhängig von der Uhrzeit ausführen}', function (AutoUpdates $auto, UpdateAll $all) {
     $local = now(Format::timezone());
     $today = $local->toDateString();
     [$hour, $minute] = array_map('intval', explode(':', (string) Settings::get('maintenance_time')) + [0, 0]);
@@ -57,13 +57,36 @@ Artisan::command('pk95:maintenance {--force : Unabhängig von der Uhrzeit ausfü
     }
     Settings::put('maintenance_last_run', $today);
 
+    // Automatic updates per policy (apps only when the new version fits the Core module), Core
+    // last: UpdateAll starts it once no app operation waits or runs (pk95:sync ticks the run).
+    $plan = $auto->plan();
+    $apps = collect($plan['apps'])->where('planned', true)->pluck('app')->values();
+    $core = (bool) ($plan['core']['planned'] ?? false);
+    $updating = [];
+    if ($apps->isNotEmpty() || $core) {
+        try {
+            $all->start($apps, $core, automatic: true);
+            $updating = $apps->pluck('app_id')->all();
+            foreach ($apps as $app) {
+                $this->line("{$app->app_id}: Update eingeplant");
+            }
+            if ($core) {
+                $this->line('core: Update eingeplant (nach den Apps)');
+            }
+        } catch (Throwable $e) {
+            $this->warn("Automatische Updates übersprungen: {$e->getMessage()}");
+        }
+    }
+    foreach (collect($plan['apps'])->where('planned', false) as $row) {
+        $this->line("{$row['app']->app_id}: kein automatisches Update ({$row['reason']})");
+    }
+    if ($plan['core'] !== null && ! $core) {
+        $this->line("core: kein automatisches Update ({$plan['core']['reason']})");
+    }
+
+    // the scheduled backup for the others (an update backs up by itself)
     foreach (InstalledApp::query()->whereIn('status', [InstalledApp::RUNNING, InstalledApp::UNHEALTHY, InstalledApp::STOPPED])->get() as $app) {
-        // automatic only when the new version fits the Core module (else it waits for a Core update)
-        if (in_array($app->update_policy, ['patch', 'minor', 'all'], true) && $app->available_version !== null
-            && app(AppRegistry::class)->fits($app, $app->available_version)) {
-            AppOperation::update($app->app_id);
-            $this->line("{$app->app_id}: Update eingeplant");
-        } elseif ($app->auto_backup && $app->definition()?->volumes) {
+        if (! in_array($app->app_id, $updating, true) && $app->auto_backup && $app->definition()?->volumes) {
             AppOperation::backup($app->app_id, 'scheduled');
             $this->line("{$app->app_id}: Sicherung eingeplant");
         }

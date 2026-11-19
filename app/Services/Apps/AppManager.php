@@ -11,6 +11,7 @@ use App\Services\Catalog\Catalog;
 use App\Services\Docker\ContainerSpec;
 use App\Services\Docker\DockerClient;
 use App\Services\Docker\DockerException;
+use App\Services\Updates\AutoUpdates;
 use App\Services\Updates\Registry;
 use App\Services\Updates\UpdateService;
 use Illuminate\Support\Facades\DB;
@@ -49,7 +50,8 @@ class AppManager
             if ($app !== null && $app->isTransitional()) {
                 throw new AppException("{$definition->name} wird gerade bearbeitet.");
             }
-            $app ??= new InstalledApp(['app_id' => $definition->id]);
+            // a new installation starts with the default update policy (Einstellungen → Updates)
+            $app ??= new InstalledApp(['app_id' => $definition->id, 'update_policy' => AutoUpdates::appPolicy()]);
             $app->fill([
                 'status' => InstalledApp::INSTALLING,
                 'tag' => $tag ?? ($app->exists ? $app->tag : $definition->tag),

@@ -19,6 +19,10 @@ use Throwable;
  * itself comes last and only once no app job waits or runs: its self update replaces the
  * container that runs the queue. The run is kept in the settings, so the new Core (after
  * its own update) finishes it and records one summary event.
+ *
+ * The maintenance window starts the same kind of run with the apps and Core its policies
+ * allow (AutoUpdates, "automatic"). Core starts only once no app operation at all waits or
+ * runs (also the scheduled backups), and an automatic run checks the Core policy again then.
  */
 class UpdateAll
 {
@@ -84,24 +88,26 @@ class UpdateAll
     }
 
     /**
-     * Queue the app updates; Core follows in tick().
+     * Queue the app updates; Core follows in tick(). Without arguments: every update there is
+     * ("Alle aktualisieren"); the maintenance window passes what the policies allow.
      *
+     * @param  Collection<int, InstalledApp>|null  $apps
      * @return array<string, mixed> the run
      */
-    public function start(): array
+    public function start(?Collection $apps = null, ?bool $core = null, bool $automatic = false): array
     {
         if ($this->running() !== null) {
             throw new AppException('Die Updates laufen bereits.');
         }
-        $apps = $this->apps();
-        $core = self::coreReady($this->core->status());
+        $apps ??= $this->apps();
+        $core ??= self::coreReady($this->core->status());
         if ($apps->isEmpty() && ! $core) {
             throw new AppException('Es gibt keine Updates. Such zuerst nach Updates.');
         }
         foreach ($apps as $app) {
             $app->update(['step' => 'Update eingeplant']);
         }
-        $run = ['started_at' => now()->toIso8601String(), 'apps' => $apps->pluck('app_id')->all(), 'core' => $core, 'core_started' => false];
+        $run = ['started_at' => now()->toIso8601String(), 'apps' => $apps->pluck('app_id')->values()->all(), 'core' => $core, 'core_started' => false, 'automatic' => $automatic];
         Settings::put(self::SETTING, $run);
         Settings::put(self::RESULT, null);
         foreach ($apps as $app) {
@@ -149,6 +155,20 @@ class UpdateAll
             return null;
         }
         if ($run['core'] && ! $run['core_started'] && ! isset($run['core_error']) && ! $stale) {
+            // Core replaces the container that runs the queue: not while any app operation waits or runs
+            if ($this->operationsBusy()) {
+                return null;
+            }
+            $reason = ($run['automatic'] ?? false) ? app(AutoUpdates::class)->coreReason() : null;
+            if ($reason !== null) {
+                // the policy or the offered build changed since the window started
+                $run['core'] = false;
+                $run['core_skipped'] = $reason;
+                Settings::put(self::SETTING, $run);
+                $this->summarize($run);
+
+                return 'done';
+            }
             try {
                 $this->core->start();
                 $run['core_started'] = true;
@@ -211,6 +231,21 @@ class UpdateAll
     }
 
     /**
+     * Any app operation, activation or removal waiting or running (all apps, not only the run's).
+     */
+    private function operationsBusy(): bool
+    {
+        if (InstalledApp::query()->where(fn ($q) => $q->whereNotNull('step')->orWhereIn('status', InstalledApp::TRANSITIONAL))->exists()) {
+            return true;
+        }
+        try {
+            return DB::table('jobs')->exists();
+        } catch (Throwable) {
+            return false; // no database queue
+        }
+    }
+
+    /**
      * Outcome per app from the update events since the start.
      *
      * @param  array<string, mixed>  $run
@@ -254,11 +289,12 @@ class UpdateAll
             $failed ? count($failed).' fehlgeschlagen' : null,
             $skipped ? count($skipped).' nicht gelaufen' : null,
         ]);
-        $title = 'Alle Updates abgeschlossen: '.implode(', ', $parts);
+        $title = (($run['automatic'] ?? false) ? 'Automatische Updates abgeschlossen: ' : 'Alle Updates abgeschlossen: ').implode(', ', $parts);
         $body = implode("\n", array_filter([
             $done ? 'Aktualisiert: '.implode(', ', $done) : null,
             $failed ? 'Fehlgeschlagen: '.implode(', ', $failed).'. Die vorige Version läuft weiter, Details unter Ereignisse.' : null,
             $skipped ? 'Nicht gelaufen: '.implode(', ', $skipped).'.' : null,
+            isset($run['core_skipped']) ? 'PK95 Core nicht aktualisiert: '.$run['core_skipped'].'.' : null,
         ]));
         AppEvent::record(AppEvent::CORE, 'core.update.all', $ok ? 'info' : 'warning', $title, $body);
         Settings::put(self::RESULT, ['at' => now()->toIso8601String(), 'ok' => $ok, 'title' => $title, 'body' => $body]);
