@@ -4,6 +4,7 @@ namespace App\Modules\Proxy;
 
 use App\Models\InstalledApp;
 use App\Modules\Concerns\TalksToApp;
+use Illuminate\Support\HtmlString;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -19,6 +20,10 @@ class Hosts extends Component
 
     #[Url(as: 'kind')]
     public string $kindFilter = '';
+
+    /** search over domains, target, redirect, name, notes and access list (in the URL as ?q=) */
+    #[Url(as: 'q', except: '')]
+    public string $q = '';
 
     /** null = list, 'new' = create form, otherwise the id of the host being edited */
     public ?string $editing = null;
@@ -53,6 +58,65 @@ class Hosts extends Component
     public function filter(string $kind): void
     {
         $this->kindFilter = isset(self::KINDS[$kind]) ? $kind : '';
+    }
+
+    public function resetSearch(): void
+    {
+        $this->q = '';
+    }
+
+    /**
+     * Does the host match the search (case-insensitive, every word somewhere)? Looks at all
+     * domains, the target (host:port and scheme://host:port), the redirect target, the status
+     * page title, the notes and the name of the access list.
+     *
+     * @param  array<string, mixed>  $host
+     * @param  array<int|string, string>  $listNames  access list id → name
+     */
+    public static function matches(array $host, string $q, array $listNames = []): bool
+    {
+        $words = preg_split('/\s+/', mb_strtolower(trim($q)), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if ($words === []) {
+            return true;
+        }
+        $target = (string) ($host['upstream_host'] ?? '');
+        if ($target !== '' && ! empty($host['upstream_port'])) {
+            $target .= ':'.$host['upstream_port'];
+        }
+        $haystack = mb_strtolower(implode("\n", array_filter([
+            implode("\n", array_map('strval', (array) ($host['domains'] ?? []))),
+            $target,
+            $target !== '' ? (($host['scheme'] ?? '') ?: 'http').'://'.$target : '',
+            (string) ($host['redirect_url'] ?? ''),
+            (string) ($host['status_title'] ?? ''),
+            (string) ($host['notes'] ?? ''),
+            (string) ($listNames[$host['access_list_id'] ?? 0] ?? ''),
+        ])));
+
+        foreach ($words as $word) {
+            if (! str_contains($haystack, $word)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** the domain with the search words marked (escaped HTML) */
+    public static function highlight(string $text, string $q): HtmlString
+    {
+        $words = array_filter(preg_split('/\s+/', trim($q), -1, PREG_SPLIT_NO_EMPTY) ?: [], fn ($w) => mb_strlen($w) > 0);
+        if ($words === []) {
+            return new HtmlString(e($text));
+        }
+        $pattern = '/('.implode('|', array_map(fn ($w) => preg_quote($w, '/'), $words)).')/iu';
+        $parts = preg_split($pattern, $text, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [$text];
+        $html = '';
+        foreach ($parts as $i => $part) {
+            $html .= $i % 2 === 1 ? '<mark class="rounded-sm bg-amber-200 px-0.5 text-inherit dark:bg-amber-500/40">'.e($part).'</mark>' : e($part);
+        }
+
+        return new HtmlString($html);
     }
 
     public function create(): void
@@ -135,16 +199,22 @@ class Hosts extends Component
         [$checks] = $this->load('/api/hosts/checks');
         $checks = collect(is_array($checks) ? $checks : [])->keyBy('host_id')->all();
 
-        $counts = array_count_values(array_column($hosts, 'kind'));
-        $shown = $this->kindFilter === '' ? $hosts : array_values(array_filter($hosts, fn ($h) => $h['kind'] === $this->kindFilter));
+        // the search first (the tabs count its hits), then the kind of the visible tab
+        $listNames = array_column($lists, 'name', 'id');
+        $searching = trim($this->q) !== '';
+        $found = $searching ? array_values(array_filter($hosts, fn ($h) => self::matches($h, $this->q, $listNames))) : $hosts;
+        $counts = array_count_values(array_column($found, 'kind'));
+        $shown = $this->kindFilter === '' ? $found : array_values(array_filter($found, fn ($h) => $h['kind'] === $this->kindFilter));
 
         return view('modules.proxy.hosts', [
             'hosts' => $hosts,
+            'found' => $found,
+            'searching' => $searching,
             'shown' => $shown,
             'counts' => $counts,
             'checks' => $checks,
             'lists' => $lists,
-            'listNames' => array_column($lists, 'name', 'id'),
+            'listNames' => $listNames,
             'listsWithUsers' => array_values(array_map(fn ($l) => (string) $l['id'], array_filter($lists, fn ($l) => ! empty($l['users'])))),
             'proxies' => array_values(array_filter($hosts, fn ($h) => $h['kind'] === 'proxy')),
             'loadError' => $error,

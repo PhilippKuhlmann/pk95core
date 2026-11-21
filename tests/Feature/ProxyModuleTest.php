@@ -990,6 +990,56 @@ class ProxyModuleTest extends FeatureTestCase
             ->assertDontSee('data-modal', false);
     }
 
+    public function test_host_search_matches_every_field_case_insensitively(): void
+    {
+        $host = $this->host(3, ['cloud.example.de', 'nextcloud.example.de'], ['scheme' => 'https', 'upstream_host' => '10.0.0.9', 'upstream_port' => 443,
+            'access_list_id' => 2, 'notes' => 'Dateiablage der Familie', 'status_title' => '']);
+        $lists = [1 => 'Intern', 2 => 'Familie'];
+        foreach (['cloud.example', 'NEXTCLOUD', '10.0.0.9:443', 'https://10.0.0.9', 'familie', 'dateiablage', 'next 443'] as $q) {
+            $this->assertTrue(Hosts::matches($host, $q, $lists), $q);
+        }
+        foreach (['alt.example', '10.0.0.5', 'intern', 'cloud 8080'] as $q) {
+            $this->assertFalse(Hosts::matches($host, $q, $lists), $q);
+        }
+        $this->assertTrue(Hosts::matches($this->hosts[2], 'NEU.example.de'), 'the redirect target');
+        $this->assertTrue(Hosts::matches($this->host(4, ['status.example.de'], ['kind' => 'status', 'status_title' => 'Unsere Dienste']), 'dienste'), 'the name');
+        $this->assertTrue(Hosts::matches($host, '  '), 'empty search');
+        $this->assertSame('next<mark class="rounded-sm bg-amber-200 px-0.5 text-inherit dark:bg-amber-500/40">Cloud</mark>.example.de &lt;x&gt;',
+            (string) Hosts::highlight('nextCloud.example.de <x>', 'cloud'));
+    }
+
+    public function test_host_search_filters_the_visible_kind_and_counts_the_hits(): void
+    {
+        $this->hosts[3] = $this->host(3, ['cloud.example.de', 'nextcloud.example.de'], ['upstream_host' => '10.0.0.9', 'upstream_port' => 443, 'access_list_id' => 2]);
+
+        $page = Livewire::test(Hosts::class, ['installedApp' => $this->installed])
+            ->assertSee('Hosts durchsuchen …')->assertDontSeeHtml('data-search-counts')->assertSee('Alle (3)')
+            // alias, case-insensitive; the tabs count the hits, the hit is marked in the domain
+            ->set('q', 'NEXTcloud')->assertSeeHtml('data-search-counts')->assertSee('Alle (1)')->assertSee('Reverse Proxy (1)')->assertSee('Weiterleitung (0)')
+            ->assertSeeHtml('<mark')->assertSee('cloud.example.de')->assertDontSee('app.example.de')->assertDontSee('alt.example.de')
+            // target
+            ->set('q', '10.0.0.5:8080')->assertSee('app.example.de')->assertDontSee('cloud.example.de')
+            // access list name
+            ->set('q', 'familie')->assertSee('cloud.example.de')->assertDontSee('app.example.de')
+            // the redirect target, but only in the visible kind
+            ->set('q', 'neu.example')->assertSee('alt.example.de')->assertSee('Weiterleitung (1)')
+            ->call('filter', 'proxy')->assertSeeHtml('data-search-empty')
+            ->assertSee('Keine Hosts für „')->assertSee('“ gefunden (Art: Reverse Proxy).')->assertSee('Suche zurücksetzen')
+            ->assertDontSee('Noch keine Reverse Proxys')
+            ->call('resetSearch')->assertSet('q', '')->assertDontSeeHtml('data-search-empty')->assertSee('app.example.de')->assertSee('cloud.example.de');
+        // the kind filter alone is unchanged
+        $page->call('filter', 'redirect')->assertSee('alt.example.de')->assertDontSee('cloud.example.de')->assertSee('Reverse Proxy (2)');
+    }
+
+    public function test_host_search_comes_from_the_url(): void
+    {
+        $this->get(route('apps.page', [$this->installed, 'hosts']).'?q=alt')->assertOk()
+            ->assertSee('alt.example.de')->assertDontSee('app.example.de')->assertSee('data-search-counts', false);
+
+        Livewire::withQueryParams(['q' => 'APP', 'kind' => 'proxy'])->test(Hosts::class, ['installedApp' => $this->installed])
+            ->assertSet('q', 'APP')->assertSet('kindFilter', 'proxy')->assertSee('app.example.de')->assertDontSee('alt.example.de');
+    }
+
     public function test_switches_put_the_whole_host_back(): void
     {
         Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('toggle', 2)->call('maintenance', 1);
