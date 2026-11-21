@@ -171,21 +171,34 @@
         </x-modal>
     @endif
 
-    <div class="m-3 flex flex-wrap gap-1" role="group" aria-label="Art">
-        @foreach (['' => 'Alle'] + Hosts::KINDS as $k => $label)
-            <button type="button" wire:click="filter('{{ $k }}')" aria-pressed="{{ $kindFilter === $k ? 'true' : 'false' }}"
-                @class(['rounded-lg px-3 py-1.5 text-sm transition-colors',
-                    'bg-cerulean-600 text-white' => $kindFilter === $k,
-                    'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-700' => $kindFilter !== $k])>
-                {{ $label }} ({{ $k === '' ? count($hosts) : ($counts[$k] ?? 0) }})
-            </button>
-        @endforeach
+    <div class="m-3 flex flex-wrap items-center justify-between gap-2">
+        {{-- while searching the tabs count the hits --}}
+        <div class="flex flex-wrap gap-1" role="group" aria-label="Art" @if ($searching) data-search-counts @endif>
+            @foreach (['' => 'Alle'] + Hosts::KINDS as $k => $label)
+                <button type="button" wire:click="filter('{{ $k }}')" aria-pressed="{{ $kindFilter === $k ? 'true' : 'false' }}"
+                    @class(['rounded-lg px-3 py-1.5 text-sm transition-colors',
+                        'bg-cerulean-600 text-white' => $kindFilter === $k,
+                        'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-700' => $kindFilter !== $k])>
+                    {{ $label }} ({{ $k === '' ? count($found) : ($counts[$k] ?? 0) }})
+                </button>
+            @endforeach
+        </div>
+        @if ($hosts)
+            <x-input.search wire:model.live.debounce.250ms="q" placeholder="Hosts durchsuchen …" class="w-full sm:w-72" />
+        @endif
     </div>
     @if ($daily['missing'])
         <p class="mx-3 -mt-1 mb-2 text-xs text-gray-500 dark:text-gray-400" data-daily-missing>Aufrufe pro Tag: braucht PK95 Proxy {{ \App\Modules\Proxy\Daily::MIN_VERSION }}</p>
     @endif
 
-    @if (! $shown && ! $loadError)
+    @if (! $shown && ! $loadError && $searching)
+        {{-- no hits: not the "Noch keine …" card, the hosts are there, the search finds none --}}
+        <div class="m-3 flex flex-col items-center gap-2 rounded-xl border border-dashed border-gray-300 px-4 py-8 text-center dark:border-gray-600" data-search-empty>
+            <x-icon name="search" class="h-6 w-6 text-gray-400" sw="2" />
+            <p class="text-sm text-gray-700 dark:text-gray-300">Keine Hosts für „<span class="font-medium break-all">{{ trim($q) }}</span>“ gefunden{{ $kindFilter !== '' ? ' (Art: '.Hosts::KINDS[$kindFilter].')' : '' }}.</p>
+            <button type="button" wire:click="resetSearch" class="text-sm font-medium text-cerulean-700 hover:underline dark:text-cerulean-300">Suche zurücksetzen</button>
+        </div>
+    @elseif (! $shown && ! $loadError)
         <x-panel class="m-3">
             <div class="text-center">
                 <div class="font-DINPro-bold text-gray-900 dark:text-gray-100">{{ Hosts::EMPTY[$kindFilter][0] }}</div>
@@ -231,7 +244,7 @@
                                 <div class="flex flex-col break-all md:break-normal">
                                     @foreach ($x['domains'] as $d)
                                         <div class="flex items-center gap-1">
-                                            <a href="{{ $logUrl($d) }}" wire:navigate data-tip="Zugriffe ansehen" class="min-w-0 font-medium text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $d }}</a>
+                                            <a href="{{ $logUrl($d) }}" wire:navigate data-tip="Zugriffe ansehen" class="min-w-0 font-medium text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $searching ? Hosts::highlight($d, $q) : $d }}</a>
                                             {{-- open the site itself; a wildcard has no single address --}}
                                             @if ($open = Hosts::openUrl($d))
                                                 <a href="{{ $open }}" target="_blank" rel="noopener noreferrer" data-host-open
