@@ -115,14 +115,113 @@
                     @php
                         $ntpRunning = (bool) ($ntp['running'] ?? false);
                         $ntpOff = ($ntp['available'] ?? true) === false;
+                        // the clock (1.4.0): a deviation colours the check like on the dashboard
+                        $clockTone = \App\Modules\Ad\AdTime::tone($time['status'] ?? 'ok');
                     @endphp
-                    <span class="inline-flex items-center gap-1.5" @if ($ntpOff) data-tip="{{ $ntp['message'] ?? '' }}" @endif><span @class(['h-2 w-2 rounded-full', 'bg-green-500' => $ntpRunning, 'bg-amber-500' => ! $ntpRunning && $ntpOff, 'bg-rose-500' => ! $ntpRunning && ! $ntpOff])></span>Zeit (NTP){{ $ntpOff ? ': nicht verfügbar' : '' }}</span>
+                    <span class="inline-flex items-center gap-1.5" @if ($ntpOff) data-tip="{{ $ntp['message'] ?? '' }}" @elseif (in_array($clockTone, ['warn', 'bad'], true)) data-tip="{{ $time['message'] }}" @endif><span @class(['h-2 w-2 rounded-full',
+                        'bg-green-500' => $ntpRunning && ! in_array($clockTone, ['warn', 'bad'], true), 'bg-amber-500' => ($ntpRunning && $clockTone === 'warn') || (! $ntpRunning && $ntpOff),
+                        'bg-rose-500' => ($ntpRunning && $clockTone === 'bad') || (! $ntpRunning && ! $ntpOff)])></span>Zeit (NTP){{ $ntpOff ? ': nicht verfügbar' : '' }}</span>
                 </div>
                 @if (($status['samba']['last_exit'] ?? '') !== '')
                     <p class="mt-2 text-xs text-rose-700 dark:text-rose-300">Zuletzt beendet: {{ $status['samba']['last_exit'] }}</p>
                 @endif
             </x-panel>
         @endif
+
+        {{-- the clock of the DC and its NTP reference servers (PK95 AD 1.4.0) --}}
+        <x-panel class="m-3" data-ad-time-section>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="font-DINPro-bold text-gray-900 dark:text-gray-100">Uhrzeit</div>
+                @unless ($timeUnsupported)
+                    <x-input.button type="button" size="sm" color="gray" wire:click="$refresh" wire:loading.attr="disabled">
+                        <x-icon name="refresh" class="h-4 w-4" sw="2" wire:loading.class="animate-spin" />Aktualisieren
+                    </x-input.button>
+                @endunless
+            </div>
+            @if ($timeUnsupported)
+                <p class="mt-1 text-sm text-gray-600 dark:text-gray-300" data-time-unsupported>Ab PK95 AD 1.4.0 verfügbar: Uhrzeit des Domänencontrollers und Zeitserver als Referenz.</p>
+            @elseif ($timeError)
+                <p class="mt-1 text-sm text-amber-800 dark:text-amber-300">{{ $timeError }}</p>
+            @elseif ($time)
+                @php
+                    $tone = \App\Modules\Ad\AdTime::tone($time['status']);
+                    $toneText = ['ok' => 'text-green-700 dark:text-green-300', 'warn' => 'text-amber-800 dark:text-amber-300', 'bad' => 'text-rose-700 dark:text-rose-300', 'muted' => 'text-gray-600 dark:text-gray-300'][$tone];
+                    $sources = (array) ($timeRaw['sources'] ?? []);
+                    $serving = (array) ($timeRaw['serving'] ?? []);
+                @endphp
+                <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-[auto_1fr] md:items-center">
+                    @include('modules.ad.partials.clock', ['skew' => $time['skew_ms'], 'class' => 'block text-4xl font-DINPro-bold text-gray-900 sm:text-5xl dark:text-gray-100'])
+                    <div class="{{ $card }}" data-time-status="{{ $time['status'] }}">
+                        <div class="flex items-center gap-2 text-sm font-medium {{ $toneText }}">
+                            <span @class(['h-2.5 w-2.5 shrink-0 rounded-full', 'bg-green-500' => $tone === 'ok', 'bg-amber-500' => $tone === 'warn', 'bg-rose-500' => $tone === 'bad', 'bg-gray-400' => $tone === 'muted'])></span>
+                            {{ \App\Modules\Ad\AdTime::line($time, array_values((array) ($timeRaw['servers'] ?? []))) }}
+                        </div>
+                        @if ($time['message'] !== '')
+                            <p class="mt-1 text-sm {{ $toneText }}" data-time-message>{{ $time['message'] }}</p>
+                        @endif
+                        <p class="mt-1 {{ $label }}">
+                            Abweichung {{ $time['offset_ms'] !== null ? ($time['offset_ms'] >= 0 ? '+' : '−').\App\Modules\Ad\AdTime::offset($time['offset_ms']) : 'unbekannt' }}
+                            · Zeit für die Domänenmitglieder: {{ ($serving['available'] ?? true) === false ? 'nicht verfügbar'.(($serving['message'] ?? '') !== '' ? ' ('.$serving['message'].')' : '') : (($serving['running'] ?? false) ? 'wird verteilt' : 'aus') }}
+                        </p>
+                    </div>
+                </div>
+
+                @if ($sources)
+                    <div class="mt-4 overflow-x-auto">
+                        <table class="w-full text-left text-sm" data-time-sources>
+                            <thead class="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                                <tr><th class="px-2 py-2">Quelle</th><th class="hidden px-2 py-2 sm:table-cell">Stratum</th><th class="px-2 py-2">Erreichbar</th><th class="px-2 py-2">Abweichung</th><th class="hidden px-2 py-2 sm:table-cell">Letzte Antwort</th></tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                                @foreach ($sources as $src)
+                                    <tr @class(['bg-cerulean-50/60 dark:bg-cerulean-900/15' => $src['selected'] ?? false]) @if ($src['selected'] ?? false) data-selected @endif>
+                                        <td class="px-2 py-2 align-top">
+                                            <span class="font-medium text-gray-900 dark:text-gray-100">{{ ($src['name'] ?? '') !== '' ? $src['name'] : ($src['address'] ?? '–') }}</span>
+                                            @if ($src['selected'] ?? false)<span class="ml-1 rounded bg-cerulean-100 px-1.5 py-0.5 text-xs text-cerulean-800 dark:bg-cerulean-900/60 dark:text-cerulean-200">ausgewählt</span>@endif
+                                            @if (($src['name'] ?? '') !== '' && ($src['address'] ?? '') !== '' && $src['name'] !== $src['address'])<span class="block font-mono text-xs text-gray-500 dark:text-gray-400">{{ $src['address'] }}</span>@endif
+                                        </td>
+                                        <td class="hidden px-2 py-2 align-top tabular-nums sm:table-cell">{{ $src['stratum'] ?? '–' }}</td>
+                                        <td class="px-2 py-2 align-top">
+                                            <span class="inline-flex items-center gap-1.5"><span @class(['h-2 w-2 rounded-full', 'bg-green-500' => $src['reachable'] ?? false, 'bg-rose-500' => ! ($src['reachable'] ?? false)])></span>{{ ($src['reachable'] ?? false) ? 'ja' : 'nein' }}</span>
+                                        </td>
+                                        <td class="px-2 py-2 align-top tabular-nums">{{ is_numeric($src['offset_ms'] ?? null) ? ($src['offset_ms'] >= 0 ? '+' : '−').\App\Modules\Ad\AdTime::offset((float) $src['offset_ms']) : '–' }}</td>
+                                        <td class="hidden px-2 py-2 align-top text-gray-600 sm:table-cell dark:text-gray-300">{{ is_numeric($src['last_rx_s'] ?? null) ? 'vor '.\App\Modules\Ad\AdTime::ago((int) $src['last_rx_s']) : '–' }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+
+                {{-- the reference servers, up to five rows --}}
+                <form wire:submit="saveServers" class="mt-4" data-time-servers>
+                    <div class="text-sm font-medium text-gray-900 dark:text-gray-100">Zeitserver (Referenz)</div>
+                    <div class="mt-2 space-y-2">
+                        @forelse ($servers as $i => $server)
+                            <div wire:key="ntp-{{ $i }}">
+                                <div class="flex gap-2">
+                                    <x-input.text :feld="'servers.'.$i" wire:model="servers.{{ $i }}" placeholder="de.pool.ntp.org" aria-label="Zeitserver {{ $i + 1 }}" class="min-w-0 flex-1 font-mono text-sm" />
+                                    <x-input.button type="button" color="gray" wire:click="removeServer({{ $i }})" aria-label="Zeitserver {{ $i + 1 }} entfernen"><x-icon name="trash" class="h-4 w-4" /></x-input.button>
+                                </div>
+                                <x-input.fehler :feld="'servers.'.$i" class="mt-1" />
+                            </div>
+                        @empty
+                            <p class="text-sm text-gray-600 dark:text-gray-300" data-no-servers>Keine Referenz: PK95 AD misst die Abweichung dann nicht.</p>
+                        @endforelse
+                        <x-input.fehler feld="servers" />
+                    </div>
+                    <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+                        <x-input.button type="button" color="gray" size="sm" wire:click="addServer" :disabled="count($servers) >= Domain::MAX_SERVERS">
+                            <x-icon name="plus" class="h-4 w-4" sw="2" />Server hinzufügen
+                        </x-input.button>
+                        <x-input.button type="submit" wire:loading.attr="disabled" wire:target="saveServers">Speichern</x-input.button>
+                    </div>
+                    <p class="mt-3 flex gap-2 text-xs text-gray-500 dark:text-gray-400" data-time-help>
+                        <x-icon name="info" class="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{{ \App\Modules\Ad\AdTime::HELP }} Bis zu {{ Domain::MAX_SERVERS }} Hostnamen oder IP-Adressen.</span>
+                    </p>
+                </form>
+            @endif
+        </x-panel>
 
         {{-- PK95 DNS forwards the realm to Samba's DNS --}}
         <x-panel class="m-3" data-dns-forward>

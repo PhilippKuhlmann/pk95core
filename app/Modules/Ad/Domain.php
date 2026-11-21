@@ -3,12 +3,14 @@
 namespace App\Modules\Ad;
 
 use App\Modules\Ad\Concerns\AdPage;
+use App\Services\Apps\AppException;
 use Livewire\Component;
 
 /**
  * PK95 AD → Domäne: the setup wizard while the domain is not set up (POST /api/setup, then
- * polling GET /api/setup), afterwards overview, status, DNS forwarder, password policy,
- * database check and the conditional forwarding in PK95 DNS.
+ * polling GET /api/setup), afterwards overview, status, the clock and its NTP reference servers
+ * (GET/PUT /api/time, PK95 AD 1.4.0), DNS forwarder, password policy, database check and the
+ * conditional forwarding in PK95 DNS.
  */
 class Domain extends Component
 {
@@ -21,6 +23,14 @@ class Domain extends Component
     public bool $watching = false;
 
     public string $forwarder = '';
+
+    /** @var list<string> NTP reference servers (PK95 AD 1.4.0), edited as rows */
+    public array $servers = [];
+
+    /** the servers were taken from /api/time (not again on every render, the rows are being edited) */
+    public bool $serversLoaded = false;
+
+    public const MAX_SERVERS = 5;
 
     /** @var array<string, mixed> */
     public array $policy = [];
@@ -92,6 +102,54 @@ class Domain extends Component
         }
     }
 
+    public function addServer(): void
+    {
+        if (count($this->servers) < self::MAX_SERVERS) {
+            $this->servers[] = '';
+        }
+    }
+
+    public function removeServer(int $index): void
+    {
+        unset($this->servers[$index]);
+        $this->servers = array_values($this->servers);
+        $this->resetErrorBag();
+    }
+
+    /** PUT /api/time {servers}; 422 "servers.N" lands on row N */
+    public function saveServers(): void
+    {
+        $this->resetErrorBag();
+        $servers = array_values(array_filter(array_map('trim', $this->servers), fn ($s) => $s !== ''));
+        $response = $this->appRequest(fn ($api) => $api->put('/api/time', ['servers' => $servers]));
+        if ($this->succeeded($response, '')) {
+            $this->servers = array_values(array_map('strval', (array) $response->json('servers')));
+            $this->dispatch('notice', kind: 'success', text: $servers === [] ? 'Gespeichert: keine Referenz für die Uhr.' : 'Zeitserver gespeichert.');
+        }
+    }
+
+    /**
+     * GET /api/time: [answer|null, unsupported (404: PK95 AD before 1.4.0), error]
+     *
+     * @return array{0: array<string, mixed>|null, 1: bool, 2: ?string}
+     */
+    private function loadTime(): array
+    {
+        try {
+            $response = $this->installedApp->client()->get('/api/time');
+        } catch (AppException $e) {
+            return [null, false, $e->getMessage()];
+        }
+        if ($response->status() === 404) {
+            return [null, true, null];
+        }
+        if (! $response->successful()) {
+            return [null, false, (string) ($response->json('error') ?? "Die App antwortet mit HTTP {$response->status()}.")];
+        }
+
+        return [(array) $response->json(), false, null];
+    }
+
     public function runDbcheck(bool $fix = false): void
     {
         $response = $this->appRequest(fn ($api) => $api->post('/api/domain/dbcheck', ['fix' => $fix]));
@@ -116,12 +174,19 @@ class Domain extends Component
     {
         [$setup, $loadError] = $this->fetch('/api/setup');
         $state = is_array($setup) ? (string) ($setup['state'] ?? '') : '';
-        $data = ['setup' => $setup, 'state' => $state, 'loadError' => $loadError, 'domain' => null, 'status' => null, 'dbcheck' => null, 'forward' => null, 'dnsLink' => null];
+        $data = ['setup' => $setup, 'state' => $state, 'loadError' => $loadError, 'domain' => null, 'status' => null, 'dbcheck' => null, 'forward' => null, 'dnsLink' => null,
+            'time' => null, 'timeRaw' => null, 'timeUnsupported' => false, 'timeError' => null];
 
         if ($state === 'ready') {
             [$data['domain']] = $this->fetch('/api/domain');
             [$data['status']] = $this->fetch('/api/status');
             [$data['dbcheck']] = $this->fetch('/api/domain/dbcheck');
+            [$data['timeRaw'], $data['timeUnsupported'], $data['timeError']] = $this->loadTime();
+            $data['time'] = AdTime::normalize($data['timeRaw']);
+            if ($data['timeRaw'] !== null && ! $this->serversLoaded) {
+                $this->servers = array_values(array_map('strval', (array) ($data['timeRaw']['servers'] ?? [])));
+                $this->serversLoaded = true;
+            }
             if ($this->policy === []) {
                 [$policy] = $this->fetch('/api/domain/password-policy');
                 $this->policy = is_array($policy) ? $policy : [];
