@@ -88,6 +88,8 @@ class AdModuleTest extends FeatureTestCase
             // accounts whose primary group it is (members[].primary: true, untouched by PUT /members)
             'primary' => ['g-du' => ['a-1', 'm-1']],
             'ntp' => ['running' => true, 'available' => true, 'message' => ''],
+            // the clock (PK95 AD 1.4.0, GET/PUT /api/time); null: an older app (404, no ntp.time)
+            'time' => null,
             // null: PK95 AD 1.0.0 without the field idmap in /api/domain
             'idmap' => null,
             'computers' => [
@@ -238,9 +240,38 @@ class AdModuleTest extends FeatureTestCase
             return Http::response($s['setup'] + ['started_at' => 0, 'finished_at' => 0,
                 'defaults' => ['hostname' => 'dc1', 'host_ips' => ['192.168.1.10', '10.0.0.5'], 'dns_forwarder' => '127.0.0.1'], 'domain' => null]);
         }
+        // ntp with the compact clock (1.4.0)
+        $ntp = $s['time'] === null ? $s['ntp'] : $s['ntp'] + ['time' => array_intersect_key($s['time'], array_flip(['now', 'offset_ms', 'source', 'synchronized', 'status', 'message']))];
         if ($path === '/api/status') {
             return Http::response(['version' => '1.0.0', 'state' => $s['setup']['state'],
-                'samba' => ['state' => 'running', 'last_exit' => '', 'services' => ['ldap' => true, 'kerberos' => true, 'smb' => true, 'dns' => false]], 'ntp' => $s['ntp']]);
+                'samba' => ['state' => 'running', 'last_exit' => '', 'services' => ['ldap' => true, 'kerberos' => true, 'smb' => true, 'dns' => false]], 'ntp' => $ntp]);
+        }
+        // the clock, as in docs/api.md of PK95 AD 1.4.0
+        if ($path === '/api/time') {
+            if ($s['time'] === null) {
+                return $error(404, 'Nicht gefunden.');
+            }
+            if ($method === 'PUT') {
+                $servers = $body['servers'] ?? null;
+                if (! is_array($servers) || count($servers) > 5) {
+                    return Http::response(['error' => 'Bitte Eingaben prüfen.', 'fields' => ['servers' => 'Höchstens 5 Server.']], 422);
+                }
+                $fields = [];
+                foreach (array_values($servers) as $n => $server) {
+                    if (! is_string($server) || ! preg_match('/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$|^[0-9a-f:.]+$/i', $server)) {
+                        $fields["servers.$n"] = 'Bitte einen Hostnamen oder eine IP-Adresse angeben.';
+                    }
+                }
+                if ($fields) {
+                    return Http::response(['error' => 'Bitte Eingaben prüfen.', 'fields' => $fields], 422);
+                }
+                $s['time']['servers'] = array_values($servers);
+                if ($servers === []) {
+                    $s['time'] = ['sources' => [], 'synchronized' => false, 'offset_ms' => null, 'source' => null, 'status' => 'unknown', 'message' => ''] + $s['time'];
+                }
+            }
+
+            return Http::response($s['time']);
         }
         if ($s['setup']['state'] !== 'ready') {
             return $error(409, 'Die Domäne ist noch nicht eingerichtet.');
@@ -252,7 +283,7 @@ class AdModuleTest extends FeatureTestCase
                 'dc' => ['hostname' => 'dc1', 'fqdn' => 'dc1.ad.example.com', 'ip' => '192.168.1.10'], 'domain_level' => '2008_R2', 'forest_level' => '2008_R2',
                 'samba_version' => '4.22.3-Debian', 'fsmo' => ['schema' => 'dc1', 'pdc' => 'dc1'], 'upn_suffixes' => ['ad.example.com'],
                 'counts' => ['users' => count($s['users']), 'groups' => count($s['groups']), 'computers' => count($s['computers']), 'ous' => 3, 'gpos' => count($s['gpos'])],
-                'dns_forwarder' => '127.0.0.1', 'dns_port' => 5300, 'ntp' => $s['ntp']] + ($s['idmap'] !== null ? ['idmap' => $s['idmap']] : []));
+                'dns_forwarder' => '127.0.0.1', 'dns_port' => 5300, 'ntp' => $ntp] + ($s['idmap'] !== null ? ['idmap' => $s['idmap']] : []));
         }
         if ($path === '/api/domain/dbcheck') {
             return $method === 'POST' ? Http::response(['running' => true], 202)
@@ -1468,6 +1499,74 @@ class AdModuleTest extends FeatureTestCase
         $this->get(route('apps.page', [$this->installed, 'domain']))->assertOk()
             ->assertSee('data-ntp-warning', false)->assertSee('Zeitdienst (NTP) nicht verfügbar')
             ->assertSee('NTP nicht verfügbar: Port 123/udp ist im LXC belegt.')->assertSee('Zeit (NTP): nicht verfügbar');
+    }
+
+    /** @return array<string, mixed> GET /api/time of PK95 AD 1.4.0 */
+    private function adTime(string $status = 'ok', string $message = '', ?float $offset = 1.8): array
+    {
+        return ['now' => now()->addSeconds(3)->format('Y-m-d\TH:i:s.v\Z'), 'servers' => ['de.pool.ntp.org'],
+            'sources' => [
+                ['address' => '1.2.3.4', 'name' => 'de.pool.ntp.org', 'stratum' => 2, 'reachable' => true, 'selected' => true, 'offset_ms' => $offset, 'last_rx_s' => 33],
+                ['address' => '5.6.7.8', 'name' => '', 'stratum' => 3, 'reachable' => false, 'selected' => false, 'offset_ms' => null, 'last_rx_s' => null],
+            ],
+            'synchronized' => $status === 'ok', 'offset_ms' => $offset, 'source' => 'de.pool.ntp.org', 'status' => $status, 'message' => $message,
+            'serving' => ['running' => true, 'available' => true, 'message' => '']];
+    }
+
+    public function test_time_section_says_from_which_version_on_older_apps(): void
+    {
+        // PK95 AD before 1.4.0: /api/time answers 404, the rest of the page works
+        Livewire::test(Domain::class, ['installedApp' => $this->installed])
+            ->assertSeeHtml('data-time-unsupported')->assertSee('Ab PK95 AD 1.4.0 verfügbar')
+            ->assertDontSeeHtml('data-ad-clock')->assertDontSee('Zeitserver (Referenz)')->assertSee('Kennwortrichtlinie');
+    }
+
+    public function test_time_section_shows_the_clock_and_saves_the_reference_servers(): void
+    {
+        $this->travelTo(now()->setTime(6, 21, 27));
+        $this->state['time'] = $this->adTime();
+
+        $page = Livewire::test(Domain::class, ['installedApp' => $this->installed])
+            ->assertSeeHtml('data-ad-clock')->assertSee('07:21:30')   // AD time (3 s ahead in the fake) in Europe/Berlin
+            ->assertSeeHtml('data-time-status="ok"')->assertSee('synchron mit de.pool.ntp.org · Abweichung 2 ms')
+            ->assertSee('Abweichung +2 ms')->assertSee('wird verteilt')
+            ->assertSeeHtml('data-selected')->assertSeeInOrder(['de.pool.ntp.org', 'ausgewählt', '1.2.3.4', '5.6.7.8', 'nein'])->assertSee('vor 33 s')
+            ->assertSee('Die Uhr stellt der Proxmox-Host. PK95 AD vergleicht sie mit diesen Servern und warnt bei Abweichung.')->assertSee('Aktualisieren')
+            ->assertSet('servers', ['de.pool.ntp.org']);
+
+        // up to five rows
+        foreach (range(1, 6) as $_) {
+            $page->call('addServer');
+        }
+        $this->assertCount(5, $page->get('servers'));
+
+        // the app's limit ("servers", not a row) shows under the list
+        $page->set('servers', ['a.example', 'b.example', 'c.example', 'd.example', 'e.example', 'f.example'])->call('saveServers')
+            ->assertHasErrors('servers')->assertSee('Höchstens 5 Server.');
+
+        // 422 "servers.N" lands on row N
+        $page->set('servers', ['de.pool.ntp.org', 'kein server!', 'ptbtime1.ptb.de'])->call('saveServers')
+            ->assertHasErrors('servers.1')->assertHasNoErrors('servers.0')->assertSee('Bitte einen Hostnamen oder eine IP-Adresse angeben.');
+
+        // round trip, empty rows left out
+        $page->set('servers', ['ptbtime1.ptb.de', ' ', '192.168.1.1'])->call('saveServers')->assertHasNoErrors()
+            ->assertSet('servers', ['ptbtime1.ptb.de', '192.168.1.1'])->assertDispatched('notice');
+        $this->assertSame(['servers' => ['ptbtime1.ptb.de', '192.168.1.1']], last($this->sent('PUT', '/api/time'))['body']);
+
+        // no reference at all: status unknown, "keine Referenz"
+        $page->call('removeServer', 1)->call('removeServer', 0)->call('saveServers')->assertHasNoErrors()
+            ->assertSet('servers', [])->assertSee('keine Referenz')->assertSeeHtml('data-no-servers')->assertSeeHtml('data-time-status="unknown"');
+    }
+
+    public function test_time_section_colours_warnings_and_errors(): void
+    {
+        $this->state['time'] = $this->adTime('warn', 'Die Uhr weicht um 2,5 s ab.', 2500);
+        Livewire::test(Domain::class, ['installedApp' => $this->installed])
+            ->assertSeeHtml('data-time-status="warn"')->assertSee('Die Uhr weicht um 2,5 s ab.')->assertSee('Abweichung 2,5 s (Uhr geht vor)');
+
+        $this->state['time'] = $this->adTime('error', 'Die Uhr weicht um 6 min ab, Kerberos scheitert.', -360000);
+        Livewire::test(Domain::class, ['installedApp' => $this->installed])
+            ->assertSeeHtml('data-time-status="error"')->assertSee('Kerberos scheitert.')->assertSee('Abweichung −6 min 0 s');
     }
 
     public function test_primary_group_members_are_shown_apart_and_never_sent(): void

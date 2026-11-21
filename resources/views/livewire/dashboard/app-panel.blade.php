@@ -108,11 +108,24 @@
                 <div><div class="{{ $label }}">Computer</div><div class="{{ $value }}">{{ $f['computers'] }}</div></div>
                 <div><div class="{{ $label }}">Gruppenrichtlinien</div><div class="{{ $value }}">{{ $f['gpos'] }}</div></div>
             </div>
+            {{-- the clock of the DC (PK95 AD 1.4.0), ticking in the browser; older versions: no line --}}
+            @if ($t = $f['time'] ?? null)
+                @php $tone = \App\Modules\Ad\AdTime::tone($t['status']); @endphp
+                <div class="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-0.5" data-ad-time data-time-status="{{ $t['status'] }}">
+                    <span class="{{ $label }}">Uhrzeit</span>
+                    @include('modules.ad.partials.clock', ['skew' => $t['skew_ms'], 'class' => 'text-base font-DINPro-bold text-gray-900 dark:text-gray-100'])
+                    <span @class(['min-w-0 text-xs', 'text-gray-500 dark:text-gray-400' => in_array($tone, ['ok', 'muted'], true),
+                        'text-amber-800 dark:text-amber-300' => $tone === 'warn', 'text-rose-700 dark:text-rose-300' => $tone === 'bad'])>{{ \App\Modules\Ad\AdTime::line($t) }}</span>
+                </div>
+                @if (in_array($tone, ['warn', 'bad'], true) && $t['message'] !== '')
+                    <p @class(['mt-0.5 text-xs', 'text-amber-800 dark:text-amber-300' => $tone === 'warn', 'text-rose-700 dark:text-rose-300' => $tone === 'bad']) data-time-message>{{ $t['message'] }}</p>
+                @endif
+            @endif
             {{-- status line: each check with a dot, the app's message as tooltip when it fails --}}
             <ul class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-700 dark:text-gray-300" data-ad-checks>
                 @foreach ($f['checks'] as $check)
                     <li class="inline-flex items-center gap-1.5" @unless ($check['ok']) data-tip="{{ $check['message'] }}" data-check-failed @endunless>
-                        <span @class(['h-2 w-2 shrink-0 rounded-full', 'bg-green-500' => $check['ok'], 'bg-amber-500' => ! $check['ok']]) aria-hidden="true"></span>
+                        <span @class(['h-2 w-2 shrink-0 rounded-full', 'bg-green-500' => $check['ok'], 'bg-amber-500' => ! $check['ok'] && ($check['tone'] ?? 'warn') !== 'bad', 'bg-rose-500' => ($check['tone'] ?? '') === 'bad']) aria-hidden="true" data-tone="{{ $check['tone'] ?? ($check['ok'] ? 'ok' : 'warn') }}"></span>
                         {{ $check['label'] }}<span class="sr-only">: {{ $check['ok'] ? 'in Ordnung' : $check['message'] }}</span>
                     </li>
                 @endforeach

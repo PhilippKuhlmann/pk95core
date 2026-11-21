@@ -25,6 +25,9 @@ class DashboardAdTest extends FeatureTestCase
 
     private bool $trouble = false;
 
+    /** compact clock in ntp.time (PK95 AD 1.4.0), null: an older app */
+    private ?array $time = null;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -35,6 +38,9 @@ class DashboardAdTest extends FeatureTestCase
                 $this->asked[] = $path;
                 $ntp = $this->trouble ? ['running' => false, 'available' => false, 'message' => 'NTP nicht verfügbar: Port 123/udp ist im LXC belegt.']
                     : ['running' => true, 'available' => true, 'message' => ''];
+                if ($this->time !== null) {
+                    $ntp['time'] = $this->time;
+                }
 
                 return match ($path) {
                     '/api/status' => Http::response(['version' => '1.3.0', 'state' => $this->state,
@@ -44,7 +50,12 @@ class DashboardAdTest extends FeatureTestCase
                     '/api/domain' => Http::response(['realm' => 'ad.example.com', 'netbios_domain' => 'EXAMPLE',
                         'counts' => ['users' => 14, 'groups' => 52, 'computers' => 3, 'ous' => 4, 'gpos' => 5], 'ntp' => $ntp,
                         'resolver' => ['ok' => ! $this->trouble, 'nameserver' => '127.0.0.1', 'message' => $this->trouble ? 'PK95 DNS beantwortet die Domäne nicht.' : ''],
-                        'idmap' => ['ok' => true, 'message' => '']]),
+                        'idmap' => ['ok' => true, 'message' => ''],
+                        // AD's own list (1.4.0): Core builds its warnings from the checks, never from this list
+                        'warnings' => array_values(array_filter([
+                            $this->trouble ? 'PK95 DNS beantwortet die Domäne nicht.' : null,
+                            in_array($this->time['status'] ?? null, ['warn', 'error'], true) ? $this->time['message'] : null,
+                        ]))]),
                     '/api/users' => Http::response(['items' => [['id' => 'u1', 'locked' => false], ['id' => 'u2', 'locked' => true]], 'total' => 2]),
                     default => Http::response(['error' => 'unbekannt'], 404),
                 };
@@ -87,6 +98,49 @@ class DashboardAdTest extends FeatureTestCase
         // the tiles and the problem list share the cached answer
         Livewire::withoutLazyLoading()->test(ProblemList::class)->assertSee('Alles in Ordnung');
         $this->assertCount(3, $this->asked);
+    }
+
+    public function test_ad_tile_shows_the_ticking_clock_of_pk95_ad_1_4(): void
+    {
+        $this->ad();
+        $this->travelTo(now()->setTime(6, 21, 28));
+        $clock = fn (string $status, string $message = '', ?float $offset = 1.8, ?string $source = 'de.pool.ntp.org') => [
+            'now' => now()->addSeconds(2)->format('Y-m-d\TH:i:s.v\Z'), 'offset_ms' => $offset, 'source' => $source,
+            'synchronized' => $status === 'ok', 'status' => $status, 'message' => $message];
+
+        // an older app: no clock line, the NTP check as before
+        Livewire::withoutLazyLoading()->test(AppPanel::class, ['appId' => 'ad'])->assertDontSeeHtml('data-ad-time')->assertSee('NTP');
+
+        $this->time = $clock('ok');
+        cache()->flush();
+        Livewire::withoutLazyLoading()->test(AppPanel::class, ['appId' => 'ad'])
+            ->assertSeeHtml('data-time-status="ok"')->assertSeeHtml('data-ad-clock')->assertSee('Uhrzeit')
+            ->assertSee('07:21:30')->assertSee('synchron mit de.pool.ntp.org · Abweichung 2 ms')
+            ->assertSeeHtml('data-tone="ok"')->assertDontSeeHtml('data-time-message');
+        Livewire::withoutLazyLoading()->test(ProblemList::class)->assertSee('Alles in Ordnung');
+
+        // warn: yellow NTP check and line, the message as a warning
+        $this->time = $clock('warn', 'Die Uhr weicht um 2,5 s ab.', 2500.0);
+        cache()->flush();
+        Livewire::withoutLazyLoading()->test(AppPanel::class, ['appId' => 'ad'])
+            ->assertSeeHtml('data-time-status="warn"')->assertSeeHtml('data-tone="warn"')->assertSee('Abweichung 2,5 s (Uhr geht vor)')
+            ->assertSeeHtml('data-time-message')->assertSee('Die Uhr weicht um 2,5 s ab.');
+        $problems = app(Problems::class)->collect();
+        $this->assertSame([['tone' => 'warn', 'text' => 'PK95 AD: Die Uhr weicht um 2,5 s ab.']], array_map(fn ($p) => array_intersect_key($p, ['tone' => 0, 'text' => 0]), $problems));
+
+        // error: red
+        $this->time = $clock('error', 'Die Uhr weicht um 6 min ab, Kerberos scheitert.', -360000.0);
+        cache()->flush();
+        Livewire::withoutLazyLoading()->test(AppPanel::class, ['appId' => 'ad'])
+            ->assertSeeHtml('data-time-status="error"')->assertSeeHtml('data-tone="bad"')->assertSee('Abweichung 6 min 0 s (Uhr geht nach)');
+        $this->assertSame('bad', app(Problems::class)->collect()[0]['tone']);
+
+        // unknown: no source yet, no warning
+        $this->time = $clock('unknown', '', null, null);
+        cache()->flush();
+        Livewire::withoutLazyLoading()->test(AppPanel::class, ['appId' => 'ad'])
+            ->assertSeeHtml('data-time-status="unknown"')->assertSee('wird geprüft')->assertSeeHtml('data-tone="ok"');
+        $this->assertSame([], app(Problems::class)->collect());
     }
 
     public function test_every_failing_ad_check_is_a_warning_with_the_apps_message(): void

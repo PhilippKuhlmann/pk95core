@@ -3,6 +3,7 @@
 namespace App\Services\Dashboard;
 
 use App\Models\InstalledApp;
+use App\Modules\Ad\AdTime;
 use App\Modules\Proxy\AccessLog;
 use App\Modules\Uptime\Bars;
 use App\Services\Apps\AppException;
@@ -207,6 +208,7 @@ class AppFigures
             return ['ok' => true, 'ready' => false, 'state' => $state, 'warnings' => [['text' => $text, 'page' => 'domain']]];
         }
         $domain = self::json($client->get('/api/domain'));
+        $readAt = now()->getTimestampMs();
         $counts = (array) ($domain['counts'] ?? []);
 
         $checks = [];
@@ -224,14 +226,22 @@ class AppFigures
             default => ['label' => 'Samba', 'ok' => true, 'message' => ''],
         };
         $ntp = (array) ($domain['ntp'] ?? $status['ntp'] ?? []);
+        // the clock (PK95 AD 1.4.0): compact "ntp.time"; older versions have none
+        $time = AdTime::normalize($ntp['time'] ?? null, $readAt);
         if ($ntp !== []) {
-            $checks['ntp'] = ['label' => 'NTP', 'ok' => (bool) ($ntp['available'] ?? true), 'message' => (string) (($ntp['message'] ?? '') ?: 'NTP ist nicht verfügbar.')];
+            $checks['ntp'] = match (true) {
+                ! ($ntp['available'] ?? true) => ['label' => 'NTP', 'ok' => false, 'tone' => 'warn', 'message' => (string) (($ntp['message'] ?? '') ?: 'NTP ist nicht verfügbar.')],
+                in_array($time['status'] ?? null, ['warn', 'error'], true) => ['label' => 'NTP', 'ok' => false, 'tone' => AdTime::tone($time['status']),
+                    'message' => $time['message'] !== '' ? $time['message'] : 'Die Uhr weicht ab: '.AdTime::line($time)],
+                default => ['label' => 'NTP', 'ok' => true, 'message' => ''],
+            };
         }
         foreach (['resolver' => 'DNS-Auflösung', 'idmap' => 'Unix-IDs'] as $key => $label) {
             if (is_array($domain[$key] ?? null)) {
                 $checks[$key] = ['label' => $label, 'ok' => (bool) ($domain[$key]['ok'] ?? true), 'message' => (string) (($domain[$key]['message'] ?? '') ?: "{$label}: Problem.")];
             }
         }
+        $checks = array_map(fn ($c) => $c + ['tone' => $c['ok'] ? 'ok' : 'warn'], $checks);
 
         // locked accounts from the user list (at most 2000 items): a bonus, empty when it fails
         $locked = null;
@@ -253,8 +263,9 @@ class AppFigures
             'computers' => (int) ($counts['computers'] ?? 0),
             'gpos' => (int) ($counts['gpos'] ?? 0),
             'locked' => $locked,
+            'time' => $time,
             'checks' => array_values($checks),
-            'warnings' => array_values(array_map(fn ($c) => ['text' => 'PK95 AD: '.$c['message'], 'page' => 'domain'],
+            'warnings' => array_values(array_map(fn ($c) => ['text' => 'PK95 AD: '.$c['message'], 'page' => 'domain', 'tone' => $c['tone']],
                 array_filter($checks, fn ($c) => ! $c['ok']))),
         ];
     }

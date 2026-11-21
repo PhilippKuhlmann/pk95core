@@ -51,7 +51,7 @@ class Problems
             }
             $page = fn (string $key) => route('apps.page', [$app, $key]);
             foreach ($f['warnings'] ?? [] as $warning) {
-                $out[] = ['tone' => 'warn', 'text' => $warning['text'], 'href' => $page($warning['page'])];
+                $out[] = ['tone' => ($warning['tone'] ?? 'warn') === 'bad' ? 'bad' : 'warn', 'text' => $warning['text'], 'href' => $page($warning['page'])];
             }
             foreach ($f['downHosts'] ?? [] as $host) {
                 $out[] = ['tone' => 'bad', 'text' => "Proxy-Host {$host['domain']} ist nicht erreichbar".($host['error'] !== '' ? ": {$host['error']}" : '.'), 'href' => $page('hosts')];
