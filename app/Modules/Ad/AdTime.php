@@ -14,8 +14,11 @@ final class AdTime
 {
     public const STATUSES = ['ok', 'warn', 'error', 'unknown'];
 
-    /** help line wherever the time is shown or configured */
-    public const HELP = 'PK95 AD stellt die Uhr nicht selbst: Die Uhrzeit kommt vom Proxmox-Host. Die Server hier sind nur die Referenz, gegen die PK95 AD die Abweichung misst. Ab fünf Minuten Abweichung scheitert die Anmeldung per Kerberos.';
+    /**
+     * Help line where the servers are configured. chronyd -x: PK95 AD never sets the clock; the
+     * DC (Kerberos too) runs on the clock of the Proxmox host, the members get AD's estimate.
+     */
+    public const HELP = 'Die Uhr stellt der Proxmox-Host. PK95 AD vergleicht sie mit diesen Servern und warnt bei Abweichung. Ab 5 Minuten scheitern Windows-Anmeldungen.';
 
     /**
      * The time object in a fixed shape, with "skew_ms" = AD clock minus Core's clock when it was

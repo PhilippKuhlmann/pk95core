@@ -254,7 +254,7 @@ class AdModuleTest extends FeatureTestCase
             if ($method === 'PUT') {
                 $servers = $body['servers'] ?? null;
                 if (! is_array($servers) || count($servers) > 5) {
-                    return Http::response(['error' => 'Bitte Eingaben prüfen.', 'fields' => ['servers' => 'Höchstens 5 Zeitserver.']], 422);
+                    return Http::response(['error' => 'Bitte Eingaben prüfen.', 'fields' => ['servers' => 'Höchstens 5 Server.']], 422);
                 }
                 $fields = [];
                 foreach (array_values($servers) as $n => $server) {
@@ -1531,7 +1531,7 @@ class AdModuleTest extends FeatureTestCase
             ->assertSeeHtml('data-time-status="ok"')->assertSee('synchron mit de.pool.ntp.org · Abweichung 2 ms')
             ->assertSee('Abweichung +2 ms')->assertSee('wird verteilt')
             ->assertSeeHtml('data-selected')->assertSeeInOrder(['de.pool.ntp.org', 'ausgewählt', '1.2.3.4', '5.6.7.8', 'nein'])->assertSee('vor 33 s')
-            ->assertSee('Die Uhrzeit kommt vom Proxmox-Host')->assertSee('Aktualisieren')
+            ->assertSee('Die Uhr stellt der Proxmox-Host. PK95 AD vergleicht sie mit diesen Servern und warnt bei Abweichung.')->assertSee('Aktualisieren')
             ->assertSet('servers', ['de.pool.ntp.org']);
 
         // up to five rows
@@ -1539,6 +1539,10 @@ class AdModuleTest extends FeatureTestCase
             $page->call('addServer');
         }
         $this->assertCount(5, $page->get('servers'));
+
+        // the app's limit ("servers", not a row) shows under the list
+        $page->set('servers', ['a.example', 'b.example', 'c.example', 'd.example', 'e.example', 'f.example'])->call('saveServers')
+            ->assertHasErrors('servers')->assertSee('Höchstens 5 Server.');
 
         // 422 "servers.N" lands on row N
         $page->set('servers', ['de.pool.ntp.org', 'kein server!', 'ptbtime1.ptb.de'])->call('saveServers')

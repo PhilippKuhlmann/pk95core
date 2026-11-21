@@ -50,7 +50,12 @@ class DashboardAdTest extends FeatureTestCase
                     '/api/domain' => Http::response(['realm' => 'ad.example.com', 'netbios_domain' => 'EXAMPLE',
                         'counts' => ['users' => 14, 'groups' => 52, 'computers' => 3, 'ous' => 4, 'gpos' => 5], 'ntp' => $ntp,
                         'resolver' => ['ok' => ! $this->trouble, 'nameserver' => '127.0.0.1', 'message' => $this->trouble ? 'PK95 DNS beantwortet die Domäne nicht.' : ''],
-                        'idmap' => ['ok' => true, 'message' => '']]),
+                        'idmap' => ['ok' => true, 'message' => ''],
+                        // AD's own list (1.4.0): Core builds its warnings from the checks, never from this list
+                        'warnings' => array_values(array_filter([
+                            $this->trouble ? 'PK95 DNS beantwortet die Domäne nicht.' : null,
+                            in_array($this->time['status'] ?? null, ['warn', 'error'], true) ? $this->time['message'] : null,
+                        ]))]),
                     '/api/users' => Http::response(['items' => [['id' => 'u1', 'locked' => false], ['id' => 'u2', 'locked' => true]], 'total' => 2]),
                     default => Http::response(['error' => 'unbekannt'], 404),
                 };
