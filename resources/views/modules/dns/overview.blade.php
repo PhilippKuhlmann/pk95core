@@ -187,7 +187,7 @@
 
             @if ($top['countriesAllowed'] !== null)
                 @include('modules.dns.partials.top-card', ['title' => 'Häufigste Länder erlaubt', 'empty' => 'Noch keine Anfragen', 'dataTop' => 'countries-allowed',
-                    'rows' => array_map(fn ($r) => $countryRow($r, $r['passed']), $top['countriesAllowed'])])
+                    'rows' => array_map(fn ($r) => $countryRow($r, $r['allowed']), $top['countriesAllowed'])])
                 @include('modules.dns.partials.top-card', ['title' => 'Häufigste Länder blockiert', 'barClass' => 'bg-rose-500', 'empty' => 'Noch nichts blockiert', 'dataTop' => 'countries-blocked',
                     'rows' => array_map(fn ($r) => $countryRow($r, $r['blocked']), $top['countriesBlocked']),
                     'footer' => ['text' => 'Länderfilter: '.\App\Modules\Dns\Countries::modeLine($geoMode, count((array) ($geo['countries'] ?? [])))

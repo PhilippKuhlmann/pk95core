@@ -203,16 +203,14 @@ class Overview extends Component
         ];
 
         if (array_key_exists('top_countries_allowed', $stats) || array_key_exists('top_countries', $stats)) {
-            $rows = CountrySplit::rows($list('top_countries'));
-            $allowed = array_key_exists('top_countries_allowed', $stats)
-                ? CountrySplit::rows($list('top_countries_allowed'))
-                : array_values(array_filter($rows, fn ($r) => $r['passed'] > 0));
-            $blocked = array_key_exists('top_countries_blocked', $stats)
-                ? CountrySplit::rows($list('top_countries_blocked'))
-                : array_values(array_filter($rows, fn ($r) => $r['blocked'] > 0));
-            // allowed by count, blocked by list_blocked + blocked (as the app sends them)
-            $out['countriesAllowed'] = $max($sortBy($allowed, 'passed'));
-            $out['countriesBlocked'] = $max($sortBy($blocked, 'blocked'));
+            // "count" includes answers the country filter ("blocked") stopped afterwards: allowed = count − blocked
+            $withAllowed = fn (array $rows) => array_map(fn ($r) => $r + ['allowed' => max(0, $r['passed'] - $r['filter_blocked'])], $rows);
+            $rows = $withAllowed(CountrySplit::rows($list('top_countries')));
+            $allowed = array_key_exists('top_countries_allowed', $stats) ? $withAllowed(CountrySplit::rows($list('top_countries_allowed'))) : $rows;
+            $blocked = array_key_exists('top_countries_blocked', $stats) ? $withAllowed(CountrySplit::rows($list('top_countries_blocked'))) : $rows;
+            // allowed by count − blocked, blocked by list_blocked + blocked, each only > 0 (as PK95 DNS 1.4.0 sends them)
+            $out['countriesAllowed'] = $max($sortBy(array_values(array_filter($allowed, fn ($r) => $r['allowed'] > 0)), 'allowed'));
+            $out['countriesBlocked'] = $max($sortBy(array_values(array_filter($blocked, fn ($r) => $r['blocked'] > 0)), 'blocked'));
         }
 
         return $out;

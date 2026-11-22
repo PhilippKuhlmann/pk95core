@@ -1105,7 +1105,8 @@ class DnsModuleTest extends FeatureTestCase
         $this->state['country_blocked'] = 0;
         // PK95 DNS 1.2 (no list_blocked): allowed by count, blocked only by the country filter
         Livewire::test(Overview::class, ['installedApp' => $this->installed])
-            ->assertSeeInOrder(['Häufigste Länder erlaubt', 'Deutschland', '8.123', 'Vereinigte Staaten', '2.410', 'Niederlande', 'China',
+            // China: count 40 all stopped by the filter (blocked 40) → only in the blocked list
+            ->assertSeeInOrder(['Häufigste Länder erlaubt', 'Deutschland', '8.123', 'Vereinigte Staaten', '2.410', 'Niederlande',
                 'Häufigste Länder blockiert', 'China', '40', 'Länderfilter: aus', 'Blocklisten ab PK95 DNS 1.3.0', 'Alle Länder'])
             ->assertDontSeeHtml('data-badge')->assertDontSeeHtml('data-country-blocked');
 
@@ -1115,12 +1116,12 @@ class DnsModuleTest extends FeatureTestCase
         Livewire::test(Overview::class, ['installedApp' => $this->installed])
             ->assertSeeHtml('data-country-blocked')->assertSee('Land blockiert')->assertSee('Länderfilter: blockiert 3 Länder')
             ->assertSeeInOrder(['China', 'blockiert']);
-        $this->assertSame(2, substr_count(Livewire::test(Overview::class, ['installedApp' => $this->installed])->html(), 'data-badge>blockiert'), 'China in both cards');
+        $this->assertSame(1, substr_count(Livewire::test(Overview::class, ['installedApp' => $this->installed])->html(), 'data-badge>blockiert'), 'China only in the blocked card');
 
         // allow list: every country outside it is "nicht erlaubt"
         $this->state['geo'] = $this->geo('allow', ['DE', 'NL']);
         $html = Livewire::test(Overview::class, ['installedApp' => $this->installed])->assertSee('Länderfilter: erlaubt nur 2 Länder')->html();
-        $this->assertSame(3, substr_count($html, 'data-badge>nicht erlaubt'), 'US, CN allowed and CN blocked');
+        $this->assertSame(2, substr_count($html, 'data-badge>nicht erlaubt'), 'US allowed and CN blocked');
     }
 
     public function test_country_filter_saves_the_list_and_maps_the_errors(): void
@@ -1274,22 +1275,27 @@ class DnsModuleTest extends FeatureTestCase
             'top_allowed' => [['name' => 'www.example.de', 'count' => 900], ['name' => 'cdn.example.com', 'count' => 300]],
             'top_clients_allowed' => [['ip' => '192.168.1.20', 'name' => 'Laptop', 'count' => 4210, 'blocked' => 600], ['ip' => '192.168.1.30', 'name' => '', 'count' => 900, 'blocked' => 10]],
             'top_clients_blocked' => [['ip' => '192.168.1.40', 'name' => 'Kinder-Tablet', 'count' => 1200, 'blocked' => 800], ['ip' => '192.168.1.20', 'name' => 'Laptop', 'count' => 4210, 'blocked' => 600]],
-            'top_countries_allowed' => [['code' => 'DE', 'count' => 8123, 'list_blocked' => 410, 'blocked' => 0, 'removed' => 0], ['code' => 'US', 'count' => 2410, 'list_blocked' => 1650, 'blocked' => 0, 'removed' => 0]],
-            'top_countries_blocked' => [['code' => 'US', 'count' => 2410, 'list_blocked' => 1650, 'blocked' => 0, 'removed' => 0], ['code' => 'CN', 'count' => 0, 'list_blocked' => 20, 'blocked' => 64, 'removed' => 0]],
+            // allowed = count − blocked (the filter): NL 500 − 100; CN all blocked by the filter (blocked == count) only on the right
+            'top_countries_allowed' => [['code' => 'DE', 'count' => 8123, 'list_blocked' => 410, 'blocked' => 0, 'removed' => 0], ['code' => 'US', 'count' => 2410, 'list_blocked' => 1650, 'blocked' => 0, 'removed' => 0],
+                ['code' => 'NL', 'count' => 500, 'list_blocked' => 0, 'blocked' => 100, 'removed' => 0], ['code' => 'CN', 'count' => 64, 'list_blocked' => 20, 'blocked' => 64, 'removed' => 0]],
+            'top_countries_blocked' => [['code' => 'US', 'count' => 2410, 'list_blocked' => 1650, 'blocked' => 0, 'removed' => 0], ['code' => 'CN', 'count' => 64, 'list_blocked' => 20, 'blocked' => 64, 'removed' => 0],
+                ['code' => 'NL', 'count' => 500, 'list_blocked' => 0, 'blocked' => 100, 'removed' => 0]],
         ];
         $page = Livewire::test(Overview::class, ['installedApp' => $this->installed]);
         $html = $page->html();
         // the pairs in this order, left allowed, right blocked; Upstreams across both columns
         $page->assertSeeInOrder(['Häufigste Domains erlaubt', 'www.example.de', '900', 'cdn.example.com',
             'Häufigste Domains blockiert', 'ads.example.net', '330',
-            'Häufigste Länder erlaubt', 'Deutschland', '8.123', 'Vereinigte Staaten', '2.410',
-            'Häufigste Länder blockiert', 'Vereinigte Staaten', '1.650', 'China', '84', 'Länderfilter: blockiert 1 Land', 'Alle Länder',
+            'Häufigste Länder erlaubt', 'Deutschland', '8.123', 'Vereinigte Staaten', '2.410', 'Niederlande', '400',
+            'Häufigste Länder blockiert', 'Vereinigte Staaten', '1.650', 'Niederlande', '100', 'China', '84', 'Länderfilter: blockiert 1 Land', 'Alle Länder',
             'Clients mit den meisten erlaubten Anfragen', 'Laptop', '3.610', '600 blockiert', '192.168.1.30', '890',
             'Clients mit den meisten Blockierungen', 'Kinder-Tablet', '800', 'von 1.200 Anfragen', 'Laptop', '600', 'von 4.210 Anfragen',
             'Upstreams', 'https://dns.quad9.net/dns-query']);
         $this->assertMatchesRegularExpression('/class="[^"]*md:col-span-2[^"]*"[^>]*>.{0,300}data-top="upstreams"/s', $html);
         $this->assertSame(1, substr_count($html, 'md:col-span-2'), 'only the Upstreams card spans both columns');
         $this->assertSame(1, substr_count($html, 'data-badge>blockiert'), 'China in the blocked countries');
+        $allowedCard = substr($html, strpos($html, 'data-top="countries-allowed"'), strpos($html, 'data-top="countries-blocked"') - strpos($html, 'data-top="countries-allowed"'));
+        $this->assertStringNotContainsString('China', $allowedCard, 'blocked == count: only in the blocked list');
         // links: domain with status, client with status on the right, country to the page
         $log = route('apps.page', [$this->installed, 'log']);
         foreach (['?search=www.example.de&amp;status=allowed', '?search=ads.example.net&amp;status=blocked', '?client=192.168.1.20"', '?client=192.168.1.40&amp;status=blocked'] as $query) {
@@ -1312,13 +1318,15 @@ class DnsModuleTest extends FeatureTestCase
             'top_domains' => [['name' => 'a.example', 'count' => 5]], 'top_blocked' => [],
             'top_clients' => [['ip' => '1', 'name' => '', 'count' => 100, 'blocked' => 90], ['ip' => '2', 'name' => '', 'count' => 50, 'blocked' => 0]],
             'top_countries' => [['code' => 'DE', 'count' => 10, 'list_blocked' => 1, 'blocked' => 0], ['code' => 'RU', 'count' => 0, 'list_blocked' => 7, 'blocked' => 0],
+                ['code' => 'CN', 'count' => 5, 'list_blocked' => 0, 'blocked' => 5], ['code' => 'NL', 'count' => 50, 'list_blocked' => 0, 'blocked' => 30],
                 ['code' => 'US', 'count' => 30, 'list_blocked' => 0, 'blocked' => 0]],
         ]);
         $this->assertSame('Häufigste Domains', $lists['domainsAllowedTitle']);
         $this->assertSame(['2', '1'], array_column($lists['clientsAllowed'], 'ip'), 'by count − blocked: 50 before 10');
         $this->assertSame(['1'], array_column($lists['clientsBlocked'], 'ip'), 'only blocked > 0');
-        $this->assertSame(['US', 'DE'], array_column($lists['countriesAllowed'], 'code'), 'by count, only count > 0');
-        $this->assertSame(['RU', 'DE'], array_column($lists['countriesBlocked'], 'code'), 'by list_blocked + blocked, only > 0');
+        $this->assertSame(['US', 'NL', 'DE'], array_column($lists['countriesAllowed'], 'code'), 'by count − blocked (NL 20), only > 0: not CN (5 − 5)');
+        $this->assertSame([30, 20, 10], array_column($lists['countriesAllowed'], 'allowed'));
+        $this->assertSame(['NL', 'RU', 'CN', 'DE'], array_column($lists['countriesBlocked'], 'code'), 'by list_blocked + blocked, only > 0');
         $this->assertNull(Overview::topLists(['top_domains' => []])['countriesAllowed'], 'no country cards without top_countries');
     }
 
