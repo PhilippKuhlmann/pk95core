@@ -55,6 +55,7 @@
                                 $r['reason'] !== '' ? (Fmt::REASONS[$r['reason']] ?? $r['reason']) : null,
                                 $r['list_name'] !== '' ? $r['list_name'] : null,
                                 $r['service'] !== '' ? $r['service'] : null,
+                                $r['status'] === 'blocked_country' && ($r['country'] ?? '') !== '' ? \App\Support\Countries::label($r['country']) : null,
                             ]);
                         @endphp
                         <tr wire:key="q-{{ $r['id'] }}" class="align-top hover:bg-gray-50 dark:hover:bg-gray-700/40">
@@ -78,7 +79,9 @@
                                 @if ($r['rule'] !== '')<span class="block break-all font-mono text-gray-500 dark:text-gray-400" data-tip="Regel"><span class="sr-only">Regel: </span>{{ $r['rule'] }}</span>@endif
                             </td>
                             <td class="hidden max-w-xs px-3 py-2 lg:table-cell">
-                                <span class="block break-all font-mono">{{ $r['answer'] !== '' ? $r['answer'] : '–' }}</span>
+                                {{-- country of the answer (PK95 DNS 1.2.0) --}}
+                                @php $country = (string) ($r['country'] ?? ''); @endphp
+                                <span class="block break-all font-mono">@if ($country !== '')<span class="font-sans" data-tip="{{ \App\Support\Countries::name($country) }}" data-country-flag><span aria-hidden="true">{{ \App\Support\Countries::flag($country) }}</span><span class="sr-only">{{ \App\Support\Countries::name($country) }}: </span></span> @endif{{ $r['answer'] !== '' ? $r['answer'] : '–' }}</span>
                                 <span class="text-gray-500 dark:text-gray-400">{{ $r['rcode'] }}{{ $r['upstream'] !== '' ? ' · '.$r['upstream'] : '' }}</span>
                             </td>
                             <td class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ Fmt::ms($r['elapsed_ms']) }}</td>
@@ -88,7 +91,10 @@
                                         <x-input.button type="button" size="sm" color="gray" wire:click="quick({{ Js::from($r['name']) }}, 'remove')" aria-label="Eigene Regel für {{ $r['name'] }} entfernen"
                                             data-tip="Eigene Regel ({{ $own === 'block' ? 'blockiert' : 'erlaubt' }}) entfernen">Regel entfernen</x-input.button>
                                     @endif
-                                    @if (! QueryLog::quickable($r['name']))
+                                    @if ($r['status'] === 'blocked_country')
+                                        {{-- a rule does not lift the country filter: its settings do --}}
+                                        <a href="{{ route('apps.page', [$installedApp, 'countries']) }}" wire:navigate class="inline-flex items-center rounded-lg border border-gray-300 px-2.5 py-1 text-xs font-DINPro-bold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700" data-country-link>Länderfilter</a>
+                                    @elseif (! QueryLog::quickable($r['name']))
                                         {{-- e.g. root queries: the app accepts no rule for this name --}}
                                     @elseif (Fmt::blocked($r['status']) || $own === 'block')
                                         @if ($own !== 'allow')

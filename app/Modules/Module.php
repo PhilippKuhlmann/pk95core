@@ -30,6 +30,12 @@ abstract class Module
         return [];
     }
 
+    /** Title of a page the app's menu does not name (null = the key). */
+    public function pageTitle(string $key): ?string
+    {
+        return null;
+    }
+
     /** Lowest supported app version (inclusive), null = any. */
     public function minVersion(): ?string
     {

@@ -59,12 +59,16 @@ class Overview extends Component
     {
         [$status, $error] = $this->load('/api/status');
         [$stats, $statsError] = $this->load('/api/stats', ['hours' => $this->hours]);
+        // countries (PK95 DNS 1.2.0): only with top_countries in the stats; the filter for the badges
+        $geo = is_array($stats) && array_key_exists('top_countries', $stats) ? Countries::loadGeo($this->installedApp)[0] : null;
 
         return view('modules.dns.overview', [
             'status' => is_array($status) ? $status : null,
             'stats' => is_array($stats) ? $stats : null,
+            'geo' => $geo,
             'loadError' => $error ?? $statsError,
             'logBase' => route('apps.page', [$this->installedApp, 'log']),
+            'countriesUrl' => route('apps.page', [$this->installedApp, 'countries']),
         ]);
     }
 

@@ -17,7 +17,9 @@ class ModulePageController extends Controller
         $component = $registry->page($installedApp, $page);
         abort_if($component === null, 404);
 
-        $label = collect($installedApp->manifest()?->menu ?? [])->firstWhere('key', $page)['label'] ?? $page;
+        // the menu label of the app, else the module's own title (pages without a menu entry)
+        $label = collect($installedApp->manifest()?->menu ?? [])->firstWhere('key', $page)['label']
+            ?? $registry->module($installedApp)?->pageTitle($page) ?? $page;
 
         return view('apps.module-page', [
             'installedApp' => $installedApp,
