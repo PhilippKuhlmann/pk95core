@@ -171,70 +171,38 @@
             @endif
         </x-panel>
 
-        <div class="grid grid-cols-1 md:grid-cols-2">
-            @include('modules.dns.partials.top-card', ['title' => 'Häufigste Domains', 'rows' => array_map(fn ($r) => [
-                'label' => $r['name'], 'count' => $r['count'], 'href' => $log(['search' => $r['name']])], $stats['top_domains'])])
-            @include('modules.dns.partials.top-card', ['title' => 'Am häufigsten blockiert', 'barClass' => 'bg-rose-500', 'rows' => array_map(fn ($r) => [
-                'label' => $r['name'], 'count' => $r['count'], 'href' => $log(['search' => $r['name'], 'status' => 'blocked'])], $stats['top_blocked'])])
-            @include('modules.dns.partials.top-card', ['title' => 'Clients', 'rows' => array_map(fn ($r) => [
-                'label' => $r['name'] !== '' ? $r['name'] : $r['ip'], 'sub' => $r['name'] !== '' ? $r['ip'] : null, 'count' => $r['count'],
-                'note' => Fmt::num($r['blocked']).' blockiert', 'href' => $log(['client' => $r['ip']])], $stats['top_clients'])])
-            @include('modules.dns.partials.top-card', ['title' => 'Upstreams', 'rows' => array_map(fn ($r) => [
-                'label' => $r['address'], 'count' => $r['count'], 'note' => Fmt::ms($r['avg_ms'])], $stats['top_upstreams'])])
-            {{-- countries of the answers (PK95 DNS 1.2.0): let through (green) and blocked (red, since
-                 1.3.0 block lists + country filter), badge of the filter --}}
-            @if (array_key_exists('top_countries', $stats))
-                @php
-                    $cTop = (array) $stats['top_countries'];
-                    $cRows = \App\Modules\Dns\CountrySplit::rows($cTop);
-                    $cSplit = \App\Modules\Dns\CountrySplit::hasSplit($cTop);
-                    $cMax = collect($cRows)->max('total') ?: 0;
-                @endphp
-                <x-panel class="m-3">
-                    <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                        <div class="font-DINPro-bold text-gray-900 dark:text-gray-100" data-top-countries>Länder</div>
-                        <div class="flex gap-3 {{ $muted }}">
-                            <span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-sm bg-green-500"></i>durchgelassen</span>
-                            @if ($cSplit)<span class="flex items-center gap-1.5"><i class="h-2.5 w-2.5 rounded-sm bg-rose-500"></i>geblockt</span>@endif
-                        </div>
-                    </div>
-                    @if (! $cRows)
-                        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Keine Daten in diesem Zeitraum</p>
-                    @else
-                        <ol class="mt-3 flex flex-col gap-2 text-sm">
-                            @foreach ($cRows as $cr)
-                                @php $badge = \App\Modules\Dns\Countries::badge($cr['code'], $geo); @endphp
-                                <li>
-                                    <div class="flex items-baseline justify-between gap-3">
-                                        <div class="min-w-0 truncate text-gray-900 dark:text-gray-100">
-                                            {{ \App\Support\Countries::label($cr['code']) }}
-                                            @if ($badge)<span class="ml-1 inline-block rounded bg-rose-100 px-1.5 py-0.5 text-[11px] font-semibold text-rose-800 dark:bg-rose-900/70 dark:text-rose-100" data-badge>{{ $badge }}</span>@endif
-                                        </div>
-                                        <span class="shrink-0 tabular-nums text-gray-600 dark:text-gray-300">
-                                            <span class="text-green-700 dark:text-green-300">{{ Fmt::num($cr['passed']) }}</span>
-                                            @if ($cSplit)
-                                                <span class="text-xs text-gray-400">·</span> <span class="text-rose-700 dark:text-rose-300">{{ Fmt::num($cr['blocked']) }}</span>
-                                            @elseif ($cr['filter_blocked'] > 0)
-                                                <span class="text-xs text-gray-500 dark:text-gray-400">· {{ Fmt::num($cr['filter_blocked']) }} blockiert</span>
-                                            @endif
-                                        </span>
-                                    </div>
-                                    @include('modules.dns.partials.country-bar', ['row' => $cr, 'max' => $cMax, 'split' => $cSplit])
-                                </li>
-                            @endforeach
-                        </ol>
-                    @endif
-                    <div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                        <span>Länderfilter: {{ \App\Modules\Dns\Countries::modeLine($geoMode, count((array) ($geo['countries'] ?? []))) }}{{ $cSplit ? '' : ' · Geblockte Länder ab PK95 DNS '.\App\Modules\Dns\CountrySplit::MIN_VERSION }}</span>
-                        <a href="{{ $countriesUrl }}" wire:navigate class="font-medium text-cerulean-700 hover:underline dark:text-cerulean-300">Alle Länder</a>
-                    </div>
-                </x-panel>
-            @else
-                <x-panel class="m-3" data-top-countries-unsupported>
-                    <div class="font-DINPro-bold text-gray-900 dark:text-gray-100">Länder</div>
-                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Ab PK95 DNS {{ \App\Modules\Dns\Countries::MIN_VERSION }} verfügbar.</p>
-                </x-panel>
+        {{-- the top lists in pairs: allowed on the left, blocked on the right (PK95 DNS 1.4.0, older ones derived) --}}
+        @php
+            $top = Overview::topLists($stats);
+            $clientLabel = fn ($r) => ['label' => $r['name'] !== '' ? $r['name'] : $r['ip'], 'sub' => $r['name'] !== '' ? $r['ip'] : null];
+            $cSplit = array_key_exists('top_countries_blocked', $stats) || \App\Modules\Dns\CountrySplit::hasSplit((array) ($stats['top_countries'] ?? []));
+            $countryRow = fn ($r, int $count) => ['label' => \App\Support\Countries::label($r['code']), 'count' => $count, 'href' => $countriesUrl,
+                'badge' => \App\Modules\Dns\Countries::badge($r['code'], $geo)];
+        @endphp
+        <div class="grid grid-cols-1 md:grid-cols-2" data-top-pairs>
+            @include('modules.dns.partials.top-card', ['title' => $top['domainsAllowedTitle'], 'empty' => 'Noch keine Anfragen', 'dataTop' => 'domains-allowed',
+                'rows' => array_map(fn ($r) => ['label' => $r['name'], 'count' => $r['count'], 'href' => $log(['search' => $r['name'], 'status' => 'allowed'])], $top['domainsAllowed'])])
+            @include('modules.dns.partials.top-card', ['title' => 'Häufigste Domains blockiert', 'barClass' => 'bg-rose-500', 'empty' => 'Noch nichts blockiert', 'dataTop' => 'domains-blocked',
+                'rows' => array_map(fn ($r) => ['label' => $r['name'], 'count' => $r['count'], 'href' => $log(['search' => $r['name'], 'status' => 'blocked'])], $top['domainsBlocked'])])
+
+            @if ($top['countriesAllowed'] !== null)
+                @include('modules.dns.partials.top-card', ['title' => 'Häufigste Länder erlaubt', 'empty' => 'Noch keine Anfragen', 'dataTop' => 'countries-allowed',
+                    'rows' => array_map(fn ($r) => $countryRow($r, $r['passed']), $top['countriesAllowed'])])
+                @include('modules.dns.partials.top-card', ['title' => 'Häufigste Länder blockiert', 'barClass' => 'bg-rose-500', 'empty' => 'Noch nichts blockiert', 'dataTop' => 'countries-blocked',
+                    'rows' => array_map(fn ($r) => $countryRow($r, $r['blocked']), $top['countriesBlocked']),
+                    'footer' => ['text' => 'Länderfilter: '.\App\Modules\Dns\Countries::modeLine($geoMode, count((array) ($geo['countries'] ?? [])))
+                        .($cSplit ? '' : ' · Blocklisten ab PK95 DNS '.\App\Modules\Dns\CountrySplit::MIN_VERSION), 'href' => $countriesUrl, 'link' => 'Alle Länder']])
             @endif
+
+            @include('modules.dns.partials.top-card', ['title' => 'Clients mit den meisten erlaubten Anfragen', 'empty' => 'Noch keine Anfragen', 'dataTop' => 'clients-allowed',
+                'rows' => array_map(fn ($r) => $clientLabel($r) + ['count' => $r['allowed'], 'note' => Fmt::num($r['blocked']).' blockiert',
+                    'href' => $log(['client' => $r['ip']])], $top['clientsAllowed'])])
+            @include('modules.dns.partials.top-card', ['title' => 'Clients mit den meisten Blockierungen', 'barClass' => 'bg-rose-500', 'empty' => 'Noch nichts blockiert', 'dataTop' => 'clients-blocked',
+                'rows' => array_map(fn ($r) => $clientLabel($r) + ['count' => $r['blocked'], 'note' => 'von '.Fmt::num($r['count']).' Anfragen',
+                    'href' => $log(['client' => $r['ip'], 'status' => 'blocked'])], $top['clientsBlocked'])])
+
+            @include('modules.dns.partials.top-card', ['title' => 'Upstreams', 'span' => 'md:col-span-2', 'empty' => 'Noch keine Anfragen', 'dataTop' => 'upstreams',
+                'rows' => array_map(fn ($r) => ['label' => $r['address'], 'count' => $r['count'], 'note' => Fmt::ms($r['avg_ms'])], $stats['top_upstreams'])])
         </div>
     @endif
 </div>
