@@ -42,8 +42,44 @@ class Countries extends Component
     /** "Land hinzufügen": a country without traffic */
     public string $addCode = '';
 
+    /** the section "Länderfilter (optional)" is open (checkboxes in the table); open by default when the filter is on */
+    public bool $showFilter = false;
+
+    /** only countries with blocked queries (PK95 DNS 1.3.0) */
+    #[Url(as: 'geblockt', except: false)]
+    public bool $onlyBlocked = false;
+
+    /** PK95 DNS 1.3.0: resolve blocked domains in the background to know their country; null = the app has no such setting */
+    public ?bool $resolveBlocked = null;
+
+    /** @var array{mode: string, countries: list<string>} the filter as saved in the app (the switch sends it unchanged) */
+    public array $saved = ['mode' => 'off', 'countries' => []];
+
     /** @var list<string> the list as last sent, to map "countries.N" back to the country */
     private array $sent = [];
+
+    public function toggleFilter(): void
+    {
+        $this->showFilter = ! $this->showFilter;
+    }
+
+    public function resetSearch(): void
+    {
+        $this->q = '';
+        $this->onlyBlocked = false;
+    }
+
+    /** the switch saves at once, with the filter as saved (unsaved changes of the filter stay unsent) */
+    public function updatedResolveBlocked(bool $value): void
+    {
+        $response = $this->appRequest(fn ($api) => $api->put('/api/geo', $this->saved + ['resolve_blocked' => $value]));
+        if ($this->succeeded($response, '')) {
+            $this->resolveBlocked = (bool) ($response->json('resolve_blocked') ?? $value);
+            $this->dispatch('notice', kind: 'success', text: $value ? 'PK95 DNS ermittelt jetzt die Länder geblockter Domains.' : 'Länder geblockter Domains werden nicht mehr ermittelt.');
+        } else {
+            $this->resolveBlocked = ! $value;
+        }
+    }
 
     public function mount(): void
     {
@@ -76,7 +112,8 @@ class Countries extends Component
         $this->resetErrorBag();
         $this->sent = array_values(array_unique(array_map('strtoupper', array_filter($this->selected, 'is_string'))));
         sort($this->sent);
-        $response = $this->appRequest(fn ($api) => $api->put('/api/geo', ['mode' => $this->mode, 'countries' => $this->sent]));
+        $body = ['mode' => $this->mode, 'countries' => $this->sent] + ($this->resolveBlocked === null ? [] : ['resolve_blocked' => $this->resolveBlocked]);
+        $response = $this->appRequest(fn ($api) => $api->put('/api/geo', $body));
         if ($this->succeeded($response, '')) {
             $this->apply((array) $response->json());
             $this->dispatch('notice', kind: 'success', text: 'Länderfilter gespeichert: '.self::modeLine($this->mode, count($this->selected)).'.');
@@ -98,6 +135,11 @@ class Countries extends Component
     {
         $this->mode = isset(self::MODES[$geo['mode'] ?? '']) ? $geo['mode'] : 'off';
         $this->selected = array_values(array_map('strtoupper', array_filter((array) ($geo['countries'] ?? []), 'is_string')));
+        $this->saved = ['mode' => $this->mode, 'countries' => $this->selected];
+        $this->resolveBlocked = array_key_exists('resolve_blocked', $geo) ? (bool) $geo['resolve_blocked'] : null;
+        if (! $this->loaded) {
+            $this->showFilter = $this->mode !== 'off';
+        }
         $this->loaded = true;
     }
 
@@ -139,28 +181,34 @@ class Countries extends Component
         }
         $rows = [];
         $unknown = 0;
+        $unknownBlocked = 0;
+        $split = false;
         $countriesError = null;
         if (is_array($geo)) {
             [$list, $countriesError] = $this->load('/api/countries', ['hours' => $this->hours]);
             $unknown = (int) ($list['unknown'] ?? 0);
-            foreach ((array) ($list['countries'] ?? []) as $c) {
-                $code = strtoupper((string) ($c['code'] ?? ''));
-                if ($code !== '') {
-                    $rows[$code] = ['code' => $code, 'count' => (int) ($c['count'] ?? 0), 'blocked' => (int) ($c['blocked'] ?? 0),
-                        'removed' => (int) ($c['removed'] ?? 0), 'clients' => isset($c['clients']) ? (int) $c['clients'] : null];
+            $unknownBlocked = (int) ($list['unknown_blocked'] ?? 0);
+            $countries = array_values((array) ($list['countries'] ?? []));
+            $split = CountrySplit::hasSplit($countries);
+            // chosen countries without traffic stay in the table, so they can be unchecked
+            $known = array_map(fn ($c) => strtoupper((string) ($c['code'] ?? '')), $countries);
+            foreach ($this->selected as $code) {
+                if (! in_array($code, $known, true)) {
+                    $countries[] = ['code' => $code, 'count' => 0, 'blocked' => 0, 'removed' => 0];
                 }
             }
-            // chosen countries without traffic stay in the table, so they can be unchecked
-            foreach ($this->selected as $code) {
-                $rows[$code] ??= ['code' => $code, 'count' => 0, 'blocked' => 0, 'removed' => 0, 'clients' => null];
+            // sorted by all queries (let through + blocked), the biggest first
+            foreach (CountrySplit::rows($countries) as $row) {
+                $rows[$row['code']] = $row;
             }
         }
         $needle = mb_strtolower(trim($this->q));
-        $shown = array_values(array_filter($rows, fn ($r) => $needle === ''
-            || str_contains(mb_strtolower($r['code'].' '.CountryNames::name($r['code'])), $needle)));
-        usort($shown, fn ($a, $b) => [$b['count'], CountryNames::name($a['code'])] <=> [$a['count'], CountryNames::name($b['code'])]);
+        $shown = array_values(array_filter($rows, fn ($r) => ($needle === ''
+            || str_contains(mb_strtolower($r['code'].' '.CountryNames::name($r['code'])), $needle))
+            && (! $this->onlyBlocked || $r['blocked'] > 0)));
         $add = array_diff_key(CountryNames::all(), $rows);
         asort($add);
+        $filterUsed = $this->mode !== 'off' || collect($rows)->contains(fn ($r) => $r['filter_blocked'] > 0);
 
         return view('modules.dns.countries', [
             'geo' => $geo,
@@ -169,6 +217,11 @@ class Countries extends Component
             'rows' => $shown,
             'total' => count($rows),
             'unknown' => $unknown,
+            'unknownBlocked' => $unknownBlocked,
+            'split' => $split,
+            // the column "Länderfilter" only with the filter on or something it blocked
+            'filterColumn' => $filterUsed,
+            'max' => collect($rows)->max('total') ?: 0,
             'addOptions' => array_map(fn ($name, $code) => ['value' => $code, 'label' => CountryNames::flag($code).' '.$name], $add, array_keys($add)),
         ]);
     }

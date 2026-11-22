@@ -82,6 +82,11 @@
             </x-panel>
         </div>
 
+        {{-- where the data goes: countries of PK95 DNS, full width below the tiles --}}
+        @if ($apps->contains('app_id', 'dns'))
+            <livewire:dashboard.countries-card />
+        @endif
+
         {{-- app cards: status, installed version, available update --}}
         <div class="mt-6 mb-2 text-xl font-CoconPro text-gray-900 dark:text-gray-100">Apps</div>
         <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
