@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Livewire\Dashboard\CountriesCard;
 use App\Models\InstalledApp;
 use App\Modules\Dns\Clients;
 use App\Modules\Dns\DnsModule;
@@ -335,7 +336,8 @@ class DnsModuleTest extends FeatureTestCase
                     return Http::response(['error' => 'Nicht gefunden.'], 404);
                 }
                 if ($path === '/api/countries') {
-                    return Http::response(['hours' => (int) ($query['hours'] ?? 24), 'countries' => $this->state['countries'], 'unknown' => 123]);
+                    return Http::response(['hours' => (int) ($query['hours'] ?? 24), 'countries' => $this->state['countries'], 'unknown' => 123]
+                        + (isset($this->state['unknown_blocked']) ? ['unknown_blocked' => $this->state['unknown_blocked']] : []));
                 }
                 if ($r->method() === 'PUT') {
                     if (! in_array($body['mode'] ?? null, ['off', 'block', 'allow'], true)) {
@@ -349,7 +351,10 @@ class DnsModuleTest extends FeatureTestCase
                             return $invalid("countries.$n", "Unbekanntes Land: $code");
                         }
                     }
-                    $this->state['geo'] = ['mode' => $body['mode'], 'countries' => array_values($body['countries'])] + $this->state['geo'];
+                    // 1.3.0: resolve_blocked (only an app that knows it keeps it)
+                    $resolve = array_key_exists('resolve_blocked', $this->state['geo']) && array_key_exists('resolve_blocked', $body)
+                        ? ['resolve_blocked' => (bool) $body['resolve_blocked']] : [];
+                    $this->state['geo'] = ['mode' => $body['mode'], 'countries' => array_values($body['countries'])] + $resolve + $this->state['geo'];
                 }
 
                 return Http::response($this->state['geo']);
@@ -389,7 +394,8 @@ class DnsModuleTest extends FeatureTestCase
             'GET /api/stats' => Http::response(['hours' => (int) ($query['hours'] ?? 24), 'granularity' => ($query['hours'] ?? 24) == 720 ? 'day' : 'hour',
                 'totals' => ['queries' => 13530, 'blocked' => 2104, 'blocked_pct' => 15.6, 'cached' => 9120, 'safesearch' => 12, 'services' => 40, 'avg_ms' => 6.2]
                     + ($this->state['totals_local'] === null ? [] : ['local' => $this->state['totals_local']])
-                    + ($this->state['geo'] === null ? [] : ['country_blocked' => $this->state['country_blocked'] ?? 40]),
+                    + ($this->state['geo'] === null ? [] : ['country_blocked' => $this->state['country_blocked'] ?? 40])
+                    + (isset($this->state['unknown_blocked']) ? ['unknown_blocked' => $this->state['unknown_blocked']] : []),
                 'series' => array_map(fn ($h) => ['t' => $now - (24 - $h) * 3600000, 'queries' => 500 + $h * 10, 'blocked' => 80]
                     + ($this->state['series_cached'] ? ['cached' => 300] : []), range(0, 23)),
                 'top_domains' => [['name' => 'example.org', 'count' => 812]],
@@ -1097,7 +1103,7 @@ class DnsModuleTest extends FeatureTestCase
         $this->state['country_blocked'] = 0;
         Livewire::test(Overview::class, ['installedApp' => $this->installed])
             ->assertSeeHtml('data-top-countries')->assertSeeInOrder(['Länder', 'Deutschland', '8.123', 'Vereinigte Staaten', 'China', '40 blockiert'])
-            ->assertSee('Länderfilter: aus')->assertSee('Einstellen')->assertDontSeeHtml('data-badge')->assertDontSeeHtml('data-country-blocked');
+            ->assertSee('Länderfilter: aus')->assertSee('Alle Länder')->assertDontSeeHtml('data-badge')->assertDontSeeHtml('data-country-blocked');
 
         // block list: badge "blockiert", the total with the mode
         $this->state['geo'] = $this->geo('block', ['CN', 'RU', 'KP']);
@@ -1142,7 +1148,7 @@ class DnsModuleTest extends FeatureTestCase
     {
         $this->state['geo'] = $this->geo('allow', ['DE']);
         $html = Livewire::test(\App\Modules\Dns\Countries::class, ['installedApp' => $this->installed])
-            ->assertSeeHtml('data-allow-warning')->assertSee('Alle anderen Länder werden blockiert, auch CDNs und Updates. Erst die Tabelle unten prüfen.')
+            ->assertSeeHtml('data-allow-warning')->assertSee('Alle anderen Länder werden blockiert, auch CDNs und Updates. Erst die Tabelle oben prüfen.')
             ->assertSee('3 Länder mit Anfragen wären dann blockiert')
             ->set('selected', ['DE', 'US'])->assertSee('2 Länder mit Anfragen wären dann blockiert')->html();
         foreach (['NL', 'CN'] as $code) {
@@ -1175,6 +1181,83 @@ class DnsModuleTest extends FeatureTestCase
         $this->assertSame('Land blockiert', Fmt::status('blocked_country'));
         $this->assertTrue(Fmt::blocked('blocked_country'));
         $this->assertSame(Fmt::badge('blocked'), Fmt::badge('blocked_country'));
+    }
+
+    /** countries of PK95 DNS 1.3.0: let through (count) and stopped by block lists (list_blocked); RU only blocked */
+    private function splitCountries(): void
+    {
+        $this->state['countries'] = [
+            ['code' => 'DE', 'count' => 8123, 'list_blocked' => 410, 'blocked' => 0, 'removed' => 0],
+            ['code' => 'US', 'count' => 2410, 'list_blocked' => 1650, 'blocked' => 0, 'removed' => 12],
+            ['code' => 'NL', 'count' => 310, 'list_blocked' => 0, 'blocked' => 0, 'removed' => 0],
+            ['code' => 'RU', 'count' => 0, 'list_blocked' => 90, 'blocked' => 0, 'removed' => 0],
+        ];
+        $this->state['unknown_blocked'] = 55;
+    }
+
+    public function test_dashboard_card_shows_where_the_data_goes(): void
+    {
+        $card = fn () => Livewire::withoutLazyLoading()->test(CountriesCard::class);
+
+        // PK95 DNS before 1.2.0: no countries, no card
+        $card()->assertDontSeeHtml('data-countries-card');
+
+        // 1.2.0: only "durchgelassen", with the note from which version on the rest comes
+        cache()->flush();
+        $this->state['geo'] = $this->geo();
+        $card()->assertSeeHtml('data-countries-card')->assertSee('Wohin gehen deine Daten?')->assertSee('4 Länder erreicht')
+            ->assertDontSee('% geblockt')->assertSee('Geblockte Länder ab PK95 DNS 1.3.0')->assertDontSeeHtml('data-blocked-count')
+            ->assertSee('letzte 24 Stunden')->assertSee('Alle Länder')->assertSeeHtml(route('apps.page', [$this->installed, 'countries']));
+
+        // 1.3.0: green let through, red blocked, sorted by all queries; a country only blocked (count 0) is there too
+        cache()->flush();
+        $this->splitCountries();
+        $html = $card()->assertSee('4 Länder erreicht')->assertSee('16,5 % geblockt')
+            ->assertSeeInOrder(['Deutschland', '8.123', '410', 'Vereinigte Staaten', '2.410', '1.650', 'Niederlande', 'Russland', '0', '90'])
+            ->assertSee('55 geblockt ohne bekanntes Land')->assertDontSee('ab PK95 DNS 1.3.0')->html();
+        // the stacked bar: widths in % of the biggest row (DE: 8.533 queries)
+        $this->assertMatchesRegularExpression('/data-country-row="US".*?width: 28.2%" data-passed.*?width: 19.3%" data-blocked/s', $html);
+        $this->assertMatchesRegularExpression('/data-country-row="RU".*?width: 0%" data-passed.*?width: 1.1%" data-blocked/s', $html);
+
+        // GeoIP database still loading
+        cache()->flush();
+        $this->state['geo'] = $this->geo('off', [], false);
+        $card()->assertSeeHtml('data-geo-loading')->assertSee('Die Länder-Datenbank wird geladen.')->assertDontSeeHtml('data-country-row');
+    }
+
+    public function test_dns_overview_and_countries_page_split_let_through_and_blocked(): void
+    {
+        $this->state['geo'] = $this->geo() + ['resolve_blocked' => false];
+        $this->splitCountries();
+        Livewire::test(Overview::class, ['installedApp' => $this->installed])
+            ->assertSeeHtml('data-top-countries')->assertSee('durchgelassen')->assertSee('geblockt')
+            ->assertSeeInOrder(['Deutschland', '8.123', '410', 'Russland', '0', '90'])->assertDontSee('Geblockte Länder ab');
+
+        // the page: columns let through and blocked (lists); "Länderfilter" only with the filter on or something it blocked
+        $page = Livewire::test(\App\Modules\Dns\Countries::class, ['installedApp' => $this->installed])
+            ->assertSeeHtml('data-col-list-blocked')->assertDontSeeHtml('data-col-filter')
+            ->assertSee('Durchgelassen')->assertSee('Geblockt')->assertSeeInOrder(['Deutschland', 'Vereinigte Staaten', 'Niederlande', 'Russland'])
+            ->assertSee('55 geblockt ohne bekanntes Land')
+            // the filter is optional: closed while off, no checkboxes in the table
+            ->assertSet('showFilter', false)->assertDontSee('für den Länderfilter auswählen')->assertSee('Länderfilter (optional)')
+            ->call('toggleFilter')->assertSee('für den Länderfilter auswählen')->assertSee('Ausgewählte Länder blockieren')
+            ->set('onlyBlocked', true)->assertSee('Russland')->assertDontSee('Niederlande');
+
+        // the switch saves at once, with the filter as saved (an unsaved mode stays unsent)
+        $page->set('mode', 'block')->set('resolveBlocked', true)->assertDispatched('notice');
+        $this->assertSame(['mode' => 'off', 'countries' => [], 'resolve_blocked' => true], last($this->sent('PUT', '/api/geo'))['body']);
+        $this->assertTrue($this->state['geo']['resolve_blocked']);
+        $page->assertSee('Länder geblockter Domains ermitteln')->assertSee('Es wird keine Verbindung zu diesen Servern aufgebaut.');
+
+        // saving the filter sends the switch along; with the filter on the column is there
+        $page->set('selected', ['RU'])->call('save')->assertHasNoErrors()->assertSeeHtml('data-col-filter');
+        $this->assertSame(['mode' => 'block', 'countries' => ['RU'], 'resolve_blocked' => true], last($this->sent('PUT', '/api/geo'))['body']);
+
+        // 1.2.0 without resolve_blocked: no switch, nothing extra sent
+        $this->state['geo'] = $this->geo();
+        Livewire::test(\App\Modules\Dns\Countries::class, ['installedApp' => $this->installed])->assertDontSeeHtml('data-resolve-blocked')
+            ->call('toggleFilter')->call('save');
+        $this->assertArrayNotHasKey('resolve_blocked', last($this->sent('PUT', '/api/geo'))['body']);
     }
 
     public function test_country_names_are_shared_and_unchanged_for_pk95_proxy(): void

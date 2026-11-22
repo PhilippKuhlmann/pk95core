@@ -4,6 +4,7 @@ namespace App\Services\Dashboard;
 
 use App\Models\InstalledApp;
 use App\Modules\Ad\AdTime;
+use App\Modules\Dns\CountrySplit as DnsCountrySplit;
 use App\Modules\Proxy\AccessLog;
 use App\Modules\Uptime\Bars;
 use App\Services\Apps\AppException;
@@ -92,6 +93,38 @@ class AppFigures
             'avgMs' => isset($t['avg_ms']) ? (float) $t['avg_ms'] : null,
             'series' => array_values((array) ($stats['series'] ?? [])),
             'daily' => ($stats['granularity'] ?? 'hour') === 'day',
+            'countries' => $this->dnsCountries($app, $stats),
+        ];
+    }
+
+    /**
+     * Countries of the answers (PK95 DNS 1.2.0, split into let through and blocked since 1.3.0)
+     * for the dashboard card; null before 1.2.0 (no top_countries).
+     *
+     * @param  array<mixed>  $stats
+     * @return array{rows: list<array<string, mixed>>, split: bool, reached: int, unknownBlocked: int, available: bool}|null
+     */
+    private function dnsCountries(InstalledApp $app, array $stats): ?array
+    {
+        if (! array_key_exists('top_countries', $stats)) {
+            return null;
+        }
+        $top = array_values((array) $stats['top_countries']);
+        // the GeoIP database may still be loading; a failing /api/geo hides nothing
+        $available = true;
+        try {
+            $geo = $app->client()->get('/api/geo');
+            $available = ! $geo->successful() || ($geo->json('available') ?? true) !== false;
+        } catch (AppException) {
+            // keep the countries
+        }
+
+        return [
+            'rows' => DnsCountrySplit::rows($top),
+            'split' => DnsCountrySplit::hasSplit($top),
+            'reached' => count($top),
+            'unknownBlocked' => (int) ($stats['totals']['unknown_blocked'] ?? 0),
+            'available' => $available,
         ];
     }
 
