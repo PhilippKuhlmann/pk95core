@@ -1,11 +1,12 @@
 {{-- Top list of the PK95 DNS overview. $rows: [{label, sub?, count, note?, href?, badge?}],
-     optional $footer {text, href?, link?} and $dataAttr (a data attribute on the title).
+     optional $footer {text, href?, link?}, $dataAttr (a data attribute on the title), $dataTop (data-top value), $empty (text
+     without rows) and $span (grid classes of the card, e.g. md:col-span-2).
      Own names: @include shares the variables of the including view. --}}
 @php $topMax = collect($rows)->max('count') ?: 0; @endphp
-<x-panel class="m-3">
-    <div class="font-DINPro-bold text-gray-900 dark:text-gray-100" @if (! empty($dataAttr)) {{ $dataAttr }} @endif>{{ $title }}</div>
+<x-panel :class="'m-3'.(! empty($span) ? ' '.$span : '')">
+    <div class="font-DINPro-bold text-gray-900 dark:text-gray-100" @if (! empty($dataAttr)) {{ $dataAttr }} @endif @if (! empty($dataTop)) data-top="{{ $dataTop }}" @endif>{{ $title }}</div>
     @if (! $rows)
-        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Keine Daten in diesem Zeitraum</p>
+        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400" data-empty>{{ $empty ?? 'Keine Daten in diesem Zeitraum' }}</p>
     @else
         <ol class="mt-3 flex flex-col gap-2 text-sm">
             @foreach ($rows as $row)

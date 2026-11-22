@@ -158,6 +158,64 @@ class Overview extends Component
         return ['width' => $width, 'height' => $height, 'm' => $m, 'plotH' => $plotH, 'grid' => $grid, 'labels' => $labels, 'bars' => $bars, 'cached' => $hasCache];
     }
 
+    /**
+     * The top lists as pairs, allowed (left) and blocked (right), each at most 20. PK95 DNS 1.4.0
+     * sends them (top_allowed, top_clients_allowed/blocked, top_countries_allowed/blocked); older
+     * versions are derived: domains from top_domains, clients from top_clients, countries from
+     * top_countries (null without countries: no country cards).
+     *
+     * @param  array<string, mixed>  $stats
+     * @return array{domainsAllowed: list<array{name: string, count: int}>, domainsAllowedTitle: string, domainsBlocked: list<array{name: string, count: int}>,
+     *     clientsAllowed: list<array{ip: string, name: string, count: int, blocked: int, allowed: int}>, clientsBlocked: list<array{ip: string, name: string, count: int, blocked: int, allowed: int}>,
+     *     countriesAllowed: list<array<string, mixed>>|null, countriesBlocked: list<array<string, mixed>>|null}
+     */
+    public static function topLists(array $stats): array
+    {
+        $list = fn (string $key) => array_values(array_filter((array) ($stats[$key] ?? []), 'is_array'));
+        $domain = fn (array $d) => ['name' => (string) ($d['name'] ?? ''), 'count' => (int) ($d['count'] ?? 0)];
+        $client = function (array $c) {
+            $count = (int) ($c['count'] ?? 0);
+            $blocked = (int) ($c['blocked'] ?? 0);
+
+            return ['ip' => (string) ($c['ip'] ?? ''), 'name' => (string) ($c['name'] ?? ''), 'count' => $count, 'blocked' => $blocked, 'allowed' => max(0, $count - $blocked)];
+        };
+        $sortBy = function (array $rows, string $key): array {
+            usort($rows, fn ($a, $b) => $b[$key] <=> $a[$key]);
+
+            return $rows;
+        };
+        $max = fn (array $rows) => array_slice($rows, 0, 20);
+
+        $new = array_key_exists('top_allowed', $stats);
+        $clients = array_map($client, $list('top_clients'));
+        $out = [
+            'domainsAllowed' => array_map($domain, $list($new ? 'top_allowed' : 'top_domains')),
+            'domainsAllowedTitle' => $new ? 'Häufigste Domains erlaubt' : 'Häufigste Domains',
+            'domainsBlocked' => array_map($domain, $list('top_blocked')),
+            'clientsAllowed' => array_key_exists('top_clients_allowed', $stats)
+                ? array_map($client, $list('top_clients_allowed'))
+                : $max($sortBy(array_values(array_filter($clients, fn ($c) => $c['allowed'] > 0)), 'allowed')),
+            'clientsBlocked' => array_key_exists('top_clients_blocked', $stats)
+                ? array_map($client, $list('top_clients_blocked'))
+                : $max($sortBy(array_values(array_filter($clients, fn ($c) => $c['blocked'] > 0)), 'blocked')),
+            'countriesAllowed' => null,
+            'countriesBlocked' => null,
+        ];
+
+        if (array_key_exists('top_countries_allowed', $stats) || array_key_exists('top_countries', $stats)) {
+            // "count" includes answers the country filter ("blocked") stopped afterwards: allowed = count − blocked
+            $withAllowed = fn (array $rows) => array_map(fn ($r) => $r + ['allowed' => max(0, $r['passed'] - $r['filter_blocked'])], $rows);
+            $rows = $withAllowed(CountrySplit::rows($list('top_countries')));
+            $allowed = array_key_exists('top_countries_allowed', $stats) ? $withAllowed(CountrySplit::rows($list('top_countries_allowed'))) : $rows;
+            $blocked = array_key_exists('top_countries_blocked', $stats) ? $withAllowed(CountrySplit::rows($list('top_countries_blocked'))) : $rows;
+            // allowed by count − blocked, blocked by list_blocked + blocked, each only > 0 (as PK95 DNS 1.4.0 sends them)
+            $out['countriesAllowed'] = $max($sortBy(array_values(array_filter($allowed, fn ($r) => $r['allowed'] > 0)), 'allowed'));
+            $out['countriesBlocked'] = $max($sortBy(array_values(array_filter($blocked, fn ($r) => $r['blocked'] > 0)), 'blocked'));
+        }
+
+        return $out;
+    }
+
     public static function niceStep(float $max, int $ticks): float
     {
         if ($max <= 0) {
