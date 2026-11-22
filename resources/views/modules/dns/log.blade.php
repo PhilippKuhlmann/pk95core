@@ -92,9 +92,10 @@
                                             data-tip="Eigene Regel ({{ $own === 'block' ? 'blockiert' : 'erlaubt' }}) entfernen">Regel entfernen</x-input.button>
                                     @endif
                                     @if ($r['status'] === 'blocked_country')
-                                        {{-- a rule does not lift the country filter: its settings do --}}
+                                        {{-- an allow rule beats the country filter for this domain ("Erlauben" below); the filter itself is on its page --}}
                                         <a href="{{ route('apps.page', [$installedApp, 'countries']) }}" wire:navigate class="inline-flex items-center rounded-lg border border-gray-300 px-2.5 py-1 text-xs font-DINPro-bold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700" data-country-link>Länderfilter</a>
-                                    @elseif (! QueryLog::quickable($r['name']))
+                                    @endif
+                                    @if (! QueryLog::quickable($r['name']))
                                         {{-- e.g. root queries: the app accepts no rule for this name --}}
                                     @elseif (Fmt::blocked($r['status']) || $own === 'block')
                                         @if ($own !== 'allow')

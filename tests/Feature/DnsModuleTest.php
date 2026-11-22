@@ -1164,7 +1164,11 @@ class DnsModuleTest extends FeatureTestCase
         $page = Livewire::test(QueryLog::class, ['installedApp' => $this->installed])
             ->assertSee('Land blockiert')->assertSee('Länderfilter')->assertSee('🇨🇳 China')->assertSeeHtml('data-country-link')
             ->assertSeeHtml('data-country-flag')->assertSee('🇺🇸');
-        $page->set('status', 'country')->assertSee('tracker.example.cn')->assertDontSee('host4.example.org');
+        // an allow rule beats the country filter: a country block offers both
+        $page->set('status', 'country')->assertSee('tracker.example.cn')->assertDontSee('host4.example.org')
+            ->assertSeeHtml('data-country-link')->assertSeeHtml('aria-label="tracker.example.cn erlauben"');
+        $page->call('quick', 'tracker.example.cn', 'allow');
+        $this->assertStringContainsString('@@||tracker.example.cn^', $this->state['rules']);
         $this->assertSame('country', last($this->sent('GET', '/api/querylog'))['query']['status']);
         $page->set('status', 'blocked')->assertSee('tracker.example.cn')->assertSee('ads.example.net');
 
