@@ -15,6 +15,7 @@ use App\Modules\Dns\Services;
 use App\Modules\Dns\Settings;
 use App\Services\Catalog\Catalog;
 use App\Services\Docker\ContainerSpec;
+use App\Support\Countries;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -51,6 +52,14 @@ class DnsModuleTest extends FeatureTestCase
             'series_cached' => false,
             // null: PK95 DNS without totals.local (answers from own entries)
             'totals_local' => null,
+            // countries (PK95 DNS 1.2.0, GET/PUT /api/geo, /api/countries); null: an older app (404, no top_countries)
+            'geo' => null,
+            'countries' => [
+                ['code' => 'DE', 'count' => 8123, 'blocked' => 0, 'removed' => 0, 'clients' => 4],
+                ['code' => 'US', 'count' => 2410, 'blocked' => 0, 'removed' => 12],
+                ['code' => 'CN', 'count' => 40, 'blocked' => 40, 'removed' => 0],
+                ['code' => 'NL', 'count' => 310, 'blocked' => 0, 'removed' => 0],
+            ],
             'protection' => ['enabled' => true, 'paused_until' => 0],
             'lists' => [
                 1 => ['id' => 1, 'name' => 'AdGuard DNS filter', 'url' => 'https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt', 'kind' => 'block',
@@ -318,13 +327,42 @@ class DnsModuleTest extends FeatureTestCase
             case 'POST /api/upstreams/test':
                 return Http::response(['results' => array_map(fn ($u) => ['upstream' => $u, 'ok' => $u !== '1.1.1.1', 'ms' => 8.5,
                     'error' => $u === '1.1.1.1' ? 'Zeitüberschreitung' : ''], $body['upstreams'])]);
+                // countries as in docs/api.md of PK95 DNS 1.2.0; 404 while "geo" is null (older app)
+            case 'GET /api/geo':
+            case 'PUT /api/geo':
+            case 'GET /api/countries':
+                if ($this->state['geo'] === null) {
+                    return Http::response(['error' => 'Nicht gefunden.'], 404);
+                }
+                if ($path === '/api/countries') {
+                    return Http::response(['hours' => (int) ($query['hours'] ?? 24), 'countries' => $this->state['countries'], 'unknown' => 123]);
+                }
+                if ($r->method() === 'PUT') {
+                    if (! in_array($body['mode'] ?? null, ['off', 'block', 'allow'], true)) {
+                        return $invalid('mode', 'Erlaubt: off, block, allow.');
+                    }
+                    if (count($body['countries'] ?? []) > 250) {
+                        return $invalid('countries', 'Zu viele Länder.');
+                    }
+                    foreach (array_values($body['countries'] ?? []) as $n => $code) {
+                        if (! preg_match('/^[A-Z]{2}$/', (string) $code) || $code === 'XX') {
+                            return $invalid("countries.$n", "Unbekanntes Land: $code");
+                        }
+                    }
+                    $this->state['geo'] = ['mode' => $body['mode'], 'countries' => array_values($body['countries'])] + $this->state['geo'];
+                }
+
+                return Http::response($this->state['geo']);
             case 'GET /api/querylog':
                 $before = (int) ($query['before'] ?? 0);
                 $limit = (int) ($query['limit'] ?? 50);
+                $status = $query['status'] ?? 'all';
                 $items = array_values(array_filter($this->state['log'], fn ($e) => ($before === 0 || $e['id'] < $before)
                     && (! isset($query['search']) || str_contains($e['name'], $query['search']))
                     && (! isset($query['client']) || in_array($query['client'], [$e['client_ip'], $e['client_name']], true))
-                    && (($query['status'] ?? 'all') !== 'blocked' || $e['status'] === 'blocked')));
+                    // "blocked" includes the country filter (1.2.0), "country" is only that
+                    && ($status !== 'blocked' || in_array($e['status'], ['blocked', 'blocked_country'], true))
+                    && ($status !== 'country' || $e['status'] === 'blocked_country')));
                 $page = array_slice($items, 0, $limit);
 
                 return Http::response(['items' => $page, 'next_before' => count($items) > $limit ? end($page)['id'] : 0]);
@@ -350,13 +388,16 @@ class DnsModuleTest extends FeatureTestCase
                 ]]),
             'GET /api/stats' => Http::response(['hours' => (int) ($query['hours'] ?? 24), 'granularity' => ($query['hours'] ?? 24) == 720 ? 'day' : 'hour',
                 'totals' => ['queries' => 13530, 'blocked' => 2104, 'blocked_pct' => 15.6, 'cached' => 9120, 'safesearch' => 12, 'services' => 40, 'avg_ms' => 6.2]
-                    + ($this->state['totals_local'] === null ? [] : ['local' => $this->state['totals_local']]),
+                    + ($this->state['totals_local'] === null ? [] : ['local' => $this->state['totals_local']])
+                    + ($this->state['geo'] === null ? [] : ['country_blocked' => $this->state['country_blocked'] ?? 40]),
                 'series' => array_map(fn ($h) => ['t' => $now - (24 - $h) * 3600000, 'queries' => 500 + $h * 10, 'blocked' => 80]
                     + ($this->state['series_cached'] ? ['cached' => 300] : []), range(0, 23)),
                 'top_domains' => [['name' => 'example.org', 'count' => 812]],
                 'top_blocked' => [['name' => 'ads.example.net', 'count' => 330]],
                 'top_clients' => [['ip' => '192.168.1.20', 'name' => 'Laptop', 'count' => 4210, 'blocked' => 600]],
-                'top_upstreams' => [['address' => 'https://dns.quad9.net/dns-query', 'count' => 3010, 'avg_ms' => 18.4]]]),
+                'top_upstreams' => [['address' => 'https://dns.quad9.net/dns-query', 'count' => 3010, 'avg_ms' => 18.4]]]
+                // countries (1.2.0)
+                + ($this->state['geo'] === null ? [] : ['top_countries' => array_slice($this->state['countries'], 0, 20)])),
             'GET /api/lists' => Http::response(array_values($this->state['lists'])),
             'GET /api/lists/catalog' => Http::response([
                 ['name' => 'AdGuard DNS filter', 'url' => 'https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt', 'kind' => 'block', 'description' => 'Werbung und Tracker'],
@@ -1028,5 +1069,123 @@ class DnsModuleTest extends FeatureTestCase
         $settings->call('retry')->assertSet('s.upstreams', "https://dns.quad9.net/dns-query\n9.9.9.9")->assertSee('Speichern');
         $settings->call('save', 'routing');
         $this->assertSame([['domain' => 'fritz.box', 'upstream' => '192.168.178.1']], $this->state['settings']['conditional']);
+    }
+
+    /** @return array<string, mixed> GET /api/geo of PK95 DNS 1.2.0 */
+    private function geo(string $mode = 'off', array $countries = [], bool $available = true): array
+    {
+        return ['mode' => $mode, 'countries' => $countries, 'available' => $available, 'db_date' => '2026-11-01',
+            'attribution' => 'IP-Geolocation by DB-IP (https://db-ip.com)'];
+    }
+
+    public function test_countries_before_pk95_dns_1_2(): void
+    {
+        // no top_countries, /api/geo and /api/countries 404: a hint, nothing breaks
+        Livewire::test(Overview::class, ['installedApp' => $this->installed])
+            ->assertSeeHtml('data-top-countries-unsupported')->assertSee('Ab PK95 DNS 1.2.0 verfügbar.')
+            ->assertDontSeeHtml('data-country-blocked')->assertSee('Häufigste Domains');
+        $this->assertSame([], $this->sent('GET', '/api/geo'), 'no request for the filter without top_countries');
+
+        $this->get(route('apps.page', [$this->installed, 'countries']))->assertOk()
+            ->assertSee('data-geo-unsupported', false)->assertSee('Ab PK95 DNS 1.2.0 verfügbar');
+    }
+
+    public function test_overview_lists_countries_with_badges_and_the_blocked_total(): void
+    {
+        // filter off and nothing blocked by country: no total
+        $this->state['geo'] = $this->geo();
+        $this->state['country_blocked'] = 0;
+        Livewire::test(Overview::class, ['installedApp' => $this->installed])
+            ->assertSeeHtml('data-top-countries')->assertSeeInOrder(['Länder', 'Deutschland', '8.123', 'Vereinigte Staaten', 'China', '40 blockiert'])
+            ->assertSee('Länderfilter: aus')->assertSee('Einstellen')->assertDontSeeHtml('data-badge')->assertDontSeeHtml('data-country-blocked');
+
+        // block list: badge "blockiert", the total with the mode
+        $this->state['geo'] = $this->geo('block', ['CN', 'RU', 'KP']);
+        $this->state['country_blocked'] = 40;
+        Livewire::test(Overview::class, ['installedApp' => $this->installed])
+            ->assertSeeHtml('data-country-blocked')->assertSee('Land blockiert')->assertSee('Länderfilter: blockiert 3 Länder')
+            ->assertSeeInOrder(['China', 'blockiert']);
+        $this->assertSame(1, substr_count(Livewire::test(Overview::class, ['installedApp' => $this->installed])->html(), 'data-badge>blockiert'));
+
+        // allow list: every country outside it is "nicht erlaubt"
+        $this->state['geo'] = $this->geo('allow', ['DE', 'NL']);
+        $html = Livewire::test(Overview::class, ['installedApp' => $this->installed])->assertSee('Länderfilter: erlaubt nur 2 Länder')->html();
+        $this->assertSame(2, substr_count($html, 'data-badge>nicht erlaubt'), 'US and CN');
+    }
+
+    public function test_country_filter_saves_the_list_and_maps_the_errors(): void
+    {
+        $this->state['geo'] = $this->geo('block', ['CN']);
+        $page = Livewire::test(\App\Modules\Dns\Countries::class, ['installedApp' => $this->installed])
+            ->assertSet('mode', 'block')->assertSet('selected', ['CN'])
+            ->assertSeeInOrder(['Deutschland', 'Vereinigte Staaten', 'Niederlande', 'China'])->assertSee('8.123')
+            ->assertSee('Das Land ist der Standort des antwortenden Servers.')->assertSee('IP-Geolocation by DB-IP')->assertSee('Stand 01.11.2026')
+            ->assertSee('123 Antworten ohne Land')->assertDontSeeHtml('data-allow-warning');
+        $this->assertSame('24', last($this->sent('GET', '/api/countries'))['query']['hours']);
+
+        // a country without traffic via "Land hinzufügen", then save
+        $page->set('addCode', 'RU')->assertSet('selected', ['CN', 'RU'])->assertSet('addCode', '')->assertSee('Russland')
+            ->call('save')->assertHasNoErrors()->assertDispatched('notice');
+        $this->assertSame(['mode' => 'block', 'countries' => ['CN', 'RU']], last($this->sent('PUT', '/api/geo'))['body']);
+
+        // 422 "countries.N" lands on that country's row, "mode" on the mode
+        $page->set('selected', ['XX', 'CN'])->call('save')->assertHasErrors('country.XX')->assertSee('Unbekanntes Land: XX');
+        $page->set('selected', ['CN'])->set('mode', 'bogus')->assertSet('mode', 'off');
+
+        // period and search
+        $page->set('hours', 168)->set('q', 'nieder')->assertSee('Niederlande')->assertDontSee('Vereinigte Staaten');
+        $this->assertSame('168', last($this->sent('GET', '/api/countries'))['query']['hours']);
+        $page->set('q', 'zzz')->assertSeeHtml('data-search-empty');
+    }
+
+    public function test_allow_mode_warns_and_marks_what_would_be_cut_off(): void
+    {
+        $this->state['geo'] = $this->geo('allow', ['DE']);
+        $html = Livewire::test(\App\Modules\Dns\Countries::class, ['installedApp' => $this->installed])
+            ->assertSeeHtml('data-allow-warning')->assertSee('Alle anderen Länder werden blockiert, auch CDNs und Updates. Erst die Tabelle unten prüfen.')
+            ->assertSee('3 Länder mit Anfragen wären dann blockiert')
+            ->set('selected', ['DE', 'US'])->assertSee('2 Länder mit Anfragen wären dann blockiert')->html();
+        foreach (['NL', 'CN'] as $code) {
+            $this->assertMatchesRegularExpression('/data-country="'.$code.'"[^>]*data-cut-off/', $html, $code);
+        }
+        $this->assertDoesNotMatchRegularExpression('/data-country="(DE|US)"[^>]*data-cut-off/', $html);
+
+        // no database yet
+        $this->state['geo'] = $this->geo('off', [], false);
+        Livewire::test(\App\Modules\Dns\Countries::class, ['installedApp' => $this->installed])
+            ->assertSeeHtml('data-geo-loading')->assertSee('Die Länder-Datenbank wird noch geladen.');
+    }
+
+    public function test_query_log_shows_the_country_and_filters_country_blocks(): void
+    {
+        $this->state['log'][3] = ['status' => 'blocked_country', 'reason' => 'country', 'country' => 'CN', 'name' => 'tracker.example.cn', 'answer' => '', 'rule' => ''] + $this->state['log'][3];
+        $this->state['log'][4]['country'] = 'US';
+
+        $page = Livewire::test(QueryLog::class, ['installedApp' => $this->installed])
+            ->assertSee('Land blockiert')->assertSee('Länderfilter')->assertSee('🇨🇳 China')->assertSeeHtml('data-country-link')
+            ->assertSeeHtml('data-country-flag')->assertSee('🇺🇸');
+        // an allow rule beats the country filter: a country block offers both
+        $page->set('status', 'country')->assertSee('tracker.example.cn')->assertDontSee('host4.example.org')
+            ->assertSeeHtml('data-country-link')->assertSeeHtml('aria-label="tracker.example.cn erlauben"');
+        $page->call('quick', 'tracker.example.cn', 'allow');
+        $this->assertStringContainsString('@@||tracker.example.cn^', $this->state['rules']);
+        $this->assertSame('country', last($this->sent('GET', '/api/querylog'))['query']['status']);
+        $page->set('status', 'blocked')->assertSee('tracker.example.cn')->assertSee('ads.example.net');
+
+        $this->assertSame('Land blockiert', Fmt::status('blocked_country'));
+        $this->assertTrue(Fmt::blocked('blocked_country'));
+        $this->assertSame(Fmt::badge('blocked'), Fmt::badge('blocked_country'));
+    }
+
+    public function test_country_names_are_shared_and_unchanged_for_pk95_proxy(): void
+    {
+        $this->assertSame('Deutschland', \App\Modules\Proxy\Fmt::country('DE'));
+        $this->assertSame('Vereinigte Staaten', \App\Modules\Proxy\Fmt::country('US'));
+        $this->assertSame('Lokales Netz', \App\Modules\Proxy\Fmt::country('LAN'));
+        $this->assertSame('Unbekannt', \App\Modules\Proxy\Fmt::country(''));
+        $this->assertSame('QZ', Countries::name('QZ'), 'an unknown code stays the code');
+        $this->assertSame('🇩🇪', \App\Modules\Proxy\Fmt::flag('DE'));
+        $this->assertSame(Countries::all(), \App\Modules\Proxy\Fmt::countries());
+        $this->assertCount(233, Countries::all());
     }
 }

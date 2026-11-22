@@ -37,7 +37,8 @@ class QueryLog extends Component
 
     public const PAGE = 50;
 
-    public const FILTERS = ['all' => 'Alle Anfragen', 'blocked' => 'Blockiert', 'allowed' => 'Erlaubt', 'rewritten' => 'Umgeschrieben', 'failed' => 'Fehlgeschlagen'];
+    /** "country" (PK95 DNS 1.2.0): blocked by the country filter; "blocked" includes it */
+    public const FILTERS = ['all' => 'Alle Anfragen', 'blocked' => 'Blockiert', 'country' => 'Land blockiert', 'allowed' => 'Erlaubt', 'rewritten' => 'Umgeschrieben', 'failed' => 'Fehlgeschlagen'];
 
     public function mount(): void
     {

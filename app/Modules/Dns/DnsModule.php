@@ -25,6 +25,20 @@ class DnsModule extends Module
         ];
     }
 
+    /**
+     * Reachable without a menu entry of the app: the country filter (PK95 DNS 1.2.0) is linked
+     * from the overview and the settings; with "countries" in the manifest it is in the sidebar too.
+     */
+    public function subPages(): array
+    {
+        return ['countries' => Countries::class];
+    }
+
+    public function pageTitle(string $key): ?string
+    {
+        return ['countries' => 'Länder'][$key] ?? null;
+    }
+
     public function minVersion(): ?string
     {
         // 1.1.0 brought zones and records (/api/zones, /api/records)

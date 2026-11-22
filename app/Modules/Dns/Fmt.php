@@ -17,6 +17,7 @@ final class Fmt
         'allowed' => 'Erlaubt',
         'blocked' => 'Blockiert',
         'blocked_service' => 'Dienst blockiert',
+        'blocked_country' => 'Land blockiert',
         'safesearch' => 'SafeSearch',
         'rewrite' => 'Eigener Eintrag',
         'refused' => 'Abgelehnt',
@@ -34,6 +35,7 @@ final class Fmt
         'any' => 'ANY-Anfrage',
         'ratelimit' => 'Ratenlimit',
         'upstream' => 'Upstream nicht erreichbar',
+        'country' => 'Länderfilter',
     ];
 
     public const GROUPS = [
@@ -164,7 +166,7 @@ final class Fmt
     public static function badge(string $status): string
     {
         return match ($status) {
-            'blocked', 'blocked_service' => 'bg-rose-100 text-rose-800 dark:bg-rose-900/70 dark:text-rose-100',
+            'blocked', 'blocked_service', 'blocked_country' => 'bg-rose-100 text-rose-800 dark:bg-rose-900/70 dark:text-rose-100',
             'allowed' => 'bg-green-100 text-green-800 dark:bg-green-900/70 dark:text-green-100',
             'safesearch', 'rewrite' => 'bg-cerulean-100 text-cerulean-800 dark:bg-cerulean-900 dark:text-cerulean-100',
             'refused', 'error' => 'bg-amber-100 text-amber-900 dark:bg-amber-900/70 dark:text-amber-100',
@@ -174,7 +176,7 @@ final class Fmt
 
     public static function blocked(string $status): bool
     {
-        return $status === 'blocked' || $status === 'blocked_service';
+        return in_array($status, ['blocked', 'blocked_service', 'blocked_country'], true);
     }
 
     /** Dot colour for good / warn / bad / none. */

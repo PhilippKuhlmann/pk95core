@@ -93,8 +93,13 @@
     @endif
 
     @if ($stats)
-        @php $t = $stats['totals']; @endphp
-        <div class="m-3 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        @php
+            $t = $stats['totals'];
+            // countries (PK95 DNS 1.2.0): the total only when something was blocked or the filter is on
+            $geoMode = (string) ($geo['mode'] ?? 'off');
+            $countryTile = isset($t['country_blocked']) && ((int) $t['country_blocked'] > 0 || $geoMode !== 'off');
+        @endphp
+        <div @class(['m-3 grid grid-cols-2 gap-3 md:grid-cols-3', 'xl:grid-cols-5' => ! $countryTile, 'xl:grid-cols-6' => $countryTile])>
             <a href="{{ $log([]) }}" wire:navigate class="{{ $tile }} hover:border-cerulean-400 dark:hover:border-cerulean-500">
                 <div class="{{ $muted }}">Anfragen</div><div class="mt-1 text-2xl font-DINPro-bold text-gray-900 dark:text-gray-100">{{ Fmt::compact($t['queries']) }}</div>
                 <div class="{{ $muted }}">{{ Overview::RANGES[$hours] }}</div>
@@ -122,6 +127,12 @@
                     <div class="{{ $muted }}">auf sichere Suche umgeleitet</div>
                 @endif
             </div>
+            @if ($countryTile)
+                <a href="{{ $log(['status' => 'country']) }}" wire:navigate class="{{ $tile }} hover:border-cerulean-400 dark:hover:border-cerulean-500" data-country-blocked>
+                    <div class="{{ $muted }}">Land blockiert</div><div class="mt-1 text-2xl font-DINPro-bold text-rose-700 dark:text-rose-300">{{ Fmt::compact((int) $t['country_blocked']) }}</div>
+                    <div class="{{ $muted }}">Länderfilter: {{ \App\Modules\Dns\Countries::modeLine($geoMode, count((array) ($geo['countries'] ?? []))) }}</div>
+                </a>
+            @endif
         </div>
 
         @php $c = Overview::chart($stats['series'], ($stats['granularity'] ?? 'hour') === 'day'); @endphp
@@ -170,6 +181,19 @@
                 'note' => Fmt::num($r['blocked']).' blockiert', 'href' => $log(['client' => $r['ip']])], $stats['top_clients'])])
             @include('modules.dns.partials.top-card', ['title' => 'Upstreams', 'rows' => array_map(fn ($r) => [
                 'label' => $r['address'], 'count' => $r['count'], 'note' => Fmt::ms($r['avg_ms'])], $stats['top_upstreams'])])
+            {{-- countries of the answers (PK95 DNS 1.2.0): share of the queries, blocked, badge of the filter --}}
+            @if (array_key_exists('top_countries', $stats))
+                @include('modules.dns.partials.top-card', ['title' => 'Länder', 'dataAttr' => 'data-top-countries', 'rows' => array_map(fn ($r) => [
+                    'label' => \App\Support\Countries::label($r['code']), 'count' => (int) $r['count'],
+                    'note' => Fmt::share((int) $r['count'], (int) $t['queries']).((int) ($r['blocked'] ?? 0) > 0 ? ' · '.Fmt::num((int) $r['blocked']).' blockiert' : ''),
+                    'badge' => \App\Modules\Dns\Countries::badge((string) $r['code'], $geo)], (array) $stats['top_countries']),
+                    'footer' => ['text' => 'Länderfilter: '.\App\Modules\Dns\Countries::modeLine($geoMode, count((array) ($geo['countries'] ?? []))), 'href' => $countriesUrl, 'link' => 'Einstellen']])
+            @else
+                <x-panel class="m-3" data-top-countries-unsupported>
+                    <div class="font-DINPro-bold text-gray-900 dark:text-gray-100">Länder</div>
+                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Ab PK95 DNS {{ \App\Modules\Dns\Countries::MIN_VERSION }} verfügbar.</p>
+                </x-panel>
+            @endif
         </div>
     @endif
 </div>

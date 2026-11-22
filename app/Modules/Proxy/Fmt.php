@@ -3,6 +3,7 @@
 namespace App\Modules\Proxy;
 
 use App\Http\Support\Format;
+use App\Support\Countries;
 use Illuminate\Support\Carbon;
 
 /**
@@ -121,17 +122,10 @@ final class Fmt
         return self::num($n).' '.($n === 1 ? $one : $many);
     }
 
-    /** German country name; LAN = local network. */
+    /** German country name; LAN = local network (shared with PK95 DNS: App\Support\Countries). */
     public static function country(?string $code): string
     {
-        if (! $code) {
-            return 'Unbekannt';
-        }
-        if ($code === 'LAN') {
-            return 'Lokales Netz';
-        }
-
-        return self::countries()[$code] ?? $code;
+        return Countries::name($code);
     }
 
     /**
@@ -139,19 +133,13 @@ final class Fmt
      */
     public static function countries(): array
     {
-        static $names = null;
-
-        return $names ??= require __DIR__.'/countries.php';
+        return Countries::all();
     }
 
     /** Flag as emoji (regional indicators); decorative, always next to the name. */
     public static function flag(?string $code): string
     {
-        if (! is_string($code) || ! preg_match('/^[A-Z]{2}$/', $code)) {
-            return '';
-        }
-
-        return mb_chr(0x1F1E6 + ord($code[0]) - 65).mb_chr(0x1F1E6 + ord($code[1]) - 65);
+        return Countries::flag($code);
     }
 
     /** Tailwind classes for an HTTP status. */
