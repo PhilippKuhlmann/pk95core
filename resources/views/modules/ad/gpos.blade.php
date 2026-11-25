@@ -89,6 +89,17 @@
         @include('modules.ad.partials.gpo-settings')
     @endif
 
+    @if (! $notReady && $driveMap !== '' && $settingsFor === null)
+        {{-- „Als Netzlaufwerk verteilen“ from PK95 File: the next GPO opened gets the drive row --}}
+        <x-callout title="Netzlaufwerk verteilen" class="m-3" data-drive-map-hint>
+            Wähle die Gruppenrichtlinie, die <span class="font-mono">{{ $driveMap }}</span> als Laufwerk verbinden soll. Ihre Einstellungen öffnen sich mit dem neuen Laufwerk;
+            es gilt für die Benutzer, für die die Gruppenrichtlinie gilt.
+            <x-slot:aktionen>
+                <x-input.button type="button" size="sm" color="gray" wire:click="forgetDriveMap">Abbrechen</x-input.button>
+            </x-slot:aktionen>
+        </x-callout>
+    @endif
+
     @if (! $notReady)
         @if (! $gpos && ! $loadError)
             <x-emptystate message="Noch keine Gruppenrichtlinien." />

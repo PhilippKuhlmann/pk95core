@@ -45,7 +45,7 @@ Läuft Core unter einer Domain hinter einem Proxy, kommen Adresse und Proxy in e
 
 ```bash
 APP_URL=https://core.example.de
-TRUSTED_PROXIES=10.10.250.95        # IP des Proxys, kommagetrennt auch mehrere
+TRUSTED_PROXIES=192.168.1.5         # IP des Proxys (Beispiel), kommagetrennt auch mehrere
 # SESSION_SECURE_COOKIE=true        # Login dann nur noch über HTTPS, nicht mehr über die LXC-IP
 ```
 
@@ -58,6 +58,7 @@ blockiert dann Stylesheet und Skripte als gemischte Inhalte.
 |---|---|
 | `/opt/pk95/core` | Core: SQLite-Datenbank, Anwendungsschlüssel (`app/private/app.key`). Ordner 0750, Dateien 0640, Schlüssel 0600 (setzt Core bei jedem Start) |
 | `/srv/pk95/certs/<domain>/` | Let's-Encrypt-Zertifikate für andere Anwendungen (PK95 Proxy, Bind-Mount). Abholen per `scp` mit dem Benutzer `certsync` (nur SFTP, Gruppe `pk95-certs`, gid 2001 = Einstellung `proxy_certs_gid`) |
+| `/srv/pk95/files/` | Freigaben von PK95 File (eigener Proxmox-Mountpoint, siehe [Dateiserver](#dateiserver-pk95-file)); nicht in den Sicherungen von Core |
 | `/opt/pk95/backups/<app>/` | App-Sicherungen (`<Zeit>-<id>-<volume>.tar.gz`), erstellt von einem kurzlebigen `alpine`-Hilfscontainer. Enthalten die Geheimnisse der Apps: Ordner 0750, Archive 0640 |
 | Docker-Volumes `pk95-<app>-<name>` | Daten der Apps (`docker volume ls --filter label=pk95.managed=1`) |
 
@@ -110,6 +111,41 @@ Skript lässt sich gefahrlos wiederholen und übernimmt einen Schlüssel aus `/e
 ```bash
 pct exec <CTID> -- bash -c "$(curl -fsSL https://raw.githubusercontent.com/PhilippKuhlmann/pk95core/main/install/certsync.sh)"
 ```
+## Dateiserver (PK95 File)
+
+PK95 File ist ein Samba-Dateiserver in der Domäne von PK95 AD (die App braucht PK95 AD im Zustand „eingerichtet“).
+Er braucht zwei Dinge vom Proxmox-Host und aus dem LAN. Alle Werte hier sind Beispiele.
+
+**Eigener Mountpoint für die Daten.** Die Freigaben liegen nicht auf der Systemplatte des LXC und nicht in den Sicherungen
+von Core (Bind-Mount), sondern auf einem eigenen Proxmox-Mountpoint unter `/srv/pk95/files`, den das
+Proxmox-Backup mitsichert (`backup=1`; pxar behält die NT-ACLs in den `user.*`-Attributen und die Hardlinks der
+Vorgängerversionen):
+
+```bash
+pct set 950 -mp0 local-zfs:50,mp=/srv/pk95/files,backup=1
+```
+
+Vorgängerversionen brauchen grob das Doppelte der Daten: Auf 50 GB passen etwa 20 bis 25 GB Freigaben. Der
+Mountpoint lässt sich später mit `pct resize 950 mp0 +50G` vergrößern. Ohne eigenen Mountpoint meldet der
+Einrichtungsassistent „Die Daten lägen auf der Systemplatte des LXC“.
+
+**Eigene IP-Adresse im LAN.** Der Dateiserver antwortet auf einer zweiten Adresse im Netz des LXC (z. B.
+`192.168.1.20`, der LXC selbst hat etwa `192.168.1.10`). Sie muss **außerhalb des DHCP-Bereichs** des Routers
+liegen, sonst vergibt der Router sie später an ein anderes Gerät. Die App legt sie beim Start selbst auf `eth0` und
+prüft vorher per ARP, dass sie frei ist.
+
+- Ist am LXC in Proxmox die **Firewall mit IP-Filter** (`ipfilter=1`) aktiv, lässt Proxmox nur die eingetragenen
+  Adressen durch: die zusätzliche Adresse in Proxmox unter *Firewall → IPSet `ipfilter-net0`* eintragen.
+- Vorschlag im Assistenten: Steht in der `.env` neben `docker-compose.yml` die Adresse, schlägt der Assistent sie vor
+  (danach `docker compose up -d`). Ohne den Eintrag sucht die App eine freie Adresse direkt nach der des LXC.
+
+```bash
+PK95FILE_DEFAULT_IP=192.168.1.20    # optional
+```
+
+Danach PK95 File unter **Apps** aktivieren und unter *PK95 File → Dateiserver* einrichten: Core legt in PK95 AD das
+Computerkonto und den DNS-Eintrag `files.<Domäne>` an und lässt den Server beitreten, ohne Administrator-Kennwort.
+
 ## Sicherheit
 
 - Core hat über den Docker-Socket root-gleiche Rechte im LXC. Port 8080 nur im LAN freigeben.

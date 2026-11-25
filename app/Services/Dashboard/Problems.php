@@ -12,7 +12,8 @@ use Illuminate\Support\Carbon;
  * Everything on the dashboard that needs a look, worst first, each with the page to go to:
  * apps that do not run or do not answer, failed proxy hosts and monitors, certificates that
  * expire soon, known vulnerabilities, the warnings an app's figures carry (PK95 AD: domain not
- * set up, Samba, NTP, resolver, Unix IDs), failed backups and updates.
+ * set up, Samba, NTP, resolver, Unix IDs; PK95 File: not set up, disk, trust, quotas …), failed
+ * backups and updates.
  */
 class Problems
 {

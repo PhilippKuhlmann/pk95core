@@ -21,7 +21,7 @@ use Livewire\Component;
 class Dashboard extends Component
 {
     /** Apps with figures on the dashboard, in this order. */
-    public const PANELS = ['dns', 'proxy', 'uptime', 'ad', 'proxapps'];
+    public const PANELS = ['dns', 'proxy', 'uptime', 'ad', 'file', 'proxapps'];
 
     public function render(DockerClient $docker)
     {

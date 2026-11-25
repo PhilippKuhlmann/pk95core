@@ -8,9 +8,13 @@
     use App\Modules\Proxy\Fmt as ProxyFmt;
     use App\Modules\Proxy\Overview as ProxyOverview;
 
-    $home = ['dns' => 'overview', 'proxy' => 'overview', 'uptime' => 'monitors', 'proxapps' => 'dashboard', 'ad' => 'domain'][$app?->app_id] ?? null;
-    // PK95 AD shows the state of the domain, not figures of 24 h: the realm stands there instead
-    $corner = $appId === 'ad' ? (($f['ok'] ?? false) ? ($f['realm'] ?? '') : '') : '24 h';
+    $home = ['dns' => 'overview', 'proxy' => 'overview', 'uptime' => 'monitors', 'proxapps' => 'dashboard', 'ad' => 'domain', 'file' => 'server'][$app?->app_id] ?? null;
+    // PK95 AD and PK95 File show a state, not figures of 24 h: the realm / the server name stand there instead
+    $corner = match ($appId) {
+        'ad' => ($f['ok'] ?? false) ? ($f['realm'] ?? '') : '',
+        'file' => ($f['ok'] ?? false) ? ($f['fqdn'] ?? '') : '',
+        default => '24 h',
+    };
     $href = $app ? ($home ? route('apps.page', [$app, $home]) : route('apps.show', $app)) : route('apps.index');
     $label = 'text-xs text-gray-500 dark:text-gray-400';
     $value = 'text-xl font-DINPro-bold text-gray-900 dark:text-gray-100';
@@ -135,6 +139,33 @@
                     </li>
                 @endif
             </ul>
+        @elseif ($appId === 'file' && ! ($f['ready'] ?? false))
+            <p class="mt-3 flex items-start gap-2 text-sm text-amber-800 dark:text-amber-200" data-file-unconfigured>
+                <x-icon name="warn" class="mt-0.5 h-4 w-4 shrink-0" sw="2" />
+                <span>{{ match ($f['state'] ?? '') { 'joining' => 'Der Dateiserver tritt gerade der Domäne bei.', 'failed' => 'Der Beitritt zur Domäne ist fehlgeschlagen.', default => 'Der Dateiserver ist noch nicht eingerichtet.' } }}
+                    <a href="{{ $href }}" wire:navigate class="font-medium underline">Zum Einrichtungsassistenten</a></span>
+            </p>
+        @elseif ($appId === 'file')
+            @php
+                $usedPct = $f['total'] > 0 ? min(100, (int) round($f['used'] / $f['total'] * 100)) : 0;
+                $barTone = ['ok' => 'bg-cerulean-500', 'warn' => 'bg-amber-500', 'bad' => 'bg-rose-500'][$f['diskTone']] ?? 'bg-cerulean-500';
+                $freeTone = ['ok' => '', 'warn' => 'text-amber-800 dark:text-amber-300', 'bad' => 'text-rose-700 dark:text-rose-300'][$f['diskTone']] ?? '';
+            @endphp
+            <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div><div class="{{ $label }}">Freigaben</div><div class="{{ $value }}">{{ $f['shares'] }}</div></div>
+                <div><div class="{{ $label }}">Sitzungen</div><div class="{{ $value }}">{{ $f['sessions'] }}</div></div>
+                <div><div class="{{ $label }}">Offene Dateien</div><div class="{{ $value }}">{{ $f['openFiles'] }}</div></div>
+                <div><div class="{{ $label }}">Frei</div><div class="{{ $value }} whitespace-nowrap {{ $freeTone }}" data-file-free>{{ \App\Http\Support\Format::bytes($f['free']) }}</div></div>
+            </div>
+            <div class="mt-3" data-file-storage data-tone="{{ $f['diskTone'] }}">
+                <div class="h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700" role="img" aria-label="{{ $usedPct }} % belegt">
+                    <div class="h-full rounded-full {{ $barTone }}" style="width: {{ $usedPct }}%"></div>
+                </div>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ \App\Http\Support\Format::bytes($f['used']) }} von {{ \App\Http\Support\Format::bytes($f['total']) }} belegt{{ $f['freePercent'] !== null ? ', '.$f['freePercent'].' % frei' : '' }}
+                    · {{ $f['snapshots'] === 1 ? '1 Vorgängerversion' : $f['snapshots'].' Vorgängerversionen' }}@unless ($f['snapshotsOk']) <span class="text-rose-700 dark:text-rose-300">(letzte fehlgeschlagen)</span>@endunless
+                </p>
+            </div>
         @elseif ($appId === 'proxapps')
             <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div><div class="{{ $label }}">Apps (LXC)</div><div class="{{ $value }}">{{ $f['deployed'] }}</div></div>

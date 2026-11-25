@@ -56,6 +56,13 @@ class Gpos extends Component
     /** filter of the settings dialog: only configured settings */
     public bool $onlyConfigured = false;
 
+    /**
+     * „Als Netzlaufwerk verteilen“ from PK95 File: a UNC path (?laufwerk=\\files.ad.example.com\Projekte).
+     * The GPO the user opens next gets a new drive row with it on the user tab.
+     */
+    #[Url(as: 'laufwerk', except: '')]
+    public string $driveMap = '';
+
     public const STATUS = [
         'enabled' => 'Aktiv',
         'user_disabled' => 'Benutzerkonfiguration aus',
@@ -209,6 +216,38 @@ class Gpos extends Component
         $this->settingsTab = $this->configuredCount('computer') + $this->gppRowCount('computer') === 0
             && $this->configuredCount('user') + $this->gppRowCount('user') > 0 ? 'user' : 'computer';
         $this->settingsFor = $id;
+        $this->addSharedDrive();
+    }
+
+    /** the drive map PK95 File asked for: a new row with the share's path, its editor open */
+    private function addSharedDrive(): void
+    {
+        $path = trim($this->driveMap);
+        if ($path === '') {
+            return;
+        }
+        if (empty($this->gppSupported['drives'])) {
+            $this->dispatch('notice', kind: 'error', text: 'Netzlaufwerke per Gruppenrichtlinie gibt es ab PK95 AD 1.1.0.');
+
+            return;
+        }
+        $this->driveMap = '';
+        $this->settingsTab = 'user';
+        $this->settingsSearch = '';
+        $this->onlyConfigured = false;
+        $this->addGpp('drives');
+        $index = $this->gppEditingIndex('drives');
+        if ($index !== null) {
+            $this->gpp['drives'][$index]['path'] = $path;
+            // the share name as label: \\files.ad.example.com\Projekte → Projekte
+            $this->gpp['drives'][$index]['label'] = rtrim((string) preg_replace('/^.*\\\\/', '', $path), '$');
+        }
+    }
+
+    /** "Abbrechen" on the hint: no drive row */
+    public function forgetDriveMap(): void
+    {
+        $this->driveMap = '';
     }
 
     public function updatedSettingsTab(string $tab): void
