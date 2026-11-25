@@ -75,7 +75,7 @@ class DnsModuleTest extends FeatureTestCase
                 4 => $this->record(4, 'home.lan', 'MX', 'mail.home.lan', ['priority' => 10]),
                 5 => $this->record(5, '_ldap._tcp.home.lan', 'SRV', 'ldap.home.lan', ['priority' => 10, 'weight' => 5, 'port' => 389]),
                 6 => $this->record(6, 'printer.example.org', 'AAAA', 'fd00::20'),
-                8 => $this->record(8, 'cloud.example.de', 'A', '10.10.250.50', ['managed_by' => 'core']),
+                8 => $this->record(8, 'cloud.example.de', 'A', '192.168.10.50', ['managed_by' => 'core']),
             ],
             'blocked' => ['tiktok'],
             'clients' => [2 => $this->client(2, 'Kinder-Tablet', ['192.168.1.40'])],

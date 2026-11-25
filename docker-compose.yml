@@ -32,7 +32,7 @@ services:
       # UTC). PK95_TIMEZONE, if set, takes precedence.
       TZ: Europe/Berlin
       # Behind a TLS reverse proxy (set in .env next to this file): its address, so Core
-      # trusts X-Forwarded-Proto/-Host and builds https:// links, e.g. TRUSTED_PROXIES=10.10.250.95.
+      # trusts X-Forwarded-Proto/-Host and builds https:// links, e.g. TRUSTED_PROXIES=192.168.1.5.
       TRUSTED_PROXIES: "${TRUSTED_PROXIES:-}"
       # true: session cookie only over HTTPS (login via http://<LXC>:8080 then no longer works).
       SESSION_SECURE_COOKIE: "${SESSION_SECURE_COOKIE:-false}"

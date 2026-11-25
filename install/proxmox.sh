@@ -8,7 +8,7 @@
 # PK95 Proxy, Uptime, ProxApps) is activated afterwards in the web interface.
 #
 # Asks step by step for ID, hostname, resources, storage and network (Enter keeps the suggestion).
-# Environment variables become the suggestions, e.g. CTID=250 IP=10.10.250.50/24 GW=10.10.250.1;
+# Environment variables become the suggestions, e.g. CTID=250 IP=192.168.1.50/24 GW=192.168.1.1;
 # without a terminal the script runs unattended with them.
 set -euo pipefail
 
@@ -123,10 +123,10 @@ bold "3. Netzwerk"
 (( TTY )) && echo "  Bridge:"
 choose BRIDGE "Bridge" "${BRIDGE:-${bridges[0]}}" "${bridges[@]}"
 ask VLAN "VLAN-Tag (leer = keins)" "${VLAN:-}" vlan_ok "Leer lassen oder eine Zahl von 1 bis 4094."
-ask IP "IP-Adresse mit Präfix oder dhcp" "${IP:-dhcp}" ip_ok "dhcp oder eine Adresse wie 10.10.250.50/24."
+ask IP "IP-Adresse mit Präfix oder dhcp" "${IP:-dhcp}" ip_ok "dhcp oder eine Adresse wie 192.168.1.50/24."
 GW="${GW:-}"
 if [[ "$IP" != dhcp ]]; then
-  ask GW "Gateway" "${GW:-${IP%.*}.1}" ipv4 "Eine Adresse wie 10.10.250.1."
+  ask GW "Gateway" "${GW:-${IP%.*}.1}" ipv4 "Eine Adresse wie 192.168.1.1."
 else
   GW=""
 fi

@@ -50,7 +50,7 @@
                         <x-input.select id="h-scheme" wire:model.live="form.scheme" class="mt-1"><option value="http">http</option><option value="https">https</option></x-input.select>
                     </x-field>
                     <x-field label="Ziel-Host" for="h-host" class="md:col-span-3">
-                        <x-input.text id="h-host" wire:model="form.upstream_host" placeholder="10.10.250.20" class="mt-1 w-full font-mono" />
+                        <x-input.text id="h-host" wire:model="form.upstream_host" placeholder="192.168.1.20" class="mt-1 w-full font-mono" />
                     </x-field>
                     <x-field label="Port" for="h-port" class="md:col-span-2">
                         <x-input.text id="h-port" type="number" min="1" max="65535" wire:model="form.upstream_port" placeholder="8080" class="mt-1 w-full" />
