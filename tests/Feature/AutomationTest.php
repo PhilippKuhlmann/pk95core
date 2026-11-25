@@ -49,6 +49,8 @@ class AutomationTest extends FeatureTestCase
     {
         parent::setUp();
         config(['pk95.catalog_dir' => base_path('catalog')]);
+        // as if PK95_UPTIME_PUBLIC_URL were set (the shipped default is empty)
+        config(['pk95.defaults.uptime_public_url' => 'https://status.example.com']);
         foreach (['proxapps', 'proxy', 'uptime', 'dns'] as $id) {
             InstalledApp::factory()->create(['app_id' => $id, 'status' => InstalledApp::RUNNING, 'version' => '1.0.0',
                 'manifest' => ['id' => $id, 'name' => $id, 'version' => '1.0.0', 'protocol' => 1, 'menu' => [], 'capabilities' => [], 'events' => []]]);
@@ -229,17 +231,17 @@ class AutomationTest extends FeatureTestCase
         $link = app(Linker::class)->linkStatusPages();
 
         $this->assertSame(AppLink::ACTIVE, $link->state);
-        $this->assertSame('status.kuhlmannit.de', $link->domain, 'default of uptime_public_url');
+        $this->assertSame('status.example.com', $link->domain, 'default of uptime_public_url');
         $host = $this->sent('POST', '/api/hosts')[0];
-        $this->assertSame(['status.kuhlmannit.de'], $host['domains']);
+        $this->assertSame(['status.example.com'], $host['domains']);
         $this->assertSame(['http', '192.168.10.50', 3002], [$host['scheme'], $host['upstream_host'], $host['upstream_port']]);
         $this->assertTrue($host['enabled']);
-        $this->assertSame([['name' => 'status.kuhlmannit.de', 'value' => '192.168.10.50']],
+        $this->assertSame([['name' => 'status.example.com', 'value' => '192.168.10.50']],
             array_map(fn ($r) => ['name' => $r['name'], 'value' => $r['value']], array_values($this->records)));
         // one monitor on the public API (the root and /api/health are 404 on that port)
         $monitors = $this->sent('POST', 'pk95-uptime');
         $this->assertCount(1, $monitors);
-        $this->assertSame('https://status.kuhlmannit.de/api/public/status', $monitors[0]['config']['url']);
+        $this->assertSame('https://status.example.com/api/public/status', $monitors[0]['config']['url']);
         $this->assertSame(14, $monitors[0]['config']['certWarnDays']);
         $this->assertSame(['m1'], $link->fresh()->monitor_ids);
         $this->assertSame(1, AppEvent::query()->where('type', 'core.link.active')->count());
@@ -268,7 +270,7 @@ class AutomationTest extends FeatureTestCase
         $this->artisan('pk95:links')->assertSuccessful();
         $this->assertSame(AppLink::ACTIVE, $link->fresh()->state);
         $this->assertTrue($this->hosts[$link->proxy_host_id]['enabled']);
-        $this->assertSame(['https://status.kuhlmannit.de/api/public/status'], array_map(fn ($m) => $m['config']['url'], $this->sent('POST', 'pk95-uptime')));
+        $this->assertSame(['https://status.example.com/api/public/status'], array_map(fn ($m) => $m['config']['url'], $this->sent('POST', 'pk95-uptime')));
 
         // the LXC got another LAN IP: the host's target moves along
         Settings::put('automation_lan_ip', '192.168.10.60');
@@ -294,12 +296,49 @@ class AutomationTest extends FeatureTestCase
         $this->assertNull(app(Linker::class)->linkStatusPages());
         $this->assertSame([], $this->sent('POST', '/api/hosts'));
 
-        Settings::put('uptime_public_url', 'https://status.kuhlmannit.de');
+        Settings::put('uptime_public_url', 'https://status.example.com');
         InstalledApp::query()->where('app_id', 'proxy')->update(['status' => InstalledApp::STOPPED]);
         $link = app(Linker::class)->linkStatusPages();
         $this->assertSame(AppLink::FAILED, $link->state);
         $this->assertStringContainsString('PK95 Proxy läuft gerade nicht', $link->message);
         $this->assertDatabaseHas('app_events', ['type' => 'core.link.failed', 'severity' => 'warning']);
+    }
+
+    public function test_a_saved_address_wins_over_an_empty_default(): void
+    {
+        config(['pk95.defaults.uptime_public_url' => '']);
+        $this->assertSame('', Settings::get('uptime_public_url'));
+        $this->assertNull(app(Linker::class)->linkStatusPages(), 'empty default, nothing saved: nothing to set up');
+
+        Settings::put('uptime_public_url', 'https://status.example.org');
+        $this->dnsAnswer = ['203.0.113.10'];
+        $link = app(Linker::class)->linkStatusPages();
+        $this->assertSame('status.example.org', $link->domain);
+        $this->assertSame([['status.example.org']], array_values(array_map(fn ($h) => $h['domains'], $this->hosts)));
+    }
+
+    public function test_an_empty_default_never_takes_down_existing_status_pages(): void
+    {
+        $this->dnsAnswer = ['203.0.113.10'];
+        $link = app(Linker::class)->linkStatusPages();
+        $this->assertSame(AppLink::ACTIVE, $link->state);
+
+        // the env default goes away (e.g. a new .env) and nothing was ever saved: no-op
+        config(['pk95.defaults.uptime_public_url' => '']);
+        $same = app(Linker::class)->linkStatusPages();
+        $this->artisan('pk95:links')->assertSuccessful();
+        $this->assertSame($link->id, $same->id);
+        $this->assertSame(AppLink::ACTIVE, $link->fresh()->state);
+        $this->assertSame([], array_filter($this->calls, fn ($c) => $c['method'] === 'DELETE'));
+        $this->assertCount(1, $this->hosts);
+        $this->assertCount(1, $this->records);
+
+        // clearing the address on the status pages page still removes what Core set up
+        Settings::put('uptime_public_url', '');
+        app(Linker::class)->linkStatusPages();
+        $this->assertSame(AppLink::REMOVED, $link->fresh()->state);
+        $this->assertSame([], $this->hosts);
+        $this->assertSame([], $this->records);
     }
 
     public function test_without_dns_the_host_waits_disabled_and_is_switched_on_later(): void

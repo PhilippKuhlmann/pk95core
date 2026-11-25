@@ -139,7 +139,8 @@ return [
         'automation_lan_ip' => '',
         // Base address of PK95 Uptime's public status pages (<address>/status/<slug>): Core's links
         // and a PK95 Proxy host for its domain (Uptime itself does not get it). Empty = not set up.
-        'uptime_public_url' => 'https://status.kuhlmannit.de',
+        // Normally saved on the status pages page; the env only gives the starting value.
+        'uptime_public_url' => (string) env('PK95_UPTIME_PUBLIC_URL', ''),
         // Group id PK95 Proxy gives its exported certificates (/srv/pk95/certs on the LXC):
         // members of that group on the host (e.g. the SFTP user certsync) may read them.
         'proxy_certs_gid' => 2001,

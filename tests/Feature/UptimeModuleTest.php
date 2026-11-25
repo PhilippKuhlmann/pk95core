@@ -220,13 +220,14 @@ class UptimeModuleTest extends FeatureTestCase
 
     public function test_status_pages_link_to_their_public_address(): void
     {
+        Settings::put('uptime_public_url', 'https://status.example.com');
         $this->pages = ['p1' => $this->statusPage('p1', 'familie', true), 'p2' => $this->statusPage('p2', 'intern', false)];
 
         $html = $this->get(route('apps.page', [$this->installed, 'status-pages']))->assertOk()
             ->assertSee('Öffentliche Adresse der Statusseiten')
-            ->assertSee('href="https://status.kuhlmannit.de/status/familie"', false)
-            ->assertSee('target="_blank" rel="noopener" data-tip="https://status.kuhlmannit.de/status/familie"', false)
-            ->assertSee('x-on:click="$kopieren(\'https:\/\/status.kuhlmannit.de\/status\/familie\')"', false)
+            ->assertSee('href="https://status.example.com/status/familie"', false)
+            ->assertSee('target="_blank" rel="noopener" data-tip="https://status.example.com/status/familie"', false)
+            ->assertSee('x-on:click="$kopieren(\'https:\/\/status.example.com\/status\/familie\')"', false)
             ->assertSee('Nicht öffentlich: In der Seite „Öffentlich erreichbar“ einschalten.')
             ->assertSee('Noch nicht eingerichtet')
             ->getContent();
@@ -237,6 +238,7 @@ class UptimeModuleTest extends FeatureTestCase
 
     public function test_an_uptime_container_without_the_status_port_asks_to_recreate_it(): void
     {
+        Settings::put('uptime_public_url', 'https://status.example.com');
         $url = route('apps.page', [$this->installed, 'status-pages']);
         // no container known (or no Docker): no hint
         $this->get($url)->assertOk()->assertDontSee('data-port-missing', false);
@@ -265,12 +267,13 @@ class UptimeModuleTest extends FeatureTestCase
 
     public function test_public_address_is_checked_saved_and_set_up(): void
     {
+        Settings::put('uptime_public_url', 'https://status.example.com');
         $this->mock(Linker::class, function (MockInterface $m) {
             $m->shouldReceive('linkStatusPages')->once()->andReturn(new AppLink(['state' => AppLink::PENDING_DNS, 'domain' => 'status.example.de']));
         });
 
         Livewire::test(StatusPages::class, ['installedApp' => $this->installed])
-            ->assertSet('publicUrl', 'https://status.kuhlmannit.de')
+            ->assertSet('publicUrl', 'https://status.example.com')
             ->set('publicUrl', 'ftp://status.example.de')
             ->call('savePublicUrl')
             ->assertHasErrors('publicUrl')
