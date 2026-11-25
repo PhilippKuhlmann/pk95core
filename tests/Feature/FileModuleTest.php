@@ -707,6 +707,24 @@ class FileModuleTest extends FeatureTestCase
         $this->get(route('apps.page', [$this->file, 'shares']))->assertOk()->assertDontSee('Als Netzlaufwerk verteilen');
     }
 
+    public function test_shares_render_as_cards_below_md_and_as_a_table_above(): void
+    {
+        $this->ready();
+        $html = $this->get(route('apps.page', [$this->file, 'shares']))->assertOk()->getContent();
+
+        // one card (md:hidden) and one table row (hidden md:block) per share, both with the actions
+        $this->assertMatchesRegularExpression('/class="[^"]*\bmd:hidden\b[^"]*" data-share-cards/', $html);
+        $this->assertMatchesRegularExpression('/class="[^"]*\bhidden\b[^"]*\bmd:block\b[^"]*"[^>]*>\s*<table[^>]*data-shares/', $html);
+        $this->assertSame(1, substr_count($html, 'data-share-card="Buchhaltung"'));
+        $this->assertSame(1, substr_count($html, 'data-share="Buchhaltung"'));
+        $this->assertSame(2, substr_count($html, 'wire:click="confirmDelete('));
+        $this->assertStringContainsString('Buchhaltung: Ändern, Geschäftsführung: Lesen', $html);
+        $this->assertStringContainsString(e('\\\\files.ad.example.com\\Buchhaltung'), $html);
+
+        $this->assertSame('Nur Administratoren', Shares::permissionSummary(['permissions' => []]));
+        $this->assertSame('S-1-5-21-1-1111: Vollzugriff', Shares::permissionSummary(['permissions' => [['sid' => 'S-1-5-21-1-1111', 'access' => 'full']]]));
+    }
+
     public function test_create_share_with_permissions_from_ad_groups_and_nested_errors(): void
     {
         $this->ready();

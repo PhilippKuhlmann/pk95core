@@ -224,50 +224,69 @@
         @if (! $shares && ! $loadError)
             <x-emptystate message="Noch keine Freigaben." />
         @elseif ($shares)
-            <x-panel class="relative m-3 overflow-x-auto" polster="keins">
+            @php
+                $rows = array_map(function (array $sh) {
+                    [$label, $tone] = Shares::STATUS[$sh['status'] ?? 'ok'] ?? [$sh['status'] ?? '', 'gray'];
+                    $used = (int) ($sh['usage']['bytes'] ?? 0);
+                    $quota = (int) ($sh['soft_quota']['size_bytes'] ?? 0);
+
+                    return ['sh' => $sh, 'label' => $label, 'tone' => $tone, 'used' => $used, 'quota' => $quota,
+                        'pct' => $quota > 0 ? min(100, (int) round($used / $quota * 100)) : null,
+                        'barTone' => $tone === 'rose' ? 'bg-rose-500' : ($tone === 'amber' ? 'bg-amber-500' : 'bg-cerulean-500'),
+                        'unresolved' => collect((array) ($sh['permissions'] ?? []))->where('unresolved', true)->count(),
+                        'rights' => Shares::permissionSummary($sh)];
+                }, $shares);
+                $unresolvedText = fn (int $n) => $n === 1 ? 'Ein Recht gehört zu einer gelöschten Gruppe.' : $n.' Rechte gehören zu gelöschten Gruppen.';
+                $cardLabel = 'text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400';
+            @endphp
+
+            {{-- below md: one card per share --}}
+            <div class="m-3 space-y-3 md:hidden" data-share-cards>
+                @foreach ($rows as $r)
+                    @php $sh = $r['sh']; @endphp
+                    <x-panel polster="eng" wire:key="share-card-{{ $sh['name'] }}" data-share-card="{{ $sh['name'] }}">
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="min-w-0">
+                                <button type="button" wire:click="edit({{ Js::from($sh['name']) }})" class="text-left font-DINPro-bold break-all text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $sh['name'] }}</button>
+                                @if ($sh['hidden'] ?? false)<span class="{{ $badge }} ml-1 {{ $tones['gray'] }}">versteckt</span>@endif
+                                @if (($sh['description'] ?? '') !== '')<span class="block text-xs text-gray-500 dark:text-gray-400">{{ $sh['description'] }}</span>@endif
+                            </div>
+                            <span class="{{ $badge }} shrink-0 {{ $tones[$r['tone']] }}">{{ $r['label'] }}</span>
+                        </div>
+                        @if ($r['unresolved'])<p class="mt-1 text-xs text-amber-800 dark:text-amber-300">{{ $unresolvedText($r['unresolved']) }}</p>@endif
+                        <dl class="mt-3 space-y-2 text-sm text-gray-900 dark:text-gray-100">
+                            <div><dt class="{{ $cardLabel }}">Pfad</dt><dd><x-copy :value="$sh['unc'] ?? ''" class="font-mono text-xs" /></dd></div>
+                            <div><dt class="{{ $cardLabel }}">Rechte</dt><dd class="text-gray-700 dark:text-gray-300" data-rights>{{ $r['rights'] }}</dd></div>
+                            <div><dt class="{{ $cardLabel }}">Belegung</dt><dd>@include('modules.file.partials.share-usage')</dd></div>
+                        </dl>
+                        <div class="mt-3 border-t border-gray-100 pt-2 dark:border-gray-700">@include('modules.file.partials.share-actions')</div>
+                    </x-panel>
+                @endforeach
+            </div>
+
+            {{-- from md: the table --}}
+            <x-panel class="relative m-3 hidden overflow-x-auto md:block" polster="keins">
                 <table class="w-full text-left text-sm text-gray-900 dark:text-gray-100" data-shares>
                     <thead class="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                        <tr><th class="px-4 py-3">Name</th><th class="hidden px-4 py-3 lg:table-cell">Pfad</th><th class="hidden px-4 py-3 sm:table-cell">Status</th>
+                        <tr><th class="px-4 py-3">Name</th><th class="hidden px-4 py-3 xl:table-cell">Pfad</th><th class="hidden px-4 py-3 xl:table-cell">Rechte</th><th class="px-4 py-3">Status</th>
                             <th class="px-4 py-3">Belegung</th><th class="px-4 py-3"><span class="sr-only">Aktionen</span></th></tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                        @foreach ($shares as $sh)
-                            @php
-                                [$statusLabel, $statusTone] = Shares::STATUS[$sh['status'] ?? 'ok'] ?? [$sh['status'] ?? '', 'gray'];
-                                $used = (int) ($sh['usage']['bytes'] ?? 0);
-                                $quota = (int) ($sh['soft_quota']['size_bytes'] ?? 0);
-                                $pct = $quota > 0 ? min(100, (int) round($used / $quota * 100)) : null;
-                                $barTone = $statusTone === 'rose' ? 'bg-rose-500' : ($statusTone === 'amber' ? 'bg-amber-500' : 'bg-cerulean-500');
-                                $unresolved = collect((array) ($sh['permissions'] ?? []))->where('unresolved', true)->count();
-                            @endphp
+                        @foreach ($rows as $r)
+                            @php $sh = $r['sh']; @endphp
                             <tr wire:key="share-{{ $sh['name'] }}" data-share="{{ $sh['name'] }}">
                                 <td class="min-w-48 px-4 py-3 align-top">
                                     <button type="button" wire:click="edit({{ Js::from($sh['name']) }})" class="text-left font-DINPro-bold text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $sh['name'] }}</button>
                                     @if ($sh['hidden'] ?? false)<span class="{{ $badge }} ml-1 {{ $tones['gray'] }}">versteckt</span>@endif
                                     @if (($sh['description'] ?? '') !== '')<span class="block text-xs text-gray-500 dark:text-gray-400">{{ $sh['description'] }}</span>@endif
-                                    @if ($unresolved)<span class="block text-xs text-amber-800 dark:text-amber-300">{{ $unresolved === 1 ? 'Ein Recht gehört zu einer gelöschten Gruppe.' : $unresolved.' Rechte gehören zu gelöschten Gruppen.' }}</span>@endif
-                                    <span class="mt-0.5 block sm:hidden"><span class="{{ $badge }} {{ $tones[$statusTone] }}">{{ $statusLabel }}</span></span>
+                                    @if ($r['unresolved'])<span class="block text-xs text-amber-800 dark:text-amber-300">{{ $unresolvedText($r['unresolved']) }}</span>@endif
+                                    <span class="mt-1 block xl:hidden"><x-copy :value="$sh['unc'] ?? ''" class="font-mono text-xs text-gray-600 dark:text-gray-300" /></span>
                                 </td>
-                                <td class="hidden px-4 py-3 align-top lg:table-cell"><x-copy :value="$sh['unc'] ?? ''" class="font-mono text-xs" /></td>
-                                <td class="hidden px-4 py-3 align-top sm:table-cell"><span class="{{ $badge }} {{ $tones[$statusTone] }}" data-status="{{ $sh['status'] ?? '' }}">{{ $statusLabel }}</span></td>
-                                <td class="min-w-36 px-4 py-3 align-top">
-                                    <div class="text-sm tabular-nums">{{ Shares::bytes($used) }}@if ($quota > 0)<span class="text-gray-500 dark:text-gray-400"> von {{ Shares::bytes($quota) }}</span>@endif</div>
-                                    @if ($pct !== null)
-                                        <div class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700" role="img" aria-label="{{ $pct }} % des Kontingents">
-                                            <div class="h-full rounded-full {{ $barTone }}" style="width: {{ $pct }}%"></div>
-                                        </div>
-                                    @endif
-                                </td>
-                                <td class="px-4 py-3 align-top">
-                                    <div class="flex justify-end gap-1">
-                                        @if ($driveLink)
-                                            <x-input.symbolknopf titel="Als Netzlaufwerk verteilen" ton="grau" :href="$driveLink($sh)" data-drive-map><x-icon name="link" class="h-4 w-4" /></x-input.symbolknopf>
-                                        @endif
-                                        <x-input.symbolknopf titel="Vorgängerversionen" ton="grau" wire:click="openSnapshots({{ Js::from($sh['name']) }})"><x-icon name="clock" class="h-4 w-4" /></x-input.symbolknopf>
-                                        <x-input.symbolknopf titel="Bearbeiten" ton="grau" wire:click="edit({{ Js::from($sh['name']) }})"><x-icon name="pencil" class="h-4 w-4" /></x-input.symbolknopf>
-                                        <x-input.symbolknopf titel="{{ $sh['name'] }} löschen" ton="rot" wire:click="confirmDelete({{ Js::from($sh['name']) }})"><x-icon name="trash" class="h-4 w-4" /></x-input.symbolknopf>
-                                    </div>
-                                </td>
+                                <td class="hidden px-4 py-3 align-top xl:table-cell"><x-copy :value="$sh['unc'] ?? ''" class="font-mono text-xs" /></td>
+                                <td class="hidden max-w-64 px-4 py-3 align-top text-xs text-gray-700 xl:table-cell dark:text-gray-300">{{ $r['rights'] }}</td>
+                                <td class="px-4 py-3 align-top"><span class="{{ $badge }} {{ $tones[$r['tone']] }}" data-status="{{ $sh['status'] ?? '' }}">{{ $r['label'] }}</span></td>
+                                <td class="min-w-36 px-4 py-3 align-top">@include('modules.file.partials.share-usage')</td>
+                                <td class="px-4 py-3 align-top">@include('modules.file.partials.share-actions')</td>
                             </tr>
                         @endforeach
                     </tbody>

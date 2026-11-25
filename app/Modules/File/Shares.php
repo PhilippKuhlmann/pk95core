@@ -391,6 +391,22 @@ class Shares extends Component
         return rtrim(rtrim(number_format($bytes / self::GIB, 2, ',', ''), '0'), ',');
     }
 
+    /**
+     * The share's editable permissions in one line for the list: "Buchhaltung: Ändern,
+     * Geschäftsführung: Lesen" (domain prefix dropped). The fixed admin rows are not counted.
+     */
+    public static function permissionSummary(array $share): string
+    {
+        $parts = [];
+        foreach ((array) ($share['permissions'] ?? []) as $p) {
+            $name = (string) ($p['name'] ?? '') !== '' ? (string) $p['name'] : (string) ($p['sid'] ?? '');
+            $name = str_contains($name, '\\') ? substr($name, strrpos($name, '\\') + 1) : $name;
+            $parts[] = $name.': '.(self::ACCESS[$p['access'] ?? ''] ?? ($p['access'] ?? ''));
+        }
+
+        return $parts ? implode(', ', $parts) : 'Nur Administratoren';
+    }
+
     // --- loading -------------------------------------------------------------------------
 
     /**
