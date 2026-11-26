@@ -92,6 +92,32 @@ class ProxyModuleTest extends FeatureTestCase
         ];
     }
 
+    /** PK95 Proxy 1.9.0 on top: levels 1–4, groups, bypass networks, limits, exceptions per parameter. */
+    private function enableWaf19(): void
+    {
+        $this->enableWaf();
+        $this->waf['status'] += ['exception_targets' => ['ARGS', 'ARGS_NAMES', 'ARGS_GET', 'ARGS_POST', 'REQUEST_HEADERS', 'REQUEST_COOKIES', 'FILES'], 'bypassed_today' => 7];
+        $this->waf['hosts'][1] += ['detection_paranoia' => 1, 'disabled_groups' => [], 'bypass_cidrs' => [],
+            'limits' => array_fill_keys(['allowed_methods', 'allowed_content_types', 'restricted_extensions', 'max_args', 'arg_name_length', 'arg_length',
+                'total_arg_length', 'max_file_size_kb', 'combined_file_sizes_kb'], null),
+            'defaults' => ['allowed_methods' => ['GET', 'HEAD', 'POST', 'OPTIONS'],
+                'allowed_content_types' => ['application/x-www-form-urlencoded', 'multipart/form-data', 'application/json'],
+                'restricted_extensions' => ['.bak', '.sql'], 'max_args' => null, 'arg_name_length' => null, 'arg_length' => null,
+                'total_arg_length' => null, 'max_file_size_kb' => null, 'combined_file_sizes_kb' => null],
+            'suggested' => ['max_args' => 255, 'arg_name_length' => 100, 'arg_length' => 400, 'total_arg_length' => 64000, 'max_file_size_kb' => 1024, 'combined_file_sizes_kb' => 1024]];
+        $this->waf['groups'] = [['id' => 'php', 'label' => 'PHP', 'kind' => 'technology', 'description' => 'Angriffe auf PHP-Anwendungen.'],
+            ['id' => 'java', 'label' => 'Java', 'kind' => 'technology', 'description' => 'Angriffe auf Java-Anwendungen.'],
+            ['id' => 'sqli', 'label' => 'SQL-Injection', 'kind' => 'attack', 'description' => 'Eingeschleuste Datenbankbefehle.']];
+        $this->waf['settings'] = ['use_internal_networks' => false, 'bypass_cidrs' => []];
+        $this->waf['events'][0]['block_paranoia'] = 1;
+        $this->waf['events'][0]['min_paranoia'] = 1;
+        $this->waf['events'][0]['detection_score'] = 13;
+        $this->waf['events'][0]['rules'][0] += ['paranoia' => 1];
+        $this->waf['events'][0]['rules'][] = ['id' => 920320, 'msg' => 'Missing User Agent Header', 'severity' => 'notice', 'target' => 'REQUEST_HEADERS:User-Agent', 'paranoia' => 2];
+        $this->waf['events'][0]['rules'][] = ['id' => 930100, 'msg' => 'Path Traversal', 'severity' => 'critical', 'target' => 'REQUEST_URI', 'paranoia' => 1];
+        $this->waf['stats']['hits_by_paranoia'] = ['0' => 3, '1' => 30, '2' => 4, '3' => 0, '4' => 0];
+    }
+
     /** The faked WAF routes, null when the request is not one of them. */
     private function wafRoute(Request $r, string $path)
     {
@@ -111,6 +137,25 @@ class ProxyModuleTest extends FeatureTestCase
         if ($route !== null) {
             return Http::response($route);
         }
+        // PK95 Proxy 1.9.0: rule groups and global settings (404 before)
+        if ($path === '/api/waf/groups') {
+            return isset($this->waf['groups']) ? Http::response($this->waf['groups']) : Http::response(['error' => 'nicht gefunden'], 404);
+        }
+        if ($path === '/api/waf/settings') {
+            if (! isset($this->waf['settings'])) {
+                return Http::response(['error' => 'nicht gefunden'], 404);
+            }
+            if ($r->method() === 'PUT') {
+                foreach ($data['bypass_cidrs'] ?? [] as $i => $cidr) {
+                    if (in_array($cidr, ['0.0.0.0/0', '::/0'], true)) {
+                        return Http::response(['error' => 'Ungültige Eingabe', 'fields' => ['bypass_cidrs.'.$i => 'Zu groß.']], 422);
+                    }
+                }
+                $this->waf['settings'] = ['use_internal_networks' => (bool) $data['use_internal_networks'], 'bypass_cidrs' => $data['bypass_cidrs']];
+            }
+
+            return Http::response($this->waf['settings']);
+        }
         if (preg_match('#^/api/hosts/(\d+)/waf/exceptions(?:/([^/]+))?$#', $path, $m)) {
             $id = (int) $m[1];
             if ($r->method() === 'DELETE') {
@@ -119,13 +164,13 @@ class ProxyModuleTest extends FeatureTestCase
                 return Http::response(null, 204);
             }
             foreach ($this->waf['hosts'][$id]['exceptions'] ?? [] as $e) {
-                if ($e['rule_id'] === $data['rule_id'] && $e['path_prefix'] === ($data['path_prefix'] ?? '')) {
+                if ($e['rule_id'] === $data['rule_id'] && $e['path_prefix'] === ($data['path_prefix'] ?? '') && ($e['target'] ?? '') === ($data['target'] ?? '')) {
                     return Http::response(['error' => 'Diese Ausnahme gibt es schon.', 'id' => $e['id']], 409);
                 }
             }
             // ids are numbers (int64 in PK95 Proxy)
             $new = ['id' => 100 + count($this->waf['hosts'][$id]['exceptions'] ?? []), 'rule_id' => $data['rule_id'], 'path_prefix' => $data['path_prefix'] ?? '',
-                'note' => $data['note'] ?? '', 'created_at' => 1];
+                'note' => $data['note'] ?? '', 'created_at' => 1] + (isset($data['target']) ? ['target' => $data['target']] : []);
             $this->waf['hosts'][$id]['exceptions'][] = $new;
 
             return Http::response($new, 201);
@@ -140,7 +185,26 @@ class ProxyModuleTest extends FeatureTestCase
                 if (($data['anomaly_threshold'] ?? 5) < 2) {
                     return Http::response(['error' => 'Ungültige Eingabe', 'fields' => ['anomaly_threshold' => 'Zwischen 2 und 100.']], 422);
                 }
-                // a partial update: what is not sent stays
+                // 1.9.0: detection not below the block level, no world-wide bypass, methods not empty
+                $paranoia = $data['paranoia'] ?? $current['paranoia'];
+                if (array_key_exists('detection_paranoia', $data) && $data['detection_paranoia'] !== null && $data['detection_paranoia'] < $paranoia) {
+                    return Http::response(['error' => 'Ungültige Eingabe', 'fields' => ['detection_paranoia' => 'Nicht unter der Blockstufe.']], 422);
+                }
+                foreach ($data['bypass_cidrs'] ?? [] as $i => $cidr) {
+                    if (in_array($cidr, ['0.0.0.0/0', '::/0'], true)) {
+                        return Http::response(['error' => 'Ungültige Eingabe', 'fields' => ['bypass_cidrs.'.$i => 'Zu groß.']], 422);
+                    }
+                }
+                if (($data['limits']['allowed_methods'] ?? null) === []) {
+                    return Http::response(['error' => 'Ungültige Eingabe', 'fields' => ['limits.allowed_methods' => 'Mindestens eine Methode.']], 422);
+                }
+                // a partial update: what is not sent stays (inside limits too)
+                if (isset($data['limits'], $current['limits'])) {
+                    $data['limits'] = array_replace($current['limits'], $data['limits']);
+                }
+                if (array_key_exists('detection_paranoia', $data) && $data['detection_paranoia'] === null) {
+                    $data['detection_paranoia'] = $paranoia;
+                }
                 $current = array_replace($current, array_diff_key($data, ['error' => 1]));
                 $this->waf['hosts'][$id] = $current;
             }
@@ -1384,6 +1448,103 @@ class ProxyModuleTest extends FeatureTestCase
         Http::swap(new Factory(app('events')));
         Http::fake(['*' => Http::failedConnection()]);
         $this->get(route('apps.page', [$this->installed, 'hosts']))->assertOk()->assertSee('PK95 Proxy antwortet nicht');
+    }
+
+    // ---- web firewall 2 (PK95 Proxy 1.9.0) ---------------------------------------------------------
+
+    public function test_proxy_1_8_keeps_two_levels_and_no_advanced_section(): void
+    {
+        $this->enableWaf();
+        Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('edit', 1)
+            ->assertSet('wafV19', false)->assertSee('Streng (Stufe 2)')->assertDontSee('Stufe 3: sehr streng')
+            ->assertDontSeeHtml('data-waf-advanced')->call('save')->assertHasNoErrors();
+        $put = last($this->bodies('PUT', '/api/hosts/1/waf'));
+        $this->assertSame(['mode', 'paranoia', 'anomaly_threshold', 'body_limit_kb', 'profiles'], array_keys($put), 'nothing of 1.9.0 to a 1.8.0');
+        Livewire::test(WebFirewall::class, ['installedApp' => $this->installed])->assertDontSeeHtml('data-waf-settings')->assertDontSeeHtml('data-waf-rule-level');
+    }
+
+    public function test_the_advanced_section_saves_levels_groups_networks_and_limits(): void
+    {
+        $this->enableWaf19();
+        $page = Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('edit', 1)
+            ->assertSet('wafV19', true)->assertSee('Stufe 4: maximal')->assertSeeHtml('data-waf-advanced')
+            ->assertDontSeeHtml('data-waf-adjusted')->assertSee('SQL-Injection')->assertSee('Vorschlag: 255')
+            ->assertSet('waf.limits.allowed_methods', ['GET', 'HEAD', 'POST', 'OPTIONS'])
+            // a higher block level takes the detection level along
+            ->set('waf.paranoia', '3')->assertSet('waf.detection_paranoia', '3')
+            ->set('waf.detection_paranoia', '4')->set('waf.disabled_groups', ['java'])
+            ->set('waf.bypass_cidrs', "192.168.1.0/24\n 10.0.0.5 ")
+            ->set('waf.limits.allowed_methods', ['GET', 'HEAD', 'POST', 'OPTIONS', 'PUT'])
+            ->set('waf.limits.restricted_extensions', "PHP\n.bak")
+            ->set('waf.limits.max_args', '255')
+            ->call('save')->assertHasNoErrors()->assertSet('editing', null);
+
+        $put = last($this->bodies('PUT', '/api/hosts/1/waf'));
+        $this->assertSame([3, 4, ['java'], ['192.168.1.0/24', '10.0.0.5']], [$put['paranoia'], $put['detection_paranoia'], $put['disabled_groups'], $put['bypass_cidrs']]);
+        $this->assertArrayNotHasKey('exceptions', $put);
+        // complete limits, null = CRS default (also the content types that equal it)
+        $this->assertSame(['allowed_methods' => ['GET', 'HEAD', 'POST', 'OPTIONS', 'PUT'], 'allowed_content_types' => null,
+            'restricted_extensions' => ['.php', '.bak'], 'max_args' => 255, 'arg_name_length' => null, 'arg_length' => null,
+            'total_arg_length' => null, 'max_file_size_kb' => null, 'combined_file_sizes_kb' => null], $put['limits']);
+
+        // reopened: detection, group, networks and three limits differ from the default
+        Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('edit', 1)
+            ->assertSeeHtml('data-waf-adjusted>· 6 angepasst')->assertSet('waf.limits.max_args', '255')
+            ->assertSet('waf.limits.restricted_extensions', ".php\n.bak");
+    }
+
+    public function test_errors_of_the_advanced_section_land_on_their_field_with_the_line(): void
+    {
+        $this->enableWaf19();
+        Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('edit', 1)
+            ->set('waf.bypass_cidrs', "192.168.1.0/24\n0.0.0.0/0")->call('save')
+            ->assertHasErrors(['waf.bypass_cidrs'])->assertSet('editing', '1')
+            ->assertSee('Zeile 2: Zu groß.')->assertSeeHtml('wire:key="waf-advanced-error"')
+            ->set('waf.bypass_cidrs', '')->set('waf.limits.allowed_methods', [])->call('save')
+            ->assertHasErrors(['waf.limits.allowed_methods'])->assertSee('Mindestens eine Methode.');
+    }
+
+    public function test_a_new_host_on_proxy_1_9_gets_levels_groups_and_networks_but_no_limits(): void
+    {
+        $this->enableWaf19();
+        Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('create')
+            ->assertSet('wafV19', true)->assertSee('Grenzwerte stellst du nach dem Anlegen des Hosts ein.')
+            ->set('form.domains', 'neu.example.de')->set('form.upstream_host', '10.0.0.7')->set('form.upstream_port', '80')
+            ->set('waf.paranoia', '2')->set('waf.disabled_groups', ['php'])->call('save')->assertSet('editing', null);
+        $put = last($this->bodies('PUT', '/api/hosts/3/waf'));
+        $this->assertSame([2, 2, ['php']], [$put['paranoia'], $put['detection_paranoia'], $put['disabled_groups']]);
+        $this->assertArrayNotHasKey('limits', $put);
+    }
+
+    public function test_the_page_shows_levels_takes_the_parameter_and_saves_the_settings(): void
+    {
+        $this->enableWaf19();
+        $page = Livewire::test(WebFirewall::class, ['installedApp' => $this->installed])
+            ->assertSee('Stufe 1')->assertSee('Stufe 2 · nur erkannt')->assertSee('Treffer nach Stufe:')->assertSee('vor 1.9: 3')
+            ->assertSee('Heute umgangen (eigene Netze): 7')->assertSeeHtml('data-waf-settings');
+
+        // the parameter of the rule, 1:1 (also a header name as the event has it)
+        $page->call('newException', 1, 'app.example.de', '920320', '/search', 'REQUEST_HEADERS:User-Agent')
+            ->assertSet('exception.target', 'REQUEST_HEADERS:User-Agent')->assertSet('exception.use_target', true)
+            ->assertSee('Nur für den Parameter REQUEST_HEADERS:User-Agent')->call('saveException');
+        $this->assertSame('REQUEST_HEADERS:User-Agent', last($this->bodies('POST', '/api/hosts/1/waf/exceptions'))['target']);
+
+        // switched off: for the whole rule
+        $page->call('newException', 1, 'app.example.de', '942100', '/search', 'ARGS:q')->set('exception.use_target', false)->call('saveException');
+        $this->assertArrayNotHasKey('target', last($this->bodies('POST', '/api/hosts/1/waf/exceptions')));
+
+        // a collection the Proxy cannot name (or a name that does not fit): without target, with a note
+        $page->call('newException', 1, 'app.example.de', '930100', '/x', 'REQUEST_URI')->assertSet('exception.target', '')
+            ->assertSee('Dafür gibt es keine Ausnahme je Parameter')
+            ->call('newException', 1, 'app.example.de', '930100', '/x', 'ARGS:a b')->assertSet('exception.target', '');
+
+        // global settings: loaded once, PUT replaces them, a wrong line on the field
+        $page->assertSet('settings.use_internal_networks', false)
+            ->set('settings.use_internal_networks', true)->set('settings.bypass_cidrs', "203.0.113.0/24\n::/0")->call('saveSettings')
+            ->assertHasErrors(['settings.bypass_cidrs'])->assertSee('Zeile 2: Zu groß.')
+            ->set('settings.bypass_cidrs', '203.0.113.0/24')->call('saveSettings')->assertHasNoErrors()
+            ->assertDispatched('notice', kind: 'success', text: 'Einstellungen gespeichert.');
+        $this->assertSame(['use_internal_networks' => true, 'bypass_cidrs' => ['203.0.113.0/24']], last($this->bodies('PUT', '/api/waf/settings')));
     }
 
     // ---- slow pages open at once (lazy) -----------------------------------------------------------
