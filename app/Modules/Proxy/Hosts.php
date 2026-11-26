@@ -3,18 +3,25 @@
 namespace App\Modules\Proxy;
 
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
 use Illuminate\Support\HtmlString;
+use Livewire\Attributes\Defer;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
  * PK95 Proxy: hosts (reverse proxy, redirect, 404 host, status page) with certificate and
- * target state, maintenance switch and the create/edit form.
+ * target state, maintenance switch and the create/edit form. Lazy: it waits on several panel
+ * routes (checks, page views per day, web firewall), so the page opens at once with a skeleton.
  */
+#[Defer]
 class Hosts extends Component
 {
+    use LoadsLazily;
     use TalksToApp;
+
+    public const PLACEHOLDER = ['Hosts', 'Lade Hosts …', 1];
 
     public InstalledApp $installedApp;
 

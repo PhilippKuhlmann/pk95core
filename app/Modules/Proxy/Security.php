@@ -3,16 +3,29 @@
 namespace App\Modules\Proxy;
 
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
+use Illuminate\Support\Facades\Cache;
+use Livewire\Attributes\Defer;
 use Livewire\Component;
 
 /**
  * PK95 Proxy: country rules (nftables), blocklists, automatic IP ban and the server
- * signature switch.
+ * signature switch. Lazy: the page opens at once, the data follow.
  */
+#[Defer]
 class Security extends Component
 {
+    use LoadsLazily;
     use TalksToApp;
+
+    public const PLACEHOLDER = ['Sicherheit', 'Lade Sicherheitseinstellungen …', 3];
+
+    /** Country counts of 7 days only sort the picker: Core keeps them this long (seconds). */
+    public const TRAFFIC_TTL = 600;
+
+    /** /api/security as mount loaded it, for the render of the same request (not kept) */
+    private ?array $fresh = null;
 
     public InstalledApp $installedApp;
 
@@ -70,6 +83,7 @@ class Security extends Component
         if (! is_array($d)) {
             return;
         }
+        $this->fresh = $d;
         $this->saved = ['mode' => $d['mode'], 'block' => $d['blocked'], 'allow' => $d['allowed']];
         $this->mode = $d['mode'] === 'allow' ? 'allow' : 'block';
         $this->blockList = $d['blocked'];
@@ -187,13 +201,14 @@ class Security extends Component
 
     public function render()
     {
-        [$d, $error] = $this->load('/api/security');
+        // mount has just loaded it in this request: not a second time
+        [$d, $error] = $this->fresh !== null ? [$this->fresh, null] : $this->load('/api/security');
+        $this->fresh = null;
         [$bl] = $this->load('/api/blocklists');
-        [$stats] = $this->load('/api/stats', ['range' => '7d']);
         $d = is_array($d) ? $d : null;
 
         // Countries with traffic first, they are the likeliest candidates.
-        $traffic = collect(is_array($stats) ? ($stats['countries'] ?? []) : [])->pluck('count', 'key')->all();
+        $traffic = $this->traffic();
         $names = Fmt::countries();
         $codes = array_keys($names);
         usort($codes, fn ($a, $b) => [-($traffic[$a] ?? 0), $names[$a]] <=> [-($traffic[$b] ?? 0), $names[$b]]);
@@ -203,8 +218,13 @@ class Security extends Component
         $same = $this->mode === $this->saved['mode'] && count($savedList) === count($current) && ! array_diff($savedList, $current);
         $busy = $d && (! empty($d['queued']) || ! empty($d['running']));
 
+        // the picker is drawn by Alpine from this list: 250 rows of markup on every round trip made the page slow
+        $rows = array_map(fn ($c) => ['c' => $c, 'n' => $names[$c], 'f' => Fmt::flag($c),
+            't' => ($traffic[$c] ?? 0) ? Fmt::num($traffic[$c]) : ''], $codes);
+
         return view('modules.proxy.security', [
             'd' => $d,
+            'rows' => $rows,
             'bl' => is_array($bl) ? $bl : ['lists' => [], 'status' => null],
             'codes' => $codes,
             'names' => $names,
@@ -215,6 +235,29 @@ class Security extends Component
             'confirmText' => $this->confirmText($current, $traffic),
             'loadError' => $error ?? $this->loadError,
         ]);
+    }
+
+    /**
+     * Requests per country in 7 days (code → count). PK95 Proxy computes them over all its logs
+     * and keeps them only about a minute: Core keeps them TRAFFIC_TTL, they only sort the list.
+     *
+     * @return array<string, int>
+     */
+    private function traffic(): array
+    {
+        $key = 'proxy.security.traffic.'.$this->installedApp->id;
+        $traffic = Cache::get($key);
+        if (is_array($traffic)) {
+            return $traffic;
+        }
+        [$stats] = $this->load('/api/stats', ['range' => '7d']);
+        if (! is_array($stats)) {
+            return [];
+        }
+        $traffic = collect($stats['countries'] ?? [])->pluck('count', 'key')->map(fn ($n) => (int) $n)->all();
+        Cache::put($key, $traffic, self::TRAFFIC_TTL);
+
+        return $traffic;
     }
 
     /**
