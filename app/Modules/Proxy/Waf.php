@@ -2,13 +2,14 @@
 
 namespace App\Modules\Proxy;
 
+use App\Http\Support\Format;
 use App\Models\InstalledApp;
 use App\Services\Apps\AppException;
 
 /**
- * The web firewall of PK95 Proxy (Coraza + OWASP CRS), shared by the host form, the page
- * „Web-Firewall“ and the dashboard. A Proxy without it answers 404 on /api/waf/status (or
- * available: false when Coraza is missing): then Core shows nothing of it.
+ * The web firewall of PK95 Proxy 1.8.0 (Coraza + OWASP CRS), shared by the host form, the
+ * page „Web-Firewall“ and the dashboard. An older Proxy answers 404 on every WAF route, a
+ * Proxy whose Caddy has no WAF module reports so in the status: then Core shows nothing of it.
  */
 class Waf
 {
@@ -22,16 +23,23 @@ class Waf
 
     public const PARANOIA = [1 => 'Normal (Stufe 1)', 2 => 'Streng (Stufe 2)'];
 
-    public const ACTIONS = ['detected' => 'Erkannt', 'blocked' => 'Blockiert'];
+    /** action of a hit as /api/waf/events names it */
+    public const ACTIONS = ['detect' => 'Erkannt', 'block' => 'Blockiert'];
 
     /** What a new host gets (PK95 Proxy sets detect itself when a host is created). */
     public const DEFAULTS = ['mode' => 'detect', 'paranoia' => 1, 'anomaly_threshold' => 5, 'body_limit_kb' => 1024, 'profiles' => []];
 
+    /** The fields Core sends: PUT is a partial update, the exceptions go through their own routes. */
+    public const FIELDS = ['mode', 'paranoia', 'anomaly_threshold', 'body_limit_kb', 'profiles'];
+
+    /** status error of a Caddy without the WAF module, the fallback when "module" is missing: not a problem, just no WAF */
+    public const NO_MODULE = 'ohne WAF-Modul';
+
     /**
-     * GET /api/waf/status, or null when this Proxy has no web firewall (404, available false)
-     * or does not answer.
+     * GET /api/waf/status, or null when this Proxy has no web firewall (404, Caddy without the
+     * module) or does not answer.
      *
-     * @return array{coraza: string, crs: string, profiles: list<array<string, mixed>>, hosts_with_errors: list<array<string, mixed>>}|null
+     * @return array{crs: string, coraza: string, rules_loaded: bool, error: string, hosts: list<array<string, mixed>>}|null
      */
     public static function status(InstalledApp $app): ?array
     {
@@ -40,17 +48,43 @@ class Waf
         } catch (AppException) {
             return null;
         }
-        $s = $response->successful() ? (array) $response->json() : [];
-        if (! ($s['available'] ?? false)) {
+        if (! $response->successful()) {
+            return null;
+        }
+        $s = (array) $response->json();
+        $loaded = (bool) ($s['rules_loaded'] ?? false);
+        $error = trim((string) ($s['error'] ?? ''));
+        // standalone (Caddy without the WAF module): "module": false; without the field the error text tells
+        $withoutModule = array_key_exists('module', $s) ? $s['module'] === false : (! $loaded && str_contains($error, self::NO_MODULE));
+        if ($withoutModule) {
             return null;
         }
 
         return [
-            'coraza' => (string) ($s['coraza'] ?? ''),
-            'crs' => (string) ($s['crs'] ?? ''),
-            'profiles' => array_values(array_filter((array) ($s['profiles'] ?? []), 'is_array')),
-            'hosts_with_errors' => array_values(array_filter((array) ($s['hosts_with_errors'] ?? []), 'is_array')),
+            'crs' => (string) ($s['crs_version'] ?? ''),
+            'coraza' => (string) ($s['coraza_version'] ?? ''),
+            'rules_loaded' => $loaded,
+            'error' => $error,
+            'hosts' => array_values(array_filter((array) ($s['hosts'] ?? []), 'is_array')),
         ];
+    }
+
+    /**
+     * Hosts whose rules did not load (they run without WAF, fail-open): host_id → error.
+     *
+     * @param  array<string, mixed>|null  $status
+     * @return array<int, string>
+     */
+    public static function hostErrors(?array $status): array
+    {
+        $out = [];
+        foreach ($status['hosts'] ?? [] as $h) {
+            if (trim((string) ($h['error'] ?? '')) !== '') {
+                $out[(int) ($h['host_id'] ?? 0)] = trim((string) $h['error']);
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -73,14 +107,13 @@ class Waf
     }
 
     /**
-     * Form state → body of PUT /api/hosts/{id}/waf. The exclusions are sent as the panel last
-     * reported them: they are only changed through their own routes.
+     * Form state → body of PUT /api/hosts/{id}/waf: only the settings, never "exceptions"
+     * (in a PUT it would replace the list).
      *
      * @param  array<string, mixed>  $f
-     * @param  list<array<string, mixed>>  $exclusions
      * @return array<string, mixed>
      */
-    public static function payload(array $f, array $exclusions): array
+    public static function payload(array $f): array
     {
         $int = fn (string $key) => preg_match('/^\d+$/', trim((string) ($f[$key] ?? ''))) ? (int) trim((string) $f[$key]) : trim((string) ($f[$key] ?? ''));
 
@@ -90,13 +123,12 @@ class Waf
             'anomaly_threshold' => $int('anomaly_threshold'),
             'body_limit_kb' => $int('body_limit_kb'),
             'profiles' => array_values(array_map('strval', (array) ($f['profiles'] ?? []))),
-            'exclusions' => array_values($exclusions),
         ];
     }
 
     /**
-     * Whether a rule may get an exclusion: not the CRS rules that evaluate the score
-     * (949xxx inbound, 959xxx outbound, 980xxx correlation). Excluding them would switch off
+     * Whether a rule may get an exception: not the CRS rules that evaluate the score
+     * (949xxx inbound, 959xxx outbound, 980xxx correlation). Excepting them would switch off
      * blocking on that path altogether instead of one false alarm.
      */
     public static function excludable(int|string $ruleId): bool
@@ -104,18 +136,28 @@ class Waf
         if (! ctype_digit((string) $ruleId)) {
             return false;
         }
-        $block = intdiv((int) $ruleId, 1000);
 
-        return ! in_array($block, [949, 959, 980], true);
+        return ! in_array(intdiv((int) $ruleId, 1000), [949, 959, 980], true);
     }
 
     /**
-     * Path of a hit as the prefix of a new exclusion: without query string.
+     * Path of a hit as the prefix of a new exception: without query string.
      */
     public static function pathPrefix(string $path): string
     {
         $path = (string) strtok($path, '?');
 
         return $path === '' ? '/' : $path;
+    }
+
+    /**
+     * Start of a period for /api/waf/stats in ms: local midnight for "today" (days 0), else
+     * now minus the days.
+     */
+    public static function from(int $days): int
+    {
+        return $days === 0
+            ? now(Format::timezone())->startOfDay()->getTimestampMs()
+            : now()->subDays($days)->getTimestampMs();
     }
 }

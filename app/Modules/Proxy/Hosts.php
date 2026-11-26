@@ -37,13 +37,13 @@ class Hosts extends Component
     /** @var array<string, mixed> WAF form (Waf::toForm) */
     public array $waf = [];
 
-    /** @var list<array<string, mixed>> exclusions of the host being edited (only deleted here) */
-    public array $wafExclusions = [];
+    /** @var list<array<string, mixed>> exceptions of the host being edited (only deleted here) */
+    public array $wafExceptions = [];
 
     /** load error of the host's rules, read only (fail-open: the host runs without WAF) */
     public ?string $wafError = null;
 
-    /** @var list<array<string, mixed>> rule profiles from /api/waf/status */
+    /** @var list<array<string, mixed>> application profiles from /api/waf/profiles */
     public array $wafProfiles = [];
 
     public const KINDS = ['proxy' => 'Reverse Proxy', 'redirect' => 'Weiterleitung', 'dead' => '404-Host', 'status' => 'Statusseite'];
@@ -181,15 +181,15 @@ class Hosts extends Component
         $this->editing = null;
     }
 
-    /** Removes an exclusion of the web firewall right away (not only on saving). */
-    public function deleteExclusion(string $exclusionId): void
+    /** Removes an exception of the web firewall right away (not only on saving). */
+    public function deleteException(string $exceptionId): void
     {
         if (! ctype_digit((string) $this->editing)) {
             return;
         }
-        $response = $this->appRequest(fn ($api) => $api->delete('/api/hosts/'.(int) $this->editing.'/waf/exclusions/'.rawurlencode($exclusionId)));
+        $response = $this->appRequest(fn ($api) => $api->delete('/api/hosts/'.(int) $this->editing.'/waf/exceptions/'.rawurlencode($exceptionId)));
         if ($this->succeeded($response, 'waf.')) {
-            $this->wafExclusions = array_values(array_filter($this->wafExclusions, fn ($e) => (string) ($e['id'] ?? '') !== $exclusionId));
+            $this->wafExceptions = array_values(array_filter($this->wafExceptions, fn ($e) => (string) ($e['id'] ?? '') !== $exceptionId));
             $this->dispatch('notice', kind: 'success', text: 'Ausnahme gelöscht.');
         }
     }
@@ -203,7 +203,7 @@ class Hosts extends Component
     private function loadWaf(?array $host): void
     {
         $this->waf = Waf::toForm([]);
-        $this->wafExclusions = [];
+        $this->wafExceptions = [];
         $this->wafError = null;
         $this->wafProfiles = [];
         $status = Waf::status($this->installedApp);
@@ -211,7 +211,8 @@ class Hosts extends Component
         if (! $this->wafOn) {
             return;
         }
-        $this->wafProfiles = $status['profiles'];
+        [$profiles] = $this->load('/api/waf/profiles');
+        $this->wafProfiles = is_array($profiles) ? array_values(array_filter($profiles, 'is_array')) : [];
         if ($host === null || ($host['kind'] ?? '') !== 'proxy') {
             return; // new host or not a reverse proxy (yet): the defaults
         }
@@ -223,27 +224,19 @@ class Hosts extends Component
         }
         $w = (array) $response->json();
         $this->waf = Waf::toForm($w);
-        $this->wafExclusions = array_values(array_filter((array) ($w['exclusions'] ?? []), 'is_array'));
+        $this->wafExceptions = array_values(array_filter((array) ($w['exceptions'] ?? []), 'is_array'));
         // the resource's own error, else what the status reports for this host
-        $statusError = collect($status['hosts_with_errors'])->firstWhere('host_id', (int) $host['id'])['error'] ?? '';
-        $this->wafError = trim((string) ($w['error'] ?? '')) ?: (trim((string) $statusError) ?: null);
+        $this->wafError = trim((string) ($w['error'] ?? '')) ?: (Waf::hostErrors($status)[(int) $host['id']] ?? null);
     }
 
-    /**
-     * PUT of the WAF settings, with the exclusions as the panel has them right now (another
-     * tab or the log page may have added some since the form was opened).
-     */
+    /** PUT of the WAF settings (a partial update: the exceptions stay as they are). */
     private function saveWaf(int $id): bool
     {
-        $current = $this->appRequest(fn ($api) => $api->get('/api/hosts/'.$id.'/waf'));
-        $exclusions = $current !== null && $current->successful()
-            ? array_values(array_filter((array) $current->json('exclusions'), 'is_array'))
-            : $this->wafExclusions;
-        $response = $this->appRequest(fn ($api) => $api->put('/api/hosts/'.$id.'/waf', Waf::payload($this->waf, $exclusions)));
+        $response = $this->appRequest(fn ($api) => $api->put('/api/hosts/'.$id.'/waf', Waf::payload($this->waf)));
         if (! $this->succeeded($response, 'waf.')) {
             return false;
         }
-        $this->wafExclusions = array_values(array_filter((array) $response->json('exclusions'), 'is_array')) ?: $exclusions;
+        $this->wafExceptions = array_values(array_filter((array) $response->json('exceptions'), 'is_array'));
 
         return true;
     }
@@ -293,7 +286,7 @@ class Hosts extends Component
         [$checks] = $this->load('/api/hosts/checks');
         // web firewall: hosts whose rules did not load (they run without WAF)
         $wafStatus = collect($hosts)->contains(fn ($h) => array_key_exists('waf_mode', $h)) ? Waf::status($this->installedApp) : null;
-        $wafErrors = collect($wafStatus['hosts_with_errors'] ?? [])->keyBy('host_id')->map(fn ($e) => (string) ($e['error'] ?? ''))->all();
+        $wafErrors = Waf::hostErrors($wafStatus);
         $checks = collect(is_array($checks) ? $checks : [])->keyBy('host_id')->all();
 
         // the search first (the tabs count its hits), then the kind of the visible tab
