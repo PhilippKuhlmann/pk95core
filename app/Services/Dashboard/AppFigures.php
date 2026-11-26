@@ -2,7 +2,6 @@
 
 namespace App\Services\Dashboard;
 
-use App\Http\Support\Format;
 use App\Models\InstalledApp;
 use App\Modules\Ad\AdTime;
 use App\Modules\Dns\CountrySplit as DnsCountrySplit;
@@ -164,8 +163,7 @@ class AppFigures
         $updates = $optional('/api/updates');
         // web firewall (a Proxy without it: nothing); today = since local midnight
         $wafStatus = Waf::status($app);
-        $wafToday = $wafStatus === null ? null
-            : $optional('/api/waf/summary', ['from' => now(Format::timezone())->startOfDay()->getTimestampMs(), 'to' => now()->getTimestampMs()]);
+        $wafToday = $wafStatus === null ? null : $optional('/api/waf/stats', ['from' => Waf::from(0), 'to' => now()->getTimestampMs()]);
 
         return [
             'ok' => true,
@@ -180,16 +178,18 @@ class AppFigures
             'expiring' => $expiring,
             'vulns' => is_array($updates['vulns']['vulns'] ?? null) ? count($updates['vulns']['vulns']) : null,
             'waf' => $wafStatus === null ? null : [
-                'detected' => isset($wafToday['total']) ? (int) ($wafToday['total']['detected'] ?? 0) : null,
-                'blocked' => isset($wafToday['total']) ? (int) ($wafToday['total']['blocked'] ?? 0) : null,
-                'rules' => array_slice(array_values(array_filter((array) ($wafToday['rules'] ?? []), 'is_array')), 0, 3),
-                'hosts' => array_slice(array_values(array_filter((array) ($wafToday['hosts'] ?? []), 'is_array')), 0, 3),
+                'hits' => isset($wafToday['hits']) ? (int) $wafToday['hits'] : null,
+                'blocks' => isset($wafToday['hits']) ? (int) ($wafToday['blocks'] ?? 0) : null,
+                'rules' => array_slice(array_values(array_filter((array) ($wafToday['top_rules'] ?? []), 'is_array')), 0, 3),
+                'hosts' => array_slice(array_values(array_filter((array) ($wafToday['top_hosts'] ?? []), 'is_array')), 0, 3),
             ],
-            // fail-open: a host whose rules did not load runs without protection
-            'warnings' => array_map(fn (array $e) => [
-                'text' => 'Web-Firewall für '.($e['domain'] ?? 'Host '.($e['host_id'] ?? '?')).' nicht geladen, der Host läuft ohne Schutz'.(($e['error'] ?? '') !== '' ? ': '.$e['error'] : '.'),
-                'page' => 'waf', 'tone' => 'bad',
-            ], $wafStatus['hosts_with_errors'] ?? []),
+            // fail-open: without rules no host is protected, a host whose rules did not load runs without
+            'warnings' => $wafStatus === null ? [] : [
+                ...($wafStatus['rules_loaded'] ? [] : [['text' => 'Web-Firewall: Die Regeln sind nicht geladen, kein Host ist geschützt'
+                    .($wafStatus['error'] !== '' ? ': '.$wafStatus['error'] : '.'), 'page' => 'waf', 'tone' => 'bad']]),
+                ...array_map(fn (array $h) => ['text' => 'Web-Firewall für '.($h['domain'] ?? 'Host '.($h['host_id'] ?? '?')).' nicht geladen, der Host läuft ohne Schutz: '.trim((string) $h['error']),
+                    'page' => 'waf', 'tone' => 'bad'], array_values(array_filter($wafStatus['hosts'], fn ($h) => trim((string) ($h['error'] ?? '')) !== ''))),
+            ],
         ];
     }
 

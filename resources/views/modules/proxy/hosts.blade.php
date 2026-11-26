@@ -166,28 +166,28 @@
                             @foreach ($wafProfiles as $p)
                                 <label class="inline-flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
                                     <input type="checkbox" value="{{ $p['id'] }}" wire:model="waf.profiles" class="mt-0.5 rounded border-gray-300 text-cerulean-600 focus:ring-cerulean-500 dark:border-gray-600 dark:bg-gray-700">
-                                    <span>{{ $p['name'] ?? $p['id'] }}@if (($p['description'] ?? '') !== '')<span class="block text-xs text-gray-500 dark:text-gray-400">{{ $p['description'] }}</span>@endif</span>
+                                    <span>{{ $p['label'] ?? $p['id'] }}@if (($p['description'] ?? '') !== '')<span class="block text-xs text-gray-500 dark:text-gray-400">{{ $p['description'] }}</span>@endif</span>
                                 </label>
                             @endforeach
                         </div>
                     </x-field>
                 @endif
                 @if ($editing !== 'new')
-                    <div class="mt-3" data-waf-exclusions>
+                    <div class="mt-3" data-waf-exceptions>
                         <div class="text-sm font-medium text-gray-700 dark:text-gray-300">Ausnahmen</div>
-                        @if (! $wafExclusions)
+                        @if (! $wafExceptions)
                             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Keine. Ausnahmen legst du auf der Seite Web-Firewall direkt aus einem Treffer an.</p>
                         @else
                             <ul class="mt-1 divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700">
-                                @foreach ($wafExclusions as $e)
+                                @foreach ($wafExceptions as $e)
                                     <li class="flex items-start justify-between gap-2 px-3 py-2 text-sm" wire:key="wex-{{ $e['id'] }}">
                                         <div class="min-w-0">
                                             <span class="font-mono">Regel {{ $e['rule_id'] }}</span>
                                             <span class="text-gray-500 dark:text-gray-400">{{ ($e['path_prefix'] ?? '') !== '' ? 'unter '.$e['path_prefix'] : 'überall' }}</span>
-                                            @if (($e['comment'] ?? '') !== '')<span class="block text-xs text-gray-500 dark:text-gray-400">{{ $e['comment'] }}</span>@endif
+                                            @if (($e['note'] ?? '') !== '')<span class="block text-xs text-gray-500 dark:text-gray-400">{{ $e['note'] }}</span>@endif
                                         </div>
                                         <x-input.symbolknopf titel="Ausnahme löschen" ton="rot"
-                                            x-on:click="$store.confirm.ask({ title: 'Ausnahme löschen?', text: {{ \Illuminate\Support\Js::from('Regel '.$e['rule_id'].' prüft dann wieder '.(($e['path_prefix'] ?? '') !== '' ? 'unter '.$e['path_prefix'] : 'überall').'.') }}, button: 'Löschen', ok: () => $wire.deleteExclusion({{ \Illuminate\Support\Js::from((string) $e['id']) }}) })">
+                                            x-on:click="$store.confirm.ask({ title: 'Ausnahme löschen?', text: {{ \Illuminate\Support\Js::from('Regel '.$e['rule_id'].' prüft dann wieder '.(($e['path_prefix'] ?? '') !== '' ? 'unter '.$e['path_prefix'] : 'überall').'.') }}, button: 'Löschen', ok: () => $wire.deleteException({{ \Illuminate\Support\Js::from((string) $e['id']) }}) })">
                                             <x-icon name="trash" class="h-4 w-4" />
                                         </x-input.symbolknopf>
                                     </li>
