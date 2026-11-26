@@ -1,5 +1,6 @@
 @php
     use App\Modules\Proxy\Hosts;
+    use App\Modules\Proxy\Waf;
     $date = fn ($s) => \App\Http\Support\Format::fromMs($s * 1000)->format('d.m.Y');
     $logUrl = fn ($d) => route('apps.page', [$installedApp, 'log']).'?host='.urlencode($d);
     $dot = fn ($tone) => match ($tone) {
@@ -135,6 +136,68 @@
                 </div>
             @endif
 
+            @if ($kind === 'proxy' && $wafOn)
+                <x-form-section title="Web-Firewall" />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Prüft Anfragen mit den OWASP-Regeln (Coraza). Jeder Treffer erhöht die Punktzahl der Anfrage; ab der Schwelle gilt sie als Angriff.</p>
+                @if ($wafError)
+                    <x-callout title="Regeln nicht geladen" ton="gelb" class="mt-2" data-waf-error>Der Host läuft gerade ohne Web-Firewall: {{ $wafError }}</x-callout>
+                @endif
+                <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2" data-waf-form>
+                    <x-field label="Modus" for="w-mode" feld="waf.mode" :hilfe="Waf::MODE_HINTS[$waf['mode'] ?? 'detect'] ?? null">
+                        <x-input.select id="w-mode" feld="waf.mode" wire:model.live="waf.mode" class="mt-1">
+                            @foreach (Waf::MODES as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach
+                        </x-input.select>
+                    </x-field>
+                    <x-field label="Strenge" for="w-paranoia" feld="waf.paranoia" hilfe="Stufe 2 findet mehr, meldet aber auch öfter harmlose Anfragen.">
+                        <x-input.select id="w-paranoia" feld="waf.paranoia" wire:model="waf.paranoia" class="mt-1">
+                            @foreach (Waf::PARANOIA as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach
+                        </x-input.select>
+                    </x-field>
+                    <x-field label="Schwelle" for="w-threshold" feld="waf.anomaly_threshold" hilfe="Punktzahl, ab der eine Anfrage als Angriff gilt, 2 bis 100. Standard 5: ein schwerer Treffer genügt.">
+                        <x-input.text id="w-threshold" type="number" min="2" max="100" feld="waf.anomaly_threshold" wire:model="waf.anomaly_threshold" class="mt-1 w-32" />
+                    </x-field>
+                    <x-field label="Body prüfen bis (KB)" for="w-body" feld="waf.body_limit_kb" hilfe="0 bis 8192, 0 = Body nicht prüfen. Größere Uploads gehen ungeprüft durch.">
+                        <x-input.text id="w-body" type="number" min="0" max="8192" feld="waf.body_limit_kb" wire:model="waf.body_limit_kb" class="mt-1 w-32" />
+                    </x-field>
+                </div>
+                @if ($wafProfiles)
+                    <x-field label="Anwendungsprofile" feld="waf.profiles" class="mt-3" hilfe="Nehmen Regeln zurück, die bei dieser Anwendung zu Fehlalarmen führen.">
+                        <div class="mt-1 flex flex-col gap-1" data-waf-profiles>
+                            @foreach ($wafProfiles as $p)
+                                <label class="inline-flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                    <input type="checkbox" value="{{ $p['id'] }}" wire:model="waf.profiles" class="mt-0.5 rounded border-gray-300 text-cerulean-600 focus:ring-cerulean-500 dark:border-gray-600 dark:bg-gray-700">
+                                    <span>{{ $p['name'] ?? $p['id'] }}@if (($p['description'] ?? '') !== '')<span class="block text-xs text-gray-500 dark:text-gray-400">{{ $p['description'] }}</span>@endif</span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </x-field>
+                @endif
+                @if ($editing !== 'new')
+                    <div class="mt-3" data-waf-exclusions>
+                        <div class="text-sm font-medium text-gray-700 dark:text-gray-300">Ausnahmen</div>
+                        @if (! $wafExclusions)
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Keine. Ausnahmen legst du auf der Seite Web-Firewall direkt aus einem Treffer an.</p>
+                        @else
+                            <ul class="mt-1 divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700">
+                                @foreach ($wafExclusions as $e)
+                                    <li class="flex items-start justify-between gap-2 px-3 py-2 text-sm" wire:key="wex-{{ $e['id'] }}">
+                                        <div class="min-w-0">
+                                            <span class="font-mono">Regel {{ $e['rule_id'] }}</span>
+                                            <span class="text-gray-500 dark:text-gray-400">{{ ($e['path_prefix'] ?? '') !== '' ? 'unter '.$e['path_prefix'] : 'überall' }}</span>
+                                            @if (($e['comment'] ?? '') !== '')<span class="block text-xs text-gray-500 dark:text-gray-400">{{ $e['comment'] }}</span>@endif
+                                        </div>
+                                        <x-input.symbolknopf titel="Ausnahme löschen" ton="rot"
+                                            x-on:click="$store.confirm.ask({ title: 'Ausnahme löschen?', text: {{ \Illuminate\Support\Js::from('Regel '.$e['rule_id'].' prüft dann wieder '.(($e['path_prefix'] ?? '') !== '' ? 'unter '.$e['path_prefix'] : 'überall').'.') }}, button: 'Löschen', ok: () => $wire.deleteExclusion({{ \Illuminate\Support\Js::from((string) $e['id']) }}) })">
+                                            <x-icon name="trash" class="h-4 w-4" />
+                                        </x-input.symbolknopf>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endif
+                    </div>
+                @endif
+            @endif
+
             <x-form-section title="Verschlüsselung" />
             <div class="mt-2 flex flex-col gap-1">
                 <x-input.checkbox label="HTTPS erzwingen" wire:model.live="form.force_https"
@@ -265,6 +328,14 @@
                                     @endif
                                     @if ($x['maintenance'])
                                         <span class="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-900 dark:bg-amber-900 dark:text-amber-100">{{ $x['maintenance_bypass'] ? 'Wartung, intern erreichbar' : 'Wartung' }}</span>
+                                    @endif
+                                    {{-- web firewall (only a Proxy that has it sends waf_mode) --}}
+                                    @if (isset($wafErrors[$x['id']]))
+                                        <span class="rounded bg-rose-100 px-1.5 py-0.5 text-xs text-rose-800 dark:bg-rose-900/60 dark:text-rose-100" data-tip="{{ $wafErrors[$x['id']] }}" data-waf-badge="error">WAF-Fehler</span>
+                                    @elseif ($x['kind'] === 'proxy' && ($x['waf_mode'] ?? 'off') === 'block')
+                                        <span class="rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-800 dark:bg-green-900/60 dark:text-green-100" data-waf-badge="block">WAF blockiert</span>
+                                    @elseif ($x['kind'] === 'proxy' && ($x['waf_mode'] ?? 'off') === 'detect')
+                                        <span class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300" data-waf-badge="detect">WAF erkennt</span>
                                     @endif
                                 </div>
                                 @if ($x['notes'])

@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Http\Support\Format;
+use App\Livewire\Dashboard\AppPanel;
 use App\Models\InstalledApp;
 use App\Modules\Proxy\AccessLog;
 use App\Modules\Proxy\Certificates;
@@ -13,11 +15,15 @@ use App\Modules\Proxy\Security;
 use App\Modules\Proxy\Streams;
 use App\Modules\Proxy\Views;
 use App\Modules\Proxy\Visitors;
+use App\Modules\Proxy\WebFirewall;
 use App\Services\Certsync\Certsync;
+use App\Services\Dashboard\AppFigures;
+use App\Services\Dashboard\Problems;
 use App\Support\Settings;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Js;
@@ -59,6 +65,88 @@ class ProxyModuleTest extends FeatureTestCase
     /** @var list<array<string, mixed>> more bans in the faked /api/security answer */
     private array $extraBans = [];
 
+    /**
+     * The web firewall of the panel; null = an older Proxy (no waf_mode, 404 on /api/waf/*).
+     *
+     * @var array{status: array<string, mixed>, hosts: array<int, array<string, mixed>>, events: list<array<string, mixed>>, summary: array<string, mixed>}|null
+     */
+    private ?array $waf = null;
+
+    private function enableWaf(): void
+    {
+        $now = (int) (microtime(true) * 1000);
+        $this->waf = [
+            'status' => ['available' => true, 'coraza' => '3.3.0', 'crs' => '4.10.0',
+                'profiles' => [['id' => 'wordpress', 'name' => 'WordPress', 'description' => 'Nimmt Regeln für den Block-Editor zurück.', 'version' => '1.0'],
+                    ['id' => 'nextcloud', 'name' => 'Nextcloud', 'description' => 'WebDAV und Uploads.', 'version' => '1.0']],
+                'hosts_with_errors' => []],
+            'hosts' => [1 => ['mode' => 'detect', 'paranoia' => 1, 'anomaly_threshold' => 5, 'body_limit_kb' => 1024, 'profiles' => [],
+                'exclusions' => [['id' => 'ex1', 'rule_id' => 920350, 'path_prefix' => '/api/', 'comment' => 'App sendet IP als Host', 'created_at' => $now]], 'error' => '']],
+            'events' => [['id' => 501, 'ts' => $now - 60000, 'host' => 'app.example.de', 'host_id' => 1, 'method' => 'GET', 'path' => '/search?q=1%27+or+1=1',
+                'ip' => '198.51.100.23', 'country' => 'NL', 'score' => 10, 'action' => 'detected',
+                'rules' => [['id' => 942100, 'msg' => 'SQL Injection Attack Detected via libinjection', 'target' => 'ARGS:q', 'severity' => 'critical'],
+                    ['id' => 949110, 'msg' => 'Inbound Anomaly Score Exceeded', 'target' => '', 'severity' => 'critical']]]],
+            'summary' => ['from' => $now - 86400000, 'to' => $now, 'computed_at' => $now, 'total' => ['detected' => 37, 'blocked' => 4],
+                'hosts' => [['host' => 'app.example.de', 'host_id' => 1, 'mode' => 'detect', 'detected' => 37, 'blocked' => 4]],
+                'rules' => [['id' => 942100, 'msg' => 'SQL Injection Attack Detected via libinjection', 'detected' => 20, 'blocked' => 3]],
+                'ips' => [['ip' => '198.51.100.23', 'country' => 'NL', 'detected' => 12, 'blocked' => 4]]],
+        ];
+    }
+
+    /** The faked WAF routes, null when the request is not one of them. */
+    private function wafRoute(Request $r, string $path)
+    {
+        $m = [];
+        if ($this->waf === null) {
+            return str_starts_with($path, '/api/waf/') || preg_match('#^/api/hosts/\d+/waf#', $path) ? Http::response(['error' => 'nicht gefunden'], 404) : null;
+        }
+        $data = $r->data();
+        if ($path === '/api/waf/status') {
+            return Http::response($this->waf['status']);
+        }
+        if ($path === '/api/waf/events') {
+            return Http::response($this->waf['events']);
+        }
+        if ($path === '/api/waf/summary') {
+            return Http::response($this->waf['summary']);
+        }
+        if (preg_match('#^/api/hosts/(\d+)/waf/exclusions(?:/([^/]+))?$#', $path, $m)) {
+            $id = (int) $m[1];
+            if ($r->method() === 'DELETE') {
+                $this->waf['hosts'][$id]['exclusions'] = array_values(array_filter($this->waf['hosts'][$id]['exclusions'], fn ($e) => $e['id'] !== $m[2]));
+
+                return Http::response(null, 204);
+            }
+            foreach ($this->waf['hosts'][$id]['exclusions'] ?? [] as $e) {
+                if ($e['rule_id'] === $data['rule_id'] && $e['path_prefix'] === ($data['path_prefix'] ?? '')) {
+                    return Http::response(['error' => 'Diese Ausnahme gibt es schon.'], 409);
+                }
+            }
+            $new = ['id' => 'ex'.(count($this->waf['hosts'][$id]['exclusions'] ?? []) + 2), 'rule_id' => $data['rule_id'], 'path_prefix' => $data['path_prefix'] ?? '',
+                'comment' => $data['comment'] ?? '', 'created_at' => 1];
+            $this->waf['hosts'][$id]['exclusions'][] = $new;
+
+            return Http::response($new, 201);
+        }
+        if (preg_match('#^/api/hosts/(\d+)/waf$#', $path, $m)) {
+            $id = (int) $m[1];
+            if (($this->hosts[$id]['kind'] ?? 'proxy') !== 'proxy') {
+                return Http::response(['error' => 'Die Web-Firewall gibt es nur für Reverse Proxys.'], 422);
+            }
+            if ($r->method() === 'PUT') {
+                if (($data['anomaly_threshold'] ?? 5) < 2) {
+                    return Http::response(['error' => 'Ungültige Eingabe', 'fields' => ['anomaly_threshold' => 'Zwischen 2 und 100.']], 422);
+                }
+                $this->waf['hosts'][$id] = array_diff_key($data, ['error' => 1]) + ['error' => ''];
+            }
+
+            return Http::response($this->waf['hosts'][$id] ?? ['mode' => 'detect', 'paranoia' => 1, 'anomaly_threshold' => 5, 'body_limit_kb' => 1024,
+                'profiles' => [], 'exclusions' => [], 'error' => '']);
+        }
+
+        return null;
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -99,6 +187,9 @@ class ProxyModuleTest extends FeatureTestCase
         $path = $url['path'];
         $this->calls[] = ['method' => $r->method(), 'path' => $path, 'query' => $url['query'] ?? '', 'body' => $r->data()];
         $now = (int) (microtime(true) * 1000);
+        if ($waf = $this->wafRoute($r, $path)) {
+            return $waf;
+        }
 
         if ($r->method() === 'PUT' && preg_match('#^/api/hosts/(\d+)$#', $path, $m)) {
             $this->hosts[(int) $m[1]] = $r->data() + ['id' => (int) $m[1], 'created_at' => 1, 'updated_at' => 2];
@@ -116,7 +207,9 @@ class ProxyModuleTest extends FeatureTestCase
         $bucket = ['ts' => $now - 3600000, 'requests' => 12, 's2xx' => 10, 's3xx' => 1, 's4xx' => 1, 's5xx' => 0, 'bytes' => 5000, 'bytes_in' => 300];
 
         return match ($r->method().' '.$path) {
-            'GET /api/hosts' => Http::response(array_values($this->hosts)),
+            // a Proxy with web firewall adds the read-only waf_mode
+            'GET /api/hosts' => Http::response(array_values(array_map(fn ($h) => $this->waf === null ? $h
+                : $h + ['waf_mode' => $h['kind'] === 'proxy' ? ($this->waf['hosts'][$h['id']]['mode'] ?? 'detect') : 'off'], $this->hosts))),
             // the panel answers with the saved rules (here: what was sent)
             'PUT /api/security/guard' => Http::response($r->data()),
             'GET /api/hosts/daily' => $this->daily === null ? Http::response(['error' => 'nicht gefunden'], 404) : Http::response($this->daily),
@@ -664,6 +757,163 @@ class ProxyModuleTest extends FeatureTestCase
             ->call('saveGuard')
             ->assertSet('guard.repeat_hits', '45');
         $this->assertSame(45, $this->guardPuts()[0]['repeat_hits']);
+    }
+
+    // ---- web firewall (Coraza + OWASP CRS) ------------------------------------------------------
+
+    /** Bodies of the requests with this method and path, in order. */
+    private function bodies(string $method, string $path): array
+    {
+        return array_values(array_map(fn ($c) => $c['body'], array_filter($this->calls, fn ($c) => $c['method'] === $method && $c['path'] === $path)));
+    }
+
+    public function test_an_older_proxy_without_waf_shows_nothing_of_it(): void
+    {
+        $this->get(route('apps.page', [$this->installed, 'hosts']))->assertOk()->assertDontSee('data-waf-badge', false);
+        Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('edit', 1)
+            ->assertSet('wafOn', false)->assertDontSee('data-waf-form', false)->assertDontSee('Web-Firewall')
+            ->call('save')->assertSet('editing', null);
+        $this->assertSame([], array_filter($this->calls, fn ($c) => str_contains($c['path'], '/waf') && $c['method'] !== 'GET'));
+
+        Livewire::test(WebFirewall::class, ['installedApp' => $this->installed])->assertSee('Keine Web-Firewall')->assertDontSee('data-waf-summary', false);
+        $this->get(route('apps.page', [$this->installed, 'security']))->assertOk()->assertDontSee('id="g-waf_blocks"', false);
+
+        Cache::flush();
+        $f = app(AppFigures::class)->for($this->installed);
+        $this->assertNull($f['waf']);
+        $this->assertSame([], $f['warnings']);
+        Livewire::withoutLazyLoading()->test(AppPanel::class, ['appId' => 'proxy'])->assertDontSee('Web-Firewall heute');
+    }
+
+    public function test_the_host_form_edits_the_waf_and_deletes_an_exclusion(): void
+    {
+        $this->enableWaf();
+        $page = Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('edit', 1)
+            ->assertSet('wafOn', true)->assertSet('waf.mode', 'detect')->assertSet('waf.anomaly_threshold', '5')
+            ->assertSee('Web-Firewall')->assertSee('WordPress')->assertSee('Nimmt Regeln für den Block-Editor zurück.')
+            ->assertSee('Regel 920350')->assertSee('unter /api/')->assertSee('App sendet IP als Host');
+
+        // the panel's 422 lands on the field, the dialog stays open
+        $page->set('waf.anomaly_threshold', '1')->call('save')->assertHasErrors('waf.anomaly_threshold')->assertSet('editing', '1');
+
+        // an exclusion added elsewhere meanwhile is kept: the PUT sends the panel's current list
+        $this->waf['hosts'][1]['exclusions'][] = ['id' => 'ex9', 'rule_id' => 941100, 'path_prefix' => '/editor', 'comment' => '', 'created_at' => 2];
+        $page->set('waf.mode', 'block')->set('waf.paranoia', '2')->set('waf.anomaly_threshold', '7')->set('waf.body_limit_kb', '512')
+            ->set('waf.profiles', ['wordpress'])->call('save')->assertHasNoErrors()->assertSet('editing', null)
+            ->assertDispatched('notice', kind: 'success', text: 'Gespeichert und in Caddy übernommen.');
+        $put = last($this->bodies('PUT', '/api/hosts/1/waf'));
+        $this->assertSame(['mode' => 'block', 'paranoia' => 2, 'anomaly_threshold' => 7, 'body_limit_kb' => 512, 'profiles' => ['wordpress']],
+            array_diff_key($put, ['exclusions' => 1]));
+        $this->assertSame(['ex1', 'ex9'], array_column($put['exclusions'], 'id'));
+        $this->assertArrayNotHasKey('waf', last($this->bodies('PUT', '/api/hosts/1')), 'the host PUT stays as it was');
+
+        Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('edit', 1)->assertSet('waf.mode', 'block')
+            ->call('deleteExclusion', 'ex1')->assertDispatched('notice', kind: 'success', text: 'Ausnahme gelöscht.')
+            ->assertSet('wafExclusions', fn ($list) => array_column($list, 'id') === ['ex9']);
+        $this->assertCount(1, array_filter($this->calls, fn ($c) => $c['method'] === 'DELETE' && $c['path'] === '/api/hosts/1/waf/exclusions/ex1'));
+    }
+
+    public function test_a_new_reverse_proxy_gets_its_waf_settings_and_a_redirect_none(): void
+    {
+        $this->enableWaf();
+        Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('create')
+            ->assertSet('wafOn', true)->assertSet('waf.mode', 'detect')->assertDontSee('data-waf-exclusions', false)
+            ->set('form.domains', 'neu.example.de')->set('form.upstream_host', '10.0.0.7')->set('form.upstream_port', '80')
+            ->set('waf.mode', 'block')->call('save')->assertSet('editing', null);
+        $this->assertSame('block', last($this->bodies('PUT', '/api/hosts/3/waf'))['mode']);
+
+        // a redirect has no web firewall: no section, no PUT
+        $before = count($this->bodies('PUT', '/api/hosts/2/waf'));
+        Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('edit', 2)->assertDontSee('data-waf-form', false)->call('save');
+        $this->assertCount($before, $this->bodies('PUT', '/api/hosts/2/waf'));
+    }
+
+    public function test_the_host_list_shows_the_waf_mode_and_load_errors(): void
+    {
+        $this->enableWaf();
+        $this->hosts[4] = $this->host(4, ['shop.example.de'], ['enabled' => true]);
+        $this->waf['hosts'][4] = ['mode' => 'block'] + $this->waf['hosts'][1];
+        $this->hosts[5] = $this->host(5, ['wiki.example.de'], ['enabled' => true]);
+        $this->waf['status']['hosts_with_errors'] = [['host_id' => 5, 'domain' => 'wiki.example.de', 'error' => 'Profil nextcloud nicht gefunden']];
+
+        $html = $this->get(route('apps.page', [$this->installed, 'hosts']))->assertOk()->getContent();
+        $this->assertStringContainsString('data-waf-badge="detect"', $html);
+        $this->assertStringContainsString('data-waf-badge="block"', $html);
+        $this->assertStringContainsString('data-waf-badge="error"', $html);
+        $this->assertStringContainsString('Profil nextcloud nicht gefunden', $html);
+        $this->assertSame(1, substr_count($html, 'data-waf-badge="error"'));
+
+        Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('edit', 5)->assertSee('Regeln nicht geladen')->assertSee('läuft gerade ohne Web-Firewall');
+    }
+
+    public function test_the_web_firewall_page_filters_hits_and_creates_an_exclusion(): void
+    {
+        $this->enableWaf();
+        $this->waf['status']['hosts_with_errors'] = [['host_id' => 1, 'domain' => 'app.example.de', 'error' => 'Regeldatei fehlt']];
+        $page = Livewire::test(WebFirewall::class, ['installedApp' => $this->installed])
+            ->assertSee('CRS 4.10.0')->assertSee('app.example.de läuft ohne Web-Firewall:')->assertSee('Regeldatei fehlt')
+            ->assertSeeHtml('data-waf-detected>37')->assertSeeHtml('data-waf-blocked>4')
+            ->assertSee('SQL Injection Attack Detected via libinjection')->assertSee('in ARGS:q')->assertSee('198.51.100.23')->assertSee('10 Punkte');
+        // the score rule 949110 gets no „Ausnahme anlegen“: it would switch off blocking on the path
+        $this->assertSame(1, substr_count($page->html(), 'data-waf-exclude'));
+        $page->call('newExclusion', 1, 'app.example.de', '949110', '/search')->call('saveExclusion')->assertHasErrors('exclusion.rule_id');
+        $this->assertSame([], $this->bodies('POST', '/api/hosts/1/waf/exclusions'));
+        $this->assertStringContainsString('days=1', last(array_filter($this->calls, fn ($c) => $c['path'] === '/api/waf/summary'))['query']);
+
+        // filters go to the panel with the names of /api/requests; the period too
+        $page->call('filterBy', 'rule', '942100')->set('action', 'blocked')->set('host', 'app.example.de')->call('period', '7');
+        $query = last(array_filter($this->calls, fn ($c) => $c['path'] === '/api/waf/events'))['query'];
+        foreach (['rule=942100', 'action=blocked', 'host=app.example.de', 'limit=100'] as $part) {
+            $this->assertStringContainsString($part, $query);
+        }
+        $this->assertStringContainsString('days=7', last(array_filter($this->calls, fn ($c) => $c['path'] === '/api/waf/summary'))['query']);
+        $page->call('clearFilters')->assertSet('rule', '')->assertSet('host', '');
+
+        // „Ausnahme anlegen“ from a rule of the hit: host, rule and the path without query
+        $page->call('newExclusion', 1, 'app.example.de', '942100', '/search?q=1%27+or+1=1')
+            ->assertSet('exclusion.path_prefix', '/search')->assertSet('exclusion.rule_id', '942100')->assertSee('Ausnahme für app.example.de')
+            ->set('exclusion.comment', 'Suche erlaubt Sonderzeichen')->call('saveExclusion')->assertSet('exclusion', null)
+            ->assertDispatched('notice', kind: 'success', text: 'Ausnahme angelegt: Regel 942100 unter /search für app.example.de.');
+        $this->assertSame(['rule_id' => 942100, 'path_prefix' => '/search', 'comment' => 'Suche erlaubt Sonderzeichen'], last($this->bodies('POST', '/api/hosts/1/waf/exclusions')));
+
+        // the same again: the panel's 409 as a message, the dialog stays
+        $page->call('newExclusion', 1, 'app.example.de', '942100', '/search')->call('saveExclusion')
+            ->assertDispatched('notice', kind: 'error', text: 'Diese Ausnahme gibt es schon.')->assertNotSet('exclusion', null);
+    }
+
+    public function test_tile_and_problems_show_the_waf(): void
+    {
+        $this->enableWaf();
+        $this->waf['status']['hosts_with_errors'] = [['host_id' => 1, 'domain' => 'app.example.de', 'error' => 'Regeldatei fehlt']];
+        Cache::flush();
+        $f = app(AppFigures::class)->for($this->installed);
+        $this->assertSame([37, 4], [$f['waf']['detected'], $f['waf']['blocked']]);
+        $this->assertSame(942100, $f['waf']['rules'][0]['id']);
+        // today: from local midnight (ms) to now
+        $query = last(array_filter($this->calls, fn ($c) => $c['path'] === '/api/waf/summary'))['query'];
+        $this->assertStringContainsString('from='.now(Format::timezone())->startOfDay()->getTimestampMs(), $query);
+
+        Livewire::withoutLazyLoading()->test(AppPanel::class, ['appId' => 'proxy'])
+            ->assertSee('Web-Firewall heute')->assertSee('37 erkannt')->assertSee('4 blockiert')->assertSeeHtml('data-waf-tile-rules');
+        $this->assertContains(['tone' => 'bad', 'text' => 'Web-Firewall für app.example.de nicht geladen, der Host läuft ohne Schutz: Regeldatei fehlt',
+            'href' => route('apps.page', [$this->installed, 'waf'])], app(Problems::class)->collect());
+
+        // summary not answering: the line stays, without figures
+        Cache::flush();
+        unset($this->waf['summary']['total']);
+        $this->assertNull(app(AppFigures::class)->for($this->installed)['waf']['detected']);
+    }
+
+    public function test_the_guard_bans_after_waf_blocks_when_the_proxy_knows_it(): void
+    {
+        $this->guardExtra = ['waf_blocks' => 0];
+        $this->extraBans = [['ip' => '198.51.100.23', 'country' => 'NL', 'reason' => 'waf', 'strikes' => 1, 'detail' => '12 Blocks', 'host' => 'app.example.de',
+            'created_at' => 1_794_600_000_000, 'expires_at' => 0]];
+        $this->get(route('apps.page', [$this->installed, 'security']))->assertOk()
+            ->assertSee('id="g-waf_blocks"', false)->assertSee('Von der Web-Firewall blockiert')
+            ->assertSeeInOrder(['198.51.100.23', 'Web-Firewall', '12 Blocks']);
+        Livewire::test(Security::class, ['installedApp' => $this->installed])->set('guard.waf_blocks', '10')->call('saveGuard')->assertSet('guard.waf_blocks', '10');
+        $this->assertSame(10, $this->guardPuts()[0]['waf_blocks']);
     }
 
     // ---- certificates for other applications: on the LXC below /srv/pk95/certs ------------------

@@ -60,6 +60,29 @@
                 <div><div class="{{ $label }}">Datenmenge</div><div class="{{ $value }} whitespace-nowrap">{{ ProxyFmt::bytes($f['bytes']) }}</div></div>
                 <div><div class="{{ $label }}">Gesperrte Adressen</div><div class="{{ $value }}">{{ $f['bans'] ?? '–' }}</div></div>
             </div>
+            @if ($app && ($w = $f['waf'] ?? null))
+                {{-- web firewall of PK95 Proxy, today since midnight --}}
+                <div class="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-gray-900/40" data-waf-tile>
+                    <a href="{{ route('apps.page', [$app, 'waf']) }}" wire:navigate class="font-medium text-gray-900 hover:underline dark:text-gray-100">Web-Firewall heute</a>
+                    <span class="text-gray-600 dark:text-gray-300">
+                        @if ($w['detected'] === null)
+                            · keine Zahlen
+                        @else
+                            · {{ ProxyFmt::num($w['detected']) }} erkannt · <span @class(['text-rose-700 dark:text-rose-300' => $w['blocked'] > 0])>{{ ProxyFmt::num($w['blocked']) }} blockiert</span>
+                        @endif
+                    </span>
+                    @if ($w['rules'] || $w['hosts'])
+                        <div class="mt-1 grid grid-cols-1 gap-x-4 gap-y-0.5 text-xs text-gray-500 sm:grid-cols-2 dark:text-gray-400">
+                            @if ($w['rules'])
+                                <div class="min-w-0 truncate" data-waf-tile-rules>Regeln: @foreach ($w['rules'] as $r)<span data-tip="{{ $r['msg'] ?? '' }}" class="font-mono">{{ $r['id'] ?? '?' }}</span> ({{ ProxyFmt::num((int) ($r['detected'] ?? 0) + (int) ($r['blocked'] ?? 0)) }}){{ $loop->last ? '' : ', ' }}@endforeach</div>
+                            @endif
+                            @if ($w['hosts'])
+                                <div class="min-w-0 truncate" data-waf-tile-hosts>Hosts: @foreach ($w['hosts'] as $h){{ $h['host'] ?? '?' }} ({{ ProxyFmt::num((int) ($h['detected'] ?? 0) + (int) ($h['blocked'] ?? 0)) }}){{ $loop->last ? '' : ', ' }}@endforeach</div>
+                            @endif
+                        </div>
+                    @endif
+                </div>
+            @endif
             @if ($f['hidden'])
                 {{-- the remembered hidden clients of Proxy → Zugriffe are left out here too --}}
                 <p class="mt-2 text-xs text-gray-500 dark:text-gray-400" data-tip="{{ implode(', ', $f['hidden']) }}" data-hidden-clients>
