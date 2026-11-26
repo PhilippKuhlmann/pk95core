@@ -51,6 +51,9 @@ class Server extends Component
     /** @var array<string, mixed> the settings form (GET /api/settings) */
     public array $settings = [];
 
+    /** What PK95 File asks Core to show after saving the settings (e.g. about macOS), until the next save. */
+    public ?string $settingsNotice = null;
+
     public const IP_MODES = [
         'managed' => 'PK95 File legt die Adresse selbst an (empfohlen)',
         'existing' => 'Adresse ist im LXC schon eingerichtet (z. B. net1)',
@@ -291,9 +294,18 @@ class Server extends Component
         }
         $body['smb_encryption'] = (string) ($this->settings['smb_encryption'] ?? 'if_required');
         $body['min_protocol'] = (string) ($this->settings['min_protocol'] ?? 'SMB2_10');
+        // since PK95 File 1.1.0; older versions do not know the field, so it is only sent when GET had it
+        if (array_key_exists('macos', $this->settings)) {
+            $body['macos'] = (bool) $this->settings['macos'];
+        }
         $response = $this->appRequest(fn ($api) => $api->put('/api/settings', $body));
         if ($this->succeeded($response, 'settings.')) {
-            $this->settings = (array) $response->json();
+            $answer = (array) $response->json();
+            // "notice" (1.1.0): a German text to show, empty unless macos changed
+            $notice = trim((string) ($answer['notice'] ?? ''));
+            unset($answer['notice']);
+            $this->settings = $answer;
+            $this->settingsNotice = $notice !== '' ? $notice : null;
             $this->done('Einstellungen gespeichert. Samba lädt sie neu, die Sitzungen bleiben.');
         }
     }
