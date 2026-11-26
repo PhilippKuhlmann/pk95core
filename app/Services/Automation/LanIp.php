@@ -54,7 +54,7 @@ class LanIp
     {
         $at = now()->toIso8601String();
         try {
-            // busybox: "1.1.1.1 via 10.10.250.1 dev eth0  src 10.10.250.50"
+            // busybox: "1.1.1.1 via 192.168.1.1 dev eth0  src 192.168.1.50"
             $run = $this->docker->run((string) config('pk95.helper_image'), ['ip', '-4', 'route', 'get', '1.1.1.1'], [], 30, 'host');
             if ($run['exit'] === 0 && preg_match('/\bsrc\s+(\d{1,3}(?:\.\d{1,3}){3})\b/', $run['output'], $m)) {
                 return ['ip' => $m[1], 'at' => $at, 'error' => null];

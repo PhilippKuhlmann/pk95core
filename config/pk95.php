@@ -2,6 +2,7 @@
 
 use App\Modules\Ad\AdModule;
 use App\Modules\Dns\DnsModule;
+use App\Modules\File\FileModule;
 use App\Modules\ProxApps\ProxAppsModule;
 use App\Modules\Proxy\ProxyModule;
 use App\Modules\Uptime\UptimeModule;
@@ -46,6 +47,8 @@ return [
     */
     'setting_rules' => [
         'proxy_certs_gid' => ['required', 'integer', 'between:1000,65534'],
+        // an invalid address would only be a wrong suggestion; empty = the app probes one
+        'file_default_ip' => ['required', 'ipv4'],
     ],
 
     /*
@@ -108,6 +111,7 @@ return [
         'proxy' => ProxyModule::class,
         'dns' => DnsModule::class,
         'ad' => AdModule::class,
+        'file' => FileModule::class,
     ],
 
     /*
@@ -135,10 +139,15 @@ return [
         'automation_lan_ip' => '',
         // Base address of PK95 Uptime's public status pages (<address>/status/<slug>): Core's links
         // and a PK95 Proxy host for its domain (Uptime itself does not get it). Empty = not set up.
-        'uptime_public_url' => 'https://status.kuhlmannit.de',
+        // Normally saved on the status pages page; the env only gives the starting value.
+        'uptime_public_url' => (string) env('PK95_UPTIME_PUBLIC_URL', ''),
         // Group id PK95 Proxy gives its exported certificates (/srv/pk95/certs on the LXC):
         // members of that group on the host (e.g. the SFTP user certsync) may read them.
         'proxy_certs_gid' => 2001,
+        // PK95 File: the server address its setup wizard suggests (catalog env PK95FILE_DEFAULT_IP).
+        // Taken from Core's .env (next to docker-compose.yml): a LAN address belongs to the
+        // installation, never to a repository. Empty = the app suggests a free one itself.
+        'file_default_ip' => (string) env('PK95FILE_DEFAULT_IP', ''),
     ],
 
     /*

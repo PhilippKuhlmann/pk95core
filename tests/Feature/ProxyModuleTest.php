@@ -681,7 +681,7 @@ class ProxyModuleTest extends FeatureTestCase
 
     public function test_certificates_can_be_fetched_from_the_lxc_with_scp(): void
     {
-        Settings::put('automation_lan_ip', '10.10.250.50');
+        Settings::put('automation_lan_ip', '192.168.10.50');
         $this->installed->update(['version' => '1.7.0']);
         $this->proxyContainer(withBind: true);
 
@@ -693,9 +693,9 @@ class ProxyModuleTest extends FeatureTestCase
         $this->assertStringContainsString('/srv/pk95/certs/mail.example.de/privkey.pem', $html);
         $this->assertStringNotContainsString('/var/lib/proxypanel/acme-export/mail.example.de/fullchain.pem', $html);
         // scp once and as a cron line, with the user certsync that has to exist on the LXC
-        $this->assertStringContainsString('scp certsync@10.10.250.50:/srv/pk95/certs/mail.example.de/fullchain.pem ./', $html);
-        $this->assertStringContainsString('scp certsync@10.10.250.50:/srv/pk95/certs/mail.example.de/privkey.pem ./', $html);
-        $this->assertStringContainsString('15 4 * * * scp -q certsync@10.10.250.50:/srv/pk95/certs/mail.example.de/fullchain.pem certsync@10.10.250.50:/srv/pk95/certs/mail.example.de/privkey.pem /etc/ssl/mail.example.de/', $html);
+        $this->assertStringContainsString('scp certsync@192.168.10.50:/srv/pk95/certs/mail.example.de/fullchain.pem ./', $html);
+        $this->assertStringContainsString('scp certsync@192.168.10.50:/srv/pk95/certs/mail.example.de/privkey.pem ./', $html);
+        $this->assertStringContainsString('15 4 * * * scp -q certsync@192.168.10.50:/srv/pk95/certs/mail.example.de/fullchain.pem certsync@192.168.10.50:/srv/pk95/certs/mail.example.de/privkey.pem /etc/ssl/mail.example.de/', $html);
         $this->assertStringContainsString('der Benutzer certsync eingerichtet sein', $html);
         $this->assertStringNotContainsString('data-bind-missing', $html);
         $this->assertStringNotContainsString('data-group-too-old', $html);
@@ -703,7 +703,7 @@ class ProxyModuleTest extends FeatureTestCase
 
     public function test_the_scp_box_follows_the_chosen_domain(): void
     {
-        Settings::put('automation_lan_ip', '10.10.250.50');
+        Settings::put('automation_lan_ip', '192.168.10.50');
         $this->proxyContainer(withBind: true);
         $this->extraAcme = [['id' => 8, 'domain' => 'test1.example.de', 'note' => '', 'created_at' => 1,
             'path' => '/var/lib/proxypanel/acme-export/test1.example.de', 'status' => ['issuer' => "Let's Encrypt", 'not_after' => now()->getTimestamp() + 80 * 86400]]];
@@ -719,9 +719,9 @@ class ProxyModuleTest extends FeatureTestCase
         $this->assertStringContainsString(str_replace('"', chr(92).'u0022', '"test1.example.de":"'), $html);
         // the commands follow it; the first domain is there before Alpine runs
         $this->assertStringContainsString('x-text="&#039;scp &#039; + src(&#039;fullchain.pem&#039;) + &#039; ./&#039;"', $html);
-        $this->assertStringContainsString('>scp certsync@10.10.250.50:/srv/pk95/certs/mail.example.de/fullchain.pem ./</span>', $html);
+        $this->assertStringContainsString('>scp certsync@192.168.10.50:/srv/pk95/certs/mail.example.de/fullchain.pem ./</span>', $html);
         // all domains at once: scp -r over SFTP, each into /etc/ssl/<domain>/
-        $this->assertStringContainsString('15 4 * * * scp -rq certsync@10.10.250.50:/srv/pk95/certs/mail.example.de certsync@10.10.250.50:/srv/pk95/certs/test1.example.de /etc/ssl/', $html);
+        $this->assertStringContainsString('15 4 * * * scp -rq certsync@192.168.10.50:/srv/pk95/certs/mail.example.de certsync@192.168.10.50:/srv/pk95/certs/test1.example.de /etc/ssl/', $html);
         $this->assertStringContainsString('scp ab OpenSSH 9', $html);
         // "Abholen" in every row chooses the domain and scrolls to the box
         $this->assertSame(2, substr_count($html, 'data-scp-pick="data-scp-pick"'));

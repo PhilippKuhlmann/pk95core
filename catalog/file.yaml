@@ -1,0 +1,40 @@
+# PK95 File (repo pk95file): Samba file server as a member of the PK95 AD domain, with shares,
+# permissions through AD groups, recycle bin, previous versions (snapshots) and soft quotas,
+# managed through the PK95 Core module "file". Image built by the pk95file repo's GitHub Actions;
+# it needs the Core mode of app protocol v1.
+#
+# Host network: the file server answers SMB (445) on its own LAN address next to the LXC's
+# (ip_mode managed adds it to eth0). NET_ADMIN for that address, NET_RAW for arping (DAD and
+# gratuitous ARP). Admin API on 8445.
+# File data: a Proxmox mount point at /srv/pk95/files on the LXC (docs/lxc-setup.md), not part of
+# Core's volume backups; Proxmox backs it up (mp0 with backup=1).
+id: file
+name: PK95 File
+summary: Dateiserver (Samba) in der PK95-AD-Domäne mit Freigaben, Berechtigungen über AD-Gruppen, Papierkorb, Vorgängerversionen und Kontingent-Warnungen. Braucht eine eigene IP-Adresse im LAN und einen Proxmox-Mountpoint unter /srv/pk95/files.
+image: ghcr.io/philippkuhlmann/pk95-file
+tag: latest
+port: 8445
+icon: box
+module: file
+health: /core/health
+network_mode: host
+cap_add: [NET_ADMIN, NET_RAW]
+volumes:
+  - name: samba
+    target: /var/lib/samba
+  - name: config
+    target: /etc/samba
+  - name: data
+    target: /var/lib/pk95file
+binds:
+  - source: /srv/pk95/files
+    target: /srv/files
+    create: true
+env:
+  PK95FILE_LISTEN: 0.0.0.0:8445
+  PK95FILE_DATA_DIR: /var/lib/pk95file
+  PK95FILE_DATA_ROOT: /srv/files
+  # The suggested server address: Core setting file_default_ip, by default PK95FILE_DEFAULT_IP from
+  # Core's .env; empty when unset - then the app suggests a free address next to the LXC's own.
+  # No LAN address in a repository.
+  PK95FILE_DEFAULT_IP: "{setting:file_default_ip|}"

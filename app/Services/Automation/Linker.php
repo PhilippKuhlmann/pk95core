@@ -202,6 +202,11 @@ class Linker
         $url = trim((string) Settings::get('uptime_public_url'));
         $domain = strtolower((string) parse_url($url, PHP_URL_HOST));
         $link = AppLink::query()->firstOrNew(['source_app' => self::STATUS_SOURCE, 'source_id' => 1]);
+        if ($domain === '' && ! Settings::stored('uptime_public_url')) {
+            // no address saved and none from the env: never take down what is there. Only an
+            // address cleared on the status pages page removes the host, record and monitor.
+            return $link->exists ? $link : null;
+        }
         if ($link->exists && $link->state !== AppLink::REMOVED && $link->domain !== $domain) {
             $link = $this->unlink(self::STATUS_SOURCE, 1) ?? $link;
         }

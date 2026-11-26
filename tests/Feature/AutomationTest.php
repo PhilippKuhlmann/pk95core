@@ -49,13 +49,15 @@ class AutomationTest extends FeatureTestCase
     {
         parent::setUp();
         config(['pk95.catalog_dir' => base_path('catalog')]);
+        // as if PK95_UPTIME_PUBLIC_URL were set (the shipped default is empty)
+        config(['pk95.defaults.uptime_public_url' => 'https://status.example.com']);
         foreach (['proxapps', 'proxy', 'uptime', 'dns'] as $id) {
             InstalledApp::factory()->create(['app_id' => $id, 'status' => InstalledApp::RUNNING, 'version' => '1.0.0',
                 'manifest' => ['id' => $id, 'name' => $id, 'version' => '1.0.0', 'protocol' => 1, 'menu' => [], 'capabilities' => [], 'events' => []]]);
         }
         Settings::put('automation_base_domain', 'example.de');
         Settings::put('automation_public_ip', '203.0.113.10');
-        Settings::put('automation_lan_ip', '10.10.250.50');
+        Settings::put('automation_lan_ip', '192.168.10.50');
 
         Http::fake([
             'cloudflare-dns.com/*' => fn () => Http::response(['Status' => 0, 'Answer' => array_map(fn ($ip) => ['type' => 1, 'data' => $ip], $this->dnsAnswer)]),
@@ -229,17 +231,17 @@ class AutomationTest extends FeatureTestCase
         $link = app(Linker::class)->linkStatusPages();
 
         $this->assertSame(AppLink::ACTIVE, $link->state);
-        $this->assertSame('status.kuhlmannit.de', $link->domain, 'default of uptime_public_url');
+        $this->assertSame('status.example.com', $link->domain, 'default of uptime_public_url');
         $host = $this->sent('POST', '/api/hosts')[0];
-        $this->assertSame(['status.kuhlmannit.de'], $host['domains']);
-        $this->assertSame(['http', '10.10.250.50', 3002], [$host['scheme'], $host['upstream_host'], $host['upstream_port']]);
+        $this->assertSame(['status.example.com'], $host['domains']);
+        $this->assertSame(['http', '192.168.10.50', 3002], [$host['scheme'], $host['upstream_host'], $host['upstream_port']]);
         $this->assertTrue($host['enabled']);
-        $this->assertSame([['name' => 'status.kuhlmannit.de', 'value' => '10.10.250.50']],
+        $this->assertSame([['name' => 'status.example.com', 'value' => '192.168.10.50']],
             array_map(fn ($r) => ['name' => $r['name'], 'value' => $r['value']], array_values($this->records)));
         // one monitor on the public API (the root and /api/health are 404 on that port)
         $monitors = $this->sent('POST', 'pk95-uptime');
         $this->assertCount(1, $monitors);
-        $this->assertSame('https://status.kuhlmannit.de/api/public/status', $monitors[0]['config']['url']);
+        $this->assertSame('https://status.example.com/api/public/status', $monitors[0]['config']['url']);
         $this->assertSame(14, $monitors[0]['config']['certWarnDays']);
         $this->assertSame(['m1'], $link->fresh()->monitor_ids);
         $this->assertSame(1, AppEvent::query()->where('type', 'core.link.active')->count());
@@ -268,12 +270,12 @@ class AutomationTest extends FeatureTestCase
         $this->artisan('pk95:links')->assertSuccessful();
         $this->assertSame(AppLink::ACTIVE, $link->fresh()->state);
         $this->assertTrue($this->hosts[$link->proxy_host_id]['enabled']);
-        $this->assertSame(['https://status.kuhlmannit.de/api/public/status'], array_map(fn ($m) => $m['config']['url'], $this->sent('POST', 'pk95-uptime')));
+        $this->assertSame(['https://status.example.com/api/public/status'], array_map(fn ($m) => $m['config']['url'], $this->sent('POST', 'pk95-uptime')));
 
         // the LXC got another LAN IP: the host's target moves along
-        Settings::put('automation_lan_ip', '10.10.250.60');
+        Settings::put('automation_lan_ip', '192.168.10.60');
         app(Linker::class)->linkStatusPages();
-        $this->assertSame('10.10.250.60', $this->hosts[$link->proxy_host_id]['upstream_host']);
+        $this->assertSame('192.168.10.60', $this->hosts[$link->proxy_host_id]['upstream_host']);
         $this->assertTrue($this->hosts[$link->proxy_host_id]['enabled'], 'stays switched on');
         $this->assertSame([], array_diff(array_keys($this->sent('PUT', '/api/hosts/')[1]), Hosts::FIELDS));
 
@@ -294,12 +296,49 @@ class AutomationTest extends FeatureTestCase
         $this->assertNull(app(Linker::class)->linkStatusPages());
         $this->assertSame([], $this->sent('POST', '/api/hosts'));
 
-        Settings::put('uptime_public_url', 'https://status.kuhlmannit.de');
+        Settings::put('uptime_public_url', 'https://status.example.com');
         InstalledApp::query()->where('app_id', 'proxy')->update(['status' => InstalledApp::STOPPED]);
         $link = app(Linker::class)->linkStatusPages();
         $this->assertSame(AppLink::FAILED, $link->state);
         $this->assertStringContainsString('PK95 Proxy läuft gerade nicht', $link->message);
         $this->assertDatabaseHas('app_events', ['type' => 'core.link.failed', 'severity' => 'warning']);
+    }
+
+    public function test_a_saved_address_wins_over_an_empty_default(): void
+    {
+        config(['pk95.defaults.uptime_public_url' => '']);
+        $this->assertSame('', Settings::get('uptime_public_url'));
+        $this->assertNull(app(Linker::class)->linkStatusPages(), 'empty default, nothing saved: nothing to set up');
+
+        Settings::put('uptime_public_url', 'https://status.example.org');
+        $this->dnsAnswer = ['203.0.113.10'];
+        $link = app(Linker::class)->linkStatusPages();
+        $this->assertSame('status.example.org', $link->domain);
+        $this->assertSame([['status.example.org']], array_values(array_map(fn ($h) => $h['domains'], $this->hosts)));
+    }
+
+    public function test_an_empty_default_never_takes_down_existing_status_pages(): void
+    {
+        $this->dnsAnswer = ['203.0.113.10'];
+        $link = app(Linker::class)->linkStatusPages();
+        $this->assertSame(AppLink::ACTIVE, $link->state);
+
+        // the env default goes away (e.g. a new .env) and nothing was ever saved: no-op
+        config(['pk95.defaults.uptime_public_url' => '']);
+        $same = app(Linker::class)->linkStatusPages();
+        $this->artisan('pk95:links')->assertSuccessful();
+        $this->assertSame($link->id, $same->id);
+        $this->assertSame(AppLink::ACTIVE, $link->fresh()->state);
+        $this->assertSame([], array_filter($this->calls, fn ($c) => $c['method'] === 'DELETE'));
+        $this->assertCount(1, $this->hosts);
+        $this->assertCount(1, $this->records);
+
+        // clearing the address on the status pages page still removes what Core set up
+        Settings::put('uptime_public_url', '');
+        app(Linker::class)->linkStatusPages();
+        $this->assertSame(AppLink::REMOVED, $link->fresh()->state);
+        $this->assertSame([], $this->hosts);
+        $this->assertSame([], $this->records);
     }
 
     public function test_without_dns_the_host_waits_disabled_and_is_switched_on_later(): void
@@ -389,11 +428,11 @@ class AutomationTest extends FeatureTestCase
         $link = app(Linker::class)->link('proxapps', $this->event());
 
         $this->assertSame(AppLink::PENDING_DNS, $link->state);
-        $this->assertSame([['name' => 'cloud.example.de', 'type' => 'A', 'value' => '10.10.250.50', 'ttl' => 300, 'enabled' => true, 'managed_by' => 'core']],
+        $this->assertSame([['name' => 'cloud.example.de', 'type' => 'A', 'value' => '192.168.10.50', 'ttl' => 300, 'enabled' => true, 'managed_by' => 'core']],
             $this->sent('POST', '/api/records'));
         $this->assertContains('http://host.docker.internal:8053/api/records?name=cloud.example.de', array_column(array_filter($this->calls, fn ($c) => $c['method'] === 'GET'), 'url'));
         $this->assertSame(1, $link->dns_record_id);
-        $this->assertSame('10.10.250.50', $link->dns_answer);
+        $this->assertSame('192.168.10.50', $link->dns_answer);
         $this->assertNull($link->dns_message);
         $this->assertSame([], $this->sent('GET', '/api/rewrites'), 'PK95 DNS 1.1 is asked only over /api/records');
 
@@ -433,7 +472,7 @@ class AutomationTest extends FeatureTestCase
         unset($this->records[5]);
         $this->records[9] = ['id' => 9, 'name' => 'vault.example.de', 'type' => 'CNAME', 'value' => 'nas.home.lan', 'enabled' => true, 'managed_by' => 'core'];
         $link = app(Linker::class)->link('proxapps', ['deploymentId' => 8] + $this->event());
-        $this->assertSame('10.10.250.50', $this->records[$link->dns_record_id]['value']);
+        $this->assertSame('192.168.10.50', $this->records[$link->dns_record_id]['value']);
         $other = app(Linker::class)->link('proxapps', ['deploymentId' => 9] + $this->event('vault.example.de'));
         $this->assertNull($other->dns_record_id);
         $this->assertStringContainsString('schon einen Eintrag (CNAME → nas.home.lan)', $other->dns_message);
@@ -447,27 +486,27 @@ class AutomationTest extends FeatureTestCase
 
         // deleted in PK95 DNS: created again with the next IP change
         unset($this->records[$id]);
-        Settings::put('automation_lan_ip', '10.10.250.60');
+        Settings::put('automation_lan_ip', '192.168.10.60');
         $this->assertSame(['changed' => 1, 'open' => []], app(Linker::class)->syncDns());
         $link->refresh();
         $this->assertCount(2, $this->sent('POST', '/api/records'));
-        $this->assertSame('10.10.250.60', $this->records[$link->dns_record_id]['value']);
+        $this->assertSame('192.168.10.60', $this->records[$link->dns_record_id]['value']);
         $this->assertSame('core', $this->records[$link->dns_record_id]['managed_by']);
 
         // moved by Core with a PUT on its own id
-        Settings::put('automation_lan_ip', '10.10.250.70');
+        Settings::put('automation_lan_ip', '192.168.10.70');
         app(Linker::class)->syncDns();
-        $this->assertSame([['name' => 'cloud.example.de', 'type' => 'A', 'value' => '10.10.250.70', 'ttl' => 300, 'enabled' => true, 'managed_by' => 'core']],
+        $this->assertSame([['name' => 'cloud.example.de', 'type' => 'A', 'value' => '192.168.10.70', 'ttl' => 300, 'enabled' => true, 'managed_by' => 'core']],
             $this->sent('PUT', '/api/records/'.$link->dns_record_id));
 
         // taken over in PK95 DNS (managed_by cleared, address changed): no longer Core's,
         // left alone and not deleted
         $id = $link->fresh()->dns_record_id;
         $this->records[$id]['managed_by'] = '';
-        $this->records[$id]['value'] = '10.10.250.99';
-        Settings::put('automation_lan_ip', '10.10.250.80');
+        $this->records[$id]['value'] = '192.168.10.99';
+        Settings::put('automation_lan_ip', '192.168.10.80');
         $this->assertSame(['changed' => 0, 'open' => ['cloud.example.de']], app(Linker::class)->syncDns());
-        $this->assertSame('10.10.250.99', $this->records[$id]['value']);
+        $this->assertSame('192.168.10.99', $this->records[$id]['value']);
         $this->assertNull($link->fresh()->dns_record_id);
         app(Linker::class)->unlink('proxapps', 7);
         $this->assertArrayHasKey($id, $this->records);
@@ -481,10 +520,10 @@ class AutomationTest extends FeatureTestCase
         // the 1.1 migration turned Core's rewrite into a record without marker
         $this->records[$id]['managed_by'] = '';
 
-        Settings::put('automation_lan_ip', '10.10.250.60');
+        Settings::put('automation_lan_ip', '192.168.10.60');
         $this->assertSame(['changed' => 1, 'open' => []], app(Linker::class)->syncDns());
         $this->assertSame($id, $link->fresh()->dns_record_id);
-        $this->assertSame('10.10.250.60', $this->records[$id]['value']);
+        $this->assertSame('192.168.10.60', $this->records[$id]['value']);
         $this->assertSame('core', $this->records[$id]['managed_by']);
 
         // also removed with the deployment while still unmarked
@@ -501,13 +540,13 @@ class AutomationTest extends FeatureTestCase
         $link = app(Linker::class)->link('proxapps', $this->event());
 
         $this->assertCount(1, $this->sent('GET', '/api/records'));
-        $this->assertSame([['domain' => 'cloud.example.de', 'answer' => '10.10.250.50', 'enabled' => true]], $this->sent('POST', '/api/rewrites'));
+        $this->assertSame([['domain' => 'cloud.example.de', 'answer' => '192.168.10.50', 'enabled' => true]], $this->sent('POST', '/api/rewrites'));
         $this->assertSame(6, $link->dns_record_id);
         $this->assertNull($link->dns_message);
 
-        Settings::put('automation_lan_ip', '10.10.250.60');
+        Settings::put('automation_lan_ip', '192.168.10.60');
         $this->assertSame(['changed' => 1, 'open' => []], app(Linker::class)->syncDns());
-        $this->assertSame('10.10.250.60', $this->rewrites[6]['answer']);
+        $this->assertSame('192.168.10.60', $this->rewrites[6]['answer']);
 
         $foreign = app(Linker::class)->link('proxapps', ['deploymentId' => 8] + $this->event('vault.example.de'));
         $this->assertStringContainsString('schon einen lokalen Eintrag (→ 192.168.1.5)', $foreign->dns_message);
@@ -546,15 +585,15 @@ class AutomationTest extends FeatureTestCase
         Livewire::test(AutomationIndex::class)->call('syncDns')->assertDispatched('notice', kind: 'success', text: '1 DNS-Eintrag angelegt oder angepasst.');
         $link->refresh();
         $this->assertNull($link->dns_message);
-        $this->assertSame('10.10.250.50', $this->records[$link->dns_record_id]['value']);
+        $this->assertSame('192.168.10.50', $this->records[$link->dns_record_id]['value']);
         $this->assertDatabaseHas('app_events', ['type' => 'core.link.dns']);
         $this->assertSame(['changed' => 0, 'open' => []], app(Linker::class)->syncDns(), 'nothing to do twice');
 
         // a new LAN IP moves Core's record, nothing else
-        Settings::put('automation_lan_ip', '10.10.250.60');
+        Settings::put('automation_lan_ip', '192.168.10.60');
         $this->artisan('pk95:links')->assertSuccessful();
-        $this->assertSame('10.10.250.60', $this->records[$link->dns_record_id]['value']);
-        $this->assertSame('10.10.250.60', $link->fresh()->dns_answer);
+        $this->assertSame('192.168.10.60', $this->records[$link->dns_record_id]['value']);
+        $this->assertSame('192.168.10.60', $link->fresh()->dns_answer);
     }
 
     public function test_dns_records_switched_off_or_without_proxy_host(): void
@@ -575,8 +614,8 @@ class AutomationTest extends FeatureTestCase
     public function test_lan_ip_is_detected_in_the_host_network_and_the_setting_wins(): void
     {
         Settings::put('automation_lan_ip', '');
-        $this->docker['helperOutput'] = '1.1.1.1 via 10.10.250.1 dev eth0  src 10.10.250.50 ';
-        $this->assertSame('10.10.250.50', app(LanIp::class)->current());
+        $this->docker['helperOutput'] = '1.1.1.1 via 192.168.10.1 dev eth0  src 192.168.10.50 ';
+        $this->assertSame('192.168.10.50', app(LanIp::class)->current());
         $run = $this->docker['helperRuns'][0];
         $this->assertSame(['ip', '-4', 'route', 'get', '1.1.1.1'], $run['cmd']);
         $this->assertSame('host', $run['network']);
@@ -591,15 +630,15 @@ class AutomationTest extends FeatureTestCase
         Settings::put('automation_lan_ip', '');
         $this->docker['helperOutput'] = 'RTNETLINK answers: Network unreachable';
         $this->signIn();
-        $this->get(route('automation'))->assertSee('LAN-IP des Proxy')->assertSee('10.10.250.50');
+        $this->get(route('automation'))->assertSee('LAN-IP des Proxy')->assertSee('192.168.10.50');
         Livewire::test(AutomationIndex::class)
             ->call('detectLanIp')->assertDispatched('notice', kind: 'error')
             ->assertSee('Nicht erkannt: Keine Route ins Internet gefunden: RTNETLINK answers: Network unreachable. Trag')
             ->set('lanIp', '10.10.250')->call('save')->assertHasErrors('lanIp')
-            ->set('lanIp', '10.10.250.70')->set('dns', false)->call('save')->assertHasNoErrors();
-        $this->assertSame('10.10.250.70', Settings::get('automation_lan_ip'));
+            ->set('lanIp', '192.168.10.70')->set('dns', false)->call('save')->assertHasNoErrors();
+        $this->assertSame('192.168.10.70', Settings::get('automation_lan_ip'));
         $this->assertFalse(Settings::get('automation_dns'));
         Cache::forget(LanIp::CACHE);
-        $this->assertSame('10.10.250.70', app(LanIp::class)->current());
+        $this->assertSame('192.168.10.70', app(LanIp::class)->current());
     }
 }

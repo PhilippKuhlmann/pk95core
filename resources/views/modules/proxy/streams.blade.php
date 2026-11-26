@@ -33,7 +33,7 @@
                     </x-input.select>
                 </x-field>
                 <x-field label="Ziel" for="s-target" class="md:col-span-3">
-                    <x-input.text id="s-target" wire:model="form.target_host" placeholder="10.10.250.50" class="mt-1 w-full font-mono" />
+                    <x-input.text id="s-target" wire:model="form.target_host" placeholder="192.168.1.50" class="mt-1 w-full font-mono" />
                 </x-field>
                 <x-field label="Ziel-Port" for="s-tport">
                     <x-input.text id="s-tport" type="number" min="1" max="65535" wire:model="form.target_port" placeholder="25565" class="mt-1 w-full" />

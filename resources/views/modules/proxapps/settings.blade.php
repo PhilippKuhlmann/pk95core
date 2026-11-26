@@ -21,7 +21,7 @@
                         <x-input.text id="s-pattern" feld="vmid_pattern" wire:model="vmid_pattern" class="mt-1 w-full font-mono sm:max-w-xs" placeholder="{o3}{o4:03}" autocomplete="off" />
                     </x-field>
                     <x-input.hilfe class="sm:col-span-2 -mt-1">
-                        Leitet die VMID aus der statischen IP ab: <span class="font-mono">{o3}{o4:03}</span> macht aus 10.10.250.55 die 250055 und aus 10.10.240.40 die 240040.
+                        Leitet die VMID aus der statischen IP ab: <span class="font-mono">{o3}{o4:03}</span> macht aus 192.168.1.55 die 1055 und aus 192.168.20.40 die 20040.
                         Ein Muster im Netzwerkprofil hat Vorrang. Ohne Muster (oder bei DHCP) wird die erste freie VMID im Bereich vorgeschlagen.
                     </x-input.hilfe>
                 </div>

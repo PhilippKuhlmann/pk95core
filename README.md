@@ -47,7 +47,7 @@ DNS und ProxApps aktivieren.
 läuft die Installation mit ihnen ganz ohne Fragen:
 
 ```bash
-CTID=250 IP=10.10.250.50/24 GW=10.10.250.1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/PhilippKuhlmann/pk95core/main/install/proxmox.sh)"
+CTID=250 IP=192.168.1.50/24 GW=192.168.1.1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/PhilippKuhlmann/pk95core/main/install/proxmox.sh)"
 ```
 
 | Variable | Standard | Bedeutung |
@@ -58,7 +58,7 @@ CTID=250 IP=10.10.250.50/24 GW=10.10.250.1 bash -c "$(curl -fsSL https://raw.git
 | `STORAGE` | `local-lvm`, sonst `local-zfs`, sonst der erste passende | Speicher für die Disk |
 | `TEMPLATE_STORAGE` | `local` | Speicher der Vorlagen |
 | `BRIDGE` / `VLAN` | `vmbr0` / – | Netzwerk |
-| `IP` / `GW` | `dhcp` / – | feste Adresse mit Präfix (`10.10.250.50/24`) und Gateway |
+| `IP` / `GW` | `dhcp` / – | feste Adresse mit Präfix (`192.168.1.50/24`) und Gateway |
 
 Läuft Core später unter einer Domain hinter einem Reverse Proxy, siehe
 [docs/lxc-setup.md → Hinter einem Reverse Proxy](docs/lxc-setup.md#hinter-einem-reverse-proxy-https).

@@ -40,7 +40,7 @@ class AppFigures
             return ['ok' => false, 'error' => 'Die App läuft gerade nicht.'];
         }
         $method = match ($app->app_id) {
-            'dns' => 'dns', 'proxy' => 'proxy', 'uptime' => 'uptime', 'proxapps' => 'proxapps', 'ad' => 'ad',
+            'dns' => 'dns', 'proxy' => 'proxy', 'uptime' => 'uptime', 'proxapps' => 'proxapps', 'ad' => 'ad', 'file' => 'file',
             default => null,
         };
         if ($method === null) {
@@ -300,6 +300,56 @@ class AppFigures
             'checks' => array_values($checks),
             'warnings' => array_values(array_map(fn ($c) => ['text' => 'PK95 AD: '.$c['message'], 'page' => 'domain', 'tone' => $c['tone']],
                 array_filter($checks, fn ($c) => ! $c['ok']))),
+        ];
+    }
+
+    /** dashboard warning codes of PK95 File that belong to the shares page (else: server) */
+    private const FILE_SHARE_CODES = ['soft_quota', 'permissions', 'snapshot'];
+
+    /**
+     * PK95 File: not set up yet (state of /api/status) or the figures of /api/dashboard (storage,
+     * shares, sessions, open files, snapshots). Its warnings become problems, "critical" as bad.
+     *
+     * @return array<string, mixed>
+     */
+    private function file(InstalledApp $app): array
+    {
+        $client = $app->client();
+        $status = self::json($client->get('/api/status'));
+        $state = (string) ($status['state'] ?? '');
+        if ($state !== 'ready') {
+            [$text, $tone] = match ($state) {
+                'joining' => ['PK95 File: Der Dateiserver tritt gerade der Domäne bei.', 'warn'],
+                'failed' => ['PK95 File: Der Beitritt zur Domäne ist fehlgeschlagen.', 'bad'],
+                default => ['PK95 File: Dateiserver noch nicht eingerichtet', 'warn'],
+            };
+
+            return ['ok' => true, 'ready' => false, 'state' => $state, 'warnings' => [['text' => $text, 'page' => 'server', 'tone' => $tone]]];
+        }
+        $dashboard = self::json($client->get('/api/dashboard'));
+        $storage = (array) ($dashboard['storage'] ?? []);
+        $warnings = array_values(array_filter((array) ($dashboard['warnings'] ?? []), 'is_array'));
+        $disk = collect($warnings)->firstWhere('code', 'disk');
+
+        return [
+            'ok' => true,
+            'ready' => true,
+            'fqdn' => (string) ($status['server']['fqdn'] ?? ''),
+            'shares' => (int) ($dashboard['shares'] ?? 0),
+            'sessions' => (int) ($dashboard['sessions'] ?? 0),
+            'openFiles' => (int) ($dashboard['open_files'] ?? 0),
+            'total' => (int) ($storage['total_bytes'] ?? 0),
+            'used' => (int) ($storage['used_bytes'] ?? 0),
+            'free' => (int) ($storage['free_bytes'] ?? 0),
+            'freePercent' => isset($storage['free_percent']) ? (int) $storage['free_percent'] : null,
+            'diskTone' => is_array($disk) ? (($disk['level'] ?? '') === 'critical' ? 'bad' : 'warn') : 'ok',
+            'snapshots' => (int) ($dashboard['snapshots']['count'] ?? 0),
+            'snapshotsOk' => (bool) ($dashboard['snapshots']['last_ok'] ?? true),
+            'warnings' => array_map(fn (array $w) => [
+                'text' => 'PK95 File: '.(string) ($w['message'] ?? $w['code'] ?? ''),
+                'page' => in_array($w['code'] ?? '', self::FILE_SHARE_CODES, true) ? 'shares' : 'server',
+                'tone' => ($w['level'] ?? '') === 'critical' ? 'bad' : 'warn',
+            ], $warnings),
         ];
     }
 

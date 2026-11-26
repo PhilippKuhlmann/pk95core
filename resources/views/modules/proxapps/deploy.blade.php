@@ -256,7 +256,7 @@
                             <x-check-badge :check="$checks['ip']" target="v.ip,check,suggestIp,suggest" />
                         </x-slot:badge>
                         <div class="mt-1 flex gap-2">
-                            <x-input.text id="f-ip" feld="ip" wire:model.live.debounce.500ms="v.ip" class="w-full min-w-0 font-mono" placeholder="10.10.250.53" autocomplete="off" />
+                            <x-input.text id="f-ip" feld="ip" wire:model.live.debounce.500ms="v.ip" class="w-full min-w-0 font-mono" placeholder="192.168.1.53" autocomplete="off" />
                             <x-input.button type="button" color="gray" size="feld" wire:click="suggestIp" wire:loading.attr="disabled" wire:target="suggestIp" :disabled="! $currentProfile"
                                 data-tip="{{ $currentProfile ? 'Nächste freie Adresse aus dem Pool des Profils' : 'Nur mit Netzwerkprofil' }}">
                                 <x-icon name="sparkles" class="h-4 w-4" />Nächste freie IP
@@ -270,7 +270,7 @@
                         </div>
                     </x-field>
                     <x-field label="Gateway" for="f-gw" feld="gateway">
-                        <x-input.text id="f-gw" feld="gateway" wire:model.live.debounce.400ms="v.gateway" class="mt-1 w-full font-mono" placeholder="10.10.250.1" />
+                        <x-input.text id="f-gw" feld="gateway" wire:model.live.debounce.400ms="v.gateway" class="mt-1 w-full font-mono" placeholder="192.168.1.1" />
                     </x-field>
                 @endif
 
@@ -292,7 +292,7 @@
                     <x-input.text id="f-vlan" feld="vlan" type="number" min="1" max="4094" wire:model.live.debounce.400ms="v.vlan" class="mt-1 w-full font-mono" placeholder="–" />
                 </x-field>
                 <x-field label="DNS-Server" for="f-dns" feld="dns" hilfe="Durch Leerzeichen getrennt. Leer = vom Proxmox-Host.">
-                    <x-input.text id="f-dns" feld="dns" wire:model="v.dns" class="mt-1 w-full font-mono" placeholder="10.10.250.1 1.1.1.1" />
+                    <x-input.text id="f-dns" feld="dns" wire:model="v.dns" class="mt-1 w-full font-mono" placeholder="192.168.1.1 1.1.1.1" />
                 </x-field>
                 <x-field label="Suchdomain" for="f-search" feld="searchdomain">
                     <x-input.text id="f-search" feld="searchdomain" wire:model="v.searchdomain" class="mt-1 w-full font-mono" placeholder="home.lan" />

@@ -40,6 +40,12 @@ class Settings
         return $out;
     }
 
+    /** Whether the key was saved at all (an explicitly saved empty value counts, the default does not). */
+    public static function stored(string $key): bool
+    {
+        return DB::table('settings')->where('key', $key)->exists();
+    }
+
     public static function put(string $key, mixed $value): void
     {
         DB::table('settings')->upsert(
