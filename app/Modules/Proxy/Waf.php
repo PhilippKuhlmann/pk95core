@@ -32,7 +32,7 @@ class Waf
     /** The fields Core sends: PUT is a partial update, the exceptions go through their own routes. */
     public const FIELDS = ['mode', 'paranoia', 'anomaly_threshold', 'body_limit_kb', 'profiles'];
 
-    /** status error of a Caddy built without the WAF module (standalone): not a problem, just no WAF */
+    /** status error of a Caddy without the WAF module, the fallback when "module" is missing: not a problem, just no WAF */
     public const NO_MODULE = 'ohne WAF-Modul';
 
     /**
@@ -54,7 +54,9 @@ class Waf
         $s = (array) $response->json();
         $loaded = (bool) ($s['rules_loaded'] ?? false);
         $error = trim((string) ($s['error'] ?? ''));
-        if (! $loaded && str_contains($error, self::NO_MODULE)) {
+        // standalone (Caddy without the WAF module): "module": false; without the field the error text tells
+        $withoutModule = array_key_exists('module', $s) ? $s['module'] === false : (! $loaded && str_contains($error, self::NO_MODULE));
+        if ($withoutModule) {
             return null;
         }
 

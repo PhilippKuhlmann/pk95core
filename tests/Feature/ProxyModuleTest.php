@@ -77,7 +77,7 @@ class ProxyModuleTest extends FeatureTestCase
     {
         $now = (int) (microtime(true) * 1000);
         $this->waf = [
-            'status' => ['crs_version' => '4.10.0', 'coraza_version' => '3.3.0', 'rules_loaded' => true, 'error' => '',
+            'status' => ['crs_version' => '4.10.0', 'coraza_version' => '3.3.0', 'module' => true, 'rules_loaded' => true, 'error' => '',
                 'hosts' => [['host_id' => 1, 'domain' => 'app.example.de', 'mode' => 'detect', 'error' => '']]],
             'hosts' => [1 => ['mode' => 'detect', 'paranoia' => 1, 'anomaly_threshold' => 5, 'body_limit_kb' => 1024, 'profiles' => [],
                 'exceptions' => [['id' => 'ex1', 'rule_id' => 920350, 'path_prefix' => '/api/', 'note' => 'App sendet IP als Host', 'created_at' => $now]], 'error' => '']],
@@ -796,14 +796,28 @@ class ProxyModuleTest extends FeatureTestCase
     public function test_caddy_without_the_waf_module_hides_it_instead_of_a_red_problem(): void
     {
         $this->enableWaf();
-        $this->waf['status'] = ['crs_version' => '', 'coraza_version' => '', 'rules_loaded' => false, 'error' => 'Caddy ohne WAF-Modul', 'hosts' => []];
+        $hidden = function (): void {
+            Livewire::test(WebFirewall::class, ['installedApp' => $this->installed])->assertSee('Keine Web-Firewall')->assertDontSee('data-waf-rules-error', false);
+            Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('edit', 1)->assertSet('wafOn', false);
+            Cache::flush();
+            $f = app(AppFigures::class)->for($this->installed);
+            $this->assertNull($f['waf']);
+            $this->assertSame([], $f['warnings']);
+        };
 
-        Livewire::test(WebFirewall::class, ['installedApp' => $this->installed])->assertSee('Keine Web-Firewall')->assertDontSee('data-waf-rules-error', false);
-        Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('edit', 1)->assertSet('wafOn', false);
+        // "module": false is the sign, whatever the error says
+        $this->waf['status'] = ['crs_version' => '', 'coraza_version' => '', 'module' => false, 'rules_loaded' => false, 'error' => 'Standalone-Build', 'hosts' => []];
+        $hidden();
+
+        // without the field: the error text as the fallback
+        $this->waf['status'] = ['crs_version' => '', 'coraza_version' => '', 'rules_loaded' => false, 'error' => 'Caddy ohne WAF-Modul', 'hosts' => []];
+        $hidden();
+
+        // the module is there: rules that did not load are a red problem, even with that text
+        $this->waf['status'] = ['crs_version' => '4.10.0', 'coraza_version' => '3.3.0', 'module' => true, 'rules_loaded' => false, 'error' => 'Caddy ohne WAF-Modul', 'hosts' => []];
         Cache::flush();
-        $f = app(AppFigures::class)->for($this->installed);
-        $this->assertNull($f['waf']);
-        $this->assertSame([], $f['warnings']);
+        $this->assertSame('bad', app(AppFigures::class)->for($this->installed)['warnings'][0]['tone']);
+        Livewire::test(WebFirewall::class, ['installedApp' => $this->installed])->assertSeeHtml('data-waf-rules-error');
     }
 
     public function test_the_host_form_edits_the_waf_and_deletes_an_exception(): void
