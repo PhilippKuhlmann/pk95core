@@ -61,29 +61,32 @@
         </div>
 
         {{-- Picker: search bar on top, then narrow columns as many as fit (auto-fill), so the names
-             do not drift apart on wide screens. Chosen countries are tinted. --}}
-        <div x-data="{ q: '' }" class="mt-4 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+             do not drift apart on wide screens. Chosen countries are tinted. Alpine draws the rows
+             from $rows (one template instead of 250 rows of markup on every round trip); the choice
+             is the same list as before (blockList / allowList), entangled live. wire:ignore: Livewire
+             does not morph the rows, wire:key renews the picker when the mode changes. --}}
+        <div wire:key="picker-{{ $mode }}" wire:ignore data-country-picker
+            x-data="{ q: '', rows: {{ Js::from($rows) }}, sel: $wire.entangle('{{ $listProp }}').live,
+                match(r) { const q = this.q.trim().toLowerCase(); return ! q || r.n.toLowerCase().includes(q) || q.toUpperCase() === r.c } }"
+            class="mt-4 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
             <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900/40">
                 <input type="search" x-model="q" placeholder="Land suchen …" aria-label="Land suchen"
                     class="w-full rounded-lg border-gray-300 bg-white py-1.5 text-sm sm:w-72 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500">
                 <span class="text-xs text-gray-500 dark:text-gray-400">
-                    {{ count($codes) }} Länder{{ $traffic ? ' · Zahl rechts: Zugriffe in 7 Tagen' : '' }}
+                    {{ count($rows) }} Länder{{ $traffic ? ' · Zahl rechts: Zugriffe in 7 Tagen' : '' }}
                 </span>
             </div>
             <div class="grid max-h-80 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-x-1 overflow-y-auto p-1.5" role="group" aria-label="Länder">
-                @foreach ($codes as $c)
-                    <label wire:key="cty-{{ $c }}" data-tip="{{ $names[$c] }}"
-                        x-show="!q || {{ Js::from(mb_strtolower($names[$c])) }}.includes(q.toLowerCase()) || q.toUpperCase() === '{{ $c }}'"
+                <template x-for="r in rows" :key="r.c">
+                    <label x-show="match(r)" :data-tip="r.n"
                         class="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm text-gray-700 hover:bg-gray-100 has-checked:bg-cerulean-50 has-checked:text-cerulean-900 dark:text-gray-300 dark:hover:bg-gray-700/60 dark:has-checked:bg-cerulean-950/60 dark:has-checked:text-cerulean-100">
-                        <input type="checkbox" value="{{ $c }}" wire:model.live="{{ $listProp }}"
+                        <input type="checkbox" :value="r.c" x-model="sel"
                             class="rounded border-gray-300 text-cerulean-600 focus:ring-cerulean-500 dark:border-gray-600 dark:bg-gray-700">
-                        <span class="shrink-0" aria-hidden="true">{{ Fmt::flag($c) }}</span>
-                        <span class="min-w-0 flex-1 truncate">{{ $names[$c] }}</span>
-                        @if ($traffic[$c] ?? 0)
-                            <span class="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400" data-tip="{{ Fmt::num($traffic[$c]) }} Zugriffe in 7 Tagen">{{ Fmt::num($traffic[$c]) }}<span class="sr-only"> Zugriffe in 7 Tagen</span></span>
-                        @endif
+                        <span class="shrink-0" aria-hidden="true" x-text="r.f"></span>
+                        <span class="min-w-0 flex-1 truncate" x-text="r.n"></span>
+                        <span x-show="r.t" class="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400" :data-tip="r.t + ' Zugriffe in 7 Tagen'"><span x-text="r.t"></span><span class="sr-only"> Zugriffe in 7 Tagen</span></span>
                     </label>
-                @endforeach
+                </template>
             </div>
         </div>
 

@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Js;
+use Livewire\Features\SupportLazyLoading\SupportLazyLoading;
 use Livewire\Livewire;
 use Tests\Unit\CertsyncKeysTest;
 
@@ -166,6 +167,8 @@ class ProxyModuleTest extends FeatureTestCase
         $this->hosts[1] = $this->host(1, ['app.example.de'], ['enabled' => true]);
         $this->hosts[2] = $this->host(2, ['alt.example.de'], ['kind' => 'redirect', 'redirect_url' => 'https://neu.example.de']);
         Http::fake(['host.docker.internal:8090/*' => fn (Request $r) => $this->panel($r)]);
+        // pages render fully here; the lazy placeholder has its own test
+        Livewire::withoutLazyLoading();
     }
 
     /**
@@ -1381,5 +1384,46 @@ class ProxyModuleTest extends FeatureTestCase
         Http::swap(new Factory(app('events')));
         Http::fake(['*' => Http::failedConnection()]);
         $this->get(route('apps.page', [$this->installed, 'hosts']))->assertOk()->assertSee('PK95 Proxy antwortet nicht');
+    }
+
+    // ---- slow pages open at once (lazy) -----------------------------------------------------------
+
+    public function test_security_and_hosts_open_with_a_placeholder_before_any_panel_call(): void
+    {
+        SupportLazyLoading::$disableWhileTesting = false;
+        foreach (['security' => 'Lade Sicherheitseinstellungen …', 'hosts' => 'Lade Hosts …'] as $page => $text) {
+            $this->calls = [];
+            $this->get(route('apps.page', [$this->installed, $page]))->assertOk()
+                ->assertSee('data-page-placeholder', false)->assertSee($text)->assertSee('aria-busy="true"', false)
+                ->assertSee('x-init="$wire.__lazyLoad', false);
+            $this->assertSame([], $this->calls, "{$page}: the placeholder waits on nothing");
+        }
+        // a fast page stays as it is
+        $this->get(route('apps.page', [$this->installed, 'certificates']))->assertOk()->assertDontSee('data-page-placeholder', false);
+    }
+
+    public function test_the_security_page_loads_its_data_once_and_draws_the_country_picker_from_json(): void
+    {
+        Cache::flush();
+        $count = fn (string $path) => count(array_filter($this->calls, fn ($c) => $c['path'] === $path));
+        $page = Livewire::withoutLazyLoading()->test(Security::class, ['installedApp' => $this->installed])
+            ->assertSee('Länder')->assertSee('Blocklisten')->assertSeeHtml('data-country-picker');
+        $this->assertSame(1, $count('/api/security'), 'mount and render share one answer');
+        $this->assertSame(1, $count('/api/stats'));
+
+        // the picker: one template and the rows as JSON instead of 250 rows of markup
+        $html = $page->html();
+        $this->assertStringNotContainsString('wire:key="cty-', $html);
+        $this->assertStringContainsString('x-for="r in rows"', $html);
+        $this->assertStringContainsString("entangle('blockList').live", $html);
+        $this->assertStringContainsString('Deutschland', $html);
+        $this->assertLessThan(150 * 1024, strlen($html));
+
+        // a round trip and a second visit: the 7-day counts come from Core's cache
+        $page->set('blockList', ['CN']);
+        // (Livewire switches lazy loading back on after a test request)
+        Livewire::withoutLazyLoading()->test(Security::class, ['installedApp' => $this->installed]);
+        $this->assertSame(1, $count('/api/stats'), 'countries of 7 days only sort the list: cached');
+        $this->assertSame(3, $count('/api/security'), 'one per request');
     }
 }
