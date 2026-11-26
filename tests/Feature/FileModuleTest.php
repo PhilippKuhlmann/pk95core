@@ -129,6 +129,8 @@ class FileModuleTest extends FeatureTestCase
 
     // --- fake PK95 File ------------------------------------------------------------------
 
+    private const MACOS_NOTICE = 'Die macOS-Unterstützung gilt für neue Verbindungen. Bereits verbundene Macs behalten das bisherige Verhalten, bis sie die Freigabe trennen und neu verbinden.';
+
     private function fileApi(Request $r)
     {
         $url = parse_url($r->url());
@@ -187,7 +189,13 @@ class FileModuleTest extends FeatureTestCase
                 if (($body['disk_critical_percent'] ?? 0) >= ($body['disk_warn_percent'] ?? 0)) {
                     return $invalid(['disk_critical_percent' => 'Muss kleiner als die Warnschwelle sein.']);
                 }
+                // 1.1.0: macos, and a notice when it changed
+                $notice = array_key_exists('macos', $s['settings'])
+                    ? ['notice' => (bool) ($body['macos'] ?? false) !== (bool) $s['settings']['macos'] ? self::MACOS_NOTICE : '']
+                    : [];
                 $s['settings'] = $body;
+
+                return Http::response($s['settings'] + $notice);
             }
 
             return Http::response($s['settings']);
@@ -680,6 +688,31 @@ class FileModuleTest extends FeatureTestCase
             ->assertDispatched('notice', kind: 'success', text: 'Einstellungen gespeichert. Samba lädt sie neu, die Sitzungen bleiben.');
         $this->assertSame(['scan_interval_minutes' => 60, 'disk_warn_percent' => 20, 'disk_critical_percent' => 8, 'snapshot_min_free_percent' => 15,
             'smb_encryption' => 'desired', 'min_protocol' => 'SMB2_10'], last($this->sent('file', 'PUT', '/api/settings'))['body']);
+    }
+
+    public function test_the_macos_switch_only_with_file_1_1_and_its_notice(): void
+    {
+        $this->ready();
+        // PK95 File 1.0 does not know the field: no switch
+        $this->get(route('apps.page', [$this->file, 'server']))->assertOk()->assertSee('SMB-Verschlüsselung')
+            ->assertDontSee('macOS-Unterstützung')->assertDontSee('data-macos', false);
+
+        // 1.1.0: switch on, the notice stays on the page until the next save
+        $this->fs['settings']['macos'] = false;
+        $this->get(route('apps.page', [$this->file, 'server']))->assertOk()->assertSee('macOS-Unterstützung')
+            ->assertSee('keine ._-Dateien mehr in den Ordnern. Gilt für alle Freigaben.');
+        $page = Livewire::test(Server::class, ['installedApp' => $this->file])->assertSet('settings.macos', false)
+            ->set('settings.macos', true)->call('saveSettings')->assertHasNoErrors()
+            ->assertDispatched('notice', kind: 'success')->assertSet('settingsNotice', self::MACOS_NOTICE)
+            ->assertSee('Bereits verbundene Macs behalten das bisherige Verhalten')->assertSet('settings.macos', true);
+        $this->assertTrue(last($this->sent('file', 'PUT', '/api/settings'))['body']['macos']);
+        $this->assertArrayNotHasKey('notice', $page->get('settings'), 'the notice is not sent back');
+
+        // saved again without a change: no notice; switched off: notice again
+        $page->call('saveSettings')->assertSet('settingsNotice', null)->assertDontSee('Bereits verbundene Macs');
+        $page->set('settings.macos', false)->call('saveSettings')->assertSet('settingsNotice', self::MACOS_NOTICE);
+        $this->assertFalse(last($this->sent('file', 'PUT', '/api/settings'))['body']['macos']);
+        $this->assertArrayNotHasKey('notice', last($this->sent('file', 'PUT', '/api/settings'))['body']);
     }
 
     public function test_shares_and_sessions_point_to_the_wizard_until_ready(): void

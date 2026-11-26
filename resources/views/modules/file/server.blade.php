@@ -163,6 +163,15 @@
                             @foreach (Server::MIN_PROTOCOL as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach
                         </x-input.select>
                     </x-field>
+                    @if (array_key_exists('macos', $settings))
+                        <div class="sm:col-span-2" data-macos>
+                            <x-input.checkbox wire:model="settings.macos" label="macOS-Unterstützung"
+                                hilfe="Finder-Infos und Tags werden an der Datei gespeichert, keine ._-Dateien mehr in den Ordnern. Gilt für alle Freigaben." />
+                        </div>
+                    @endif
+                    @if ($settingsNotice)
+                        <x-callout title="Hinweis" class="sm:col-span-2" data-settings-notice>{{ $settingsNotice }}</x-callout>
+                    @endif
                     <div class="flex justify-end sm:col-span-2">
                         <x-input.button type="submit" wire:loading.attr="disabled" wire:target="saveSettings">Speichern</x-input.button>
                     </div>
