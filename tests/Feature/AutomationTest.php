@@ -634,7 +634,7 @@ class AutomationTest extends FeatureTestCase
         Livewire::test(AutomationIndex::class)
             ->call('detectLanIp')->assertDispatched('notice', kind: 'error')
             ->assertSee('Nicht erkannt: Keine Route ins Internet gefunden: RTNETLINK answers: Network unreachable. Trag')
-            ->set('lanIp', '10.10.250')->call('save')->assertHasErrors('lanIp')
+            ->set('lanIp', '192.168.1')->call('save')->assertHasErrors('lanIp')
             ->set('lanIp', '192.168.10.70')->set('dns', false)->call('save')->assertHasNoErrors();
         $this->assertSame('192.168.10.70', Settings::get('automation_lan_ip'));
         $this->assertFalse(Settings::get('automation_dns'));

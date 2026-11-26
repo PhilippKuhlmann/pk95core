@@ -6,6 +6,7 @@ use App\Models\InstalledApp;
 use App\Modules\Ad\AdTime;
 use App\Modules\Dns\CountrySplit as DnsCountrySplit;
 use App\Modules\Proxy\AccessLog;
+use App\Modules\Proxy\Waf;
 use App\Modules\Uptime\Bars;
 use App\Services\Apps\AppException;
 use App\Support\Settings;
@@ -138,9 +139,9 @@ class AppFigures
         $requests = (int) ($stats['requests'] ?? 0);
 
         // the rest is a bonus: a page that fails leaves its figure empty
-        $optional = function (string $path) use ($client): ?array {
+        $optional = function (string $path, array $query = []) use ($client): ?array {
             try {
-                $response = $client->get($path);
+                $response = $client->get($path, $query);
 
                 return $response->successful() ? (array) $response->json() : null;
             } catch (AppException) {
@@ -160,6 +161,9 @@ class AppFigures
             ->map(fn ($c) => ['domain' => (string) ($c['domain'] ?? $c['name'] ?? '?'), 'days' => (int) floor(((int) $c['not_after'] - now()->getTimestamp()) / 86400)])
             ->sortBy('days')->values()->all();
         $updates = $optional('/api/updates');
+        // web firewall (a Proxy without it: nothing); today = since local midnight
+        $wafStatus = Waf::status($app);
+        $wafToday = $wafStatus === null ? null : $optional('/api/waf/stats', ['from' => Waf::from(0), 'to' => now()->getTimestampMs()]);
 
         return [
             'ok' => true,
@@ -173,6 +177,19 @@ class AppFigures
             'downHosts' => $down,
             'expiring' => $expiring,
             'vulns' => is_array($updates['vulns']['vulns'] ?? null) ? count($updates['vulns']['vulns']) : null,
+            'waf' => $wafStatus === null ? null : [
+                'hits' => isset($wafToday['hits']) ? (int) $wafToday['hits'] : null,
+                'blocks' => isset($wafToday['hits']) ? (int) ($wafToday['blocks'] ?? 0) : null,
+                'rules' => array_slice(array_values(array_filter((array) ($wafToday['top_rules'] ?? []), 'is_array')), 0, 3),
+                'hosts' => array_slice(array_values(array_filter((array) ($wafToday['top_hosts'] ?? []), 'is_array')), 0, 3),
+            ],
+            // fail-open: without rules no host is protected, a host whose rules did not load runs without
+            'warnings' => $wafStatus === null ? [] : [
+                ...($wafStatus['rules_loaded'] ? [] : [['text' => 'Web-Firewall: Die Regeln sind nicht geladen, kein Host ist geschützt'
+                    .($wafStatus['error'] !== '' ? ': '.$wafStatus['error'] : '.'), 'page' => 'waf', 'tone' => 'bad']]),
+                ...array_map(fn (array $h) => ['text' => 'Web-Firewall für '.($h['domain'] ?? 'Host '.($h['host_id'] ?? '?')).' nicht geladen, der Host läuft ohne Schutz: '.trim((string) $h['error']),
+                    'page' => 'waf', 'tone' => 'bad'], array_values(array_filter($wafStatus['hosts'], fn ($h) => trim((string) ($h['error'] ?? '')) !== ''))),
+            ],
         ];
     }
 

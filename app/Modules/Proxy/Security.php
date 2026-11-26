@@ -45,7 +45,7 @@ class Security extends Component
 
     public ?string $loadError = null;
 
-    public const REASONS = ['scan' => 'Scan', 'auth' => 'Anmeldefehler', 'not_found' => 'Nicht gefunden', 'unknown_hosts' => 'Unbekannte Hosts', 'repeat' => 'Wiederholung', 'manual' => 'Von Hand'];
+    public const REASONS = ['scan' => 'Scan', 'auth' => 'Anmeldefehler', 'not_found' => 'Nicht gefunden', 'unknown_hosts' => 'Unbekannte Hosts', 'repeat' => 'Wiederholung', 'waf' => 'Web-Firewall', 'manual' => 'Von Hand'];
 
     public const THRESHOLDS = [
         'scan_hits' => ['Scan-Pfade', 'Etwa /.env oder /.git/config, auch bei Weiterleitungen auf das Login. Kein normaler Besucher ruft das auf.', 0, 100],
@@ -53,15 +53,16 @@ class Security extends Component
         'not_found' => ['Nicht gefundene Seiten', 'Verschiedene Pfade mit 404, bei mindestens zwei Dritteln der Anfragen.', 0, 1000],
         'repeat_hits' => ['Wiederholungen', 'Dieselbe Seite oder Anmeldung immer wieder, bei mindestens zwei Dritteln der Seitenaufrufe.', 0, 1000],
         'unknown_hosts' => ['Unbekannte Hostnamen', 'Durchprobieren von Subdomains, die hier nicht eingerichtet sind.', 0, 100],
+        'waf_blocks' => ['Von der Web-Firewall blockiert', 'Anfragen, die die Web-Firewall eines Hosts im Modus „Blockieren“ abgewiesen hat. 0 = aus.', 0, 1000],
         'window_minutes' => ['Zeitfenster (Minuten)', 'In dieser Zeit müssen die Werte erreicht werden.', 1, 120],
         'ban_hours' => ['Sperrdauer (Stunden)', 'Für die erste Sperre einer Adresse.', 1, 8760],
     ];
 
     /**
-     * Rules newer panels know (repeat_hits: PK95 Proxy 1.6.0). Shown and sent only when the
+     * Rules newer panels know (repeat_hits: PK95 Proxy 1.6.0, waf_blocks: with the web firewall). Shown and sent only when the
      * panel's answer has them: it keeps fields that are not sent as they are.
      */
-    public const OPTIONAL = ['repeat_hits'];
+    public const OPTIONAL = ['repeat_hits', 'waf_blocks'];
 
     public function mount(): void
     {

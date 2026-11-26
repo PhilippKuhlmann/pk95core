@@ -1,0 +1,181 @@
+@php
+    use App\Modules\Proxy\Fmt;
+    use App\Modules\Proxy\Waf;
+    use App\Modules\Proxy\WebFirewall;
+    use Illuminate\Support\Js;
+    $input = 'rounded-lg border-gray-300 bg-white py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300';
+    $chip = 'rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-700 hover:border-rose-300 hover:bg-rose-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-rose-800 dark:hover:bg-rose-950';
+    $badge = fn (string $action) => $action === 'block'
+        ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-100'
+        : 'bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-100';
+    $label = 'text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400';
+    $redBox = 'm-3 rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-100';
+@endphp
+
+<div @if ($status) wire:poll.15s @endif>
+    <x-page-header title="Web-Firewall">
+        <x-slot:sub>
+            @if ($status)
+                Prüft Anfragen mit den OWASP-Regeln{{ $status['crs'] !== '' ? ' (CRS '.$status['crs'].')' : '' }}{{ $status['coraza'] !== '' ? ', Coraza '.$status['coraza'] : '' }}. Den Modus stellst du pro Host unter Hosts ein.
+            @endif
+        </x-slot:sub>
+    </x-page-header>
+
+    @if (! $status)
+        <x-callout title="Keine Web-Firewall" ton="gelb" class="m-3" data-waf-unavailable>
+            Diese Installation von PK95 Proxy hat keine Web-Firewall (vor Version 1.8.0 oder Caddy ohne WAF-Modul).
+        </x-callout>
+    @else
+        @if (! $status['rules_loaded'])
+            <div class="{{ $redBox }}" data-waf-rules-error>
+                <span class="font-DINPro-bold">Die Regeln sind nicht geladen, kein Host ist geschützt:</span> {{ $status['error'] !== '' ? $status['error'] : 'unbekannter Fehler' }}
+            </div>
+        @endif
+        @foreach ($hostErrors as $hostId => $err)
+            <div class="{{ $redBox }}" data-waf-host-error wire:key="werr-{{ $hostId }}">
+                <span class="font-DINPro-bold">{{ $hostNames[(string) $hostId] ?? 'Host '.$hostId }} läuft ohne Web-Firewall:</span> {{ $err }}
+            </div>
+        @endforeach
+
+        {{-- exception from a hit --}}
+        @if ($exception !== null)
+            <x-modal wire:key="waf-exception" submit="saveException" size="md" save-label="Ausnahme anlegen">
+                <x-slot:title>Ausnahme für {{ $exception['domain'] }}</x-slot:title>
+                <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">Die Regel prüft auf diesem Host unter dem Pfad nicht mehr. Lege Ausnahmen nur für Treffer an, die sicher harmlos sind.</p>
+                <div class="mt-3 grid grid-cols-1 gap-4">
+                    <x-field label="Regel" for="ex-rule" feld="exception.rule_id" :required="true">
+                        <x-input.text id="ex-rule" feld="exception.rule_id" wire:model="exception.rule_id" inputmode="numeric" class="mt-1 w-40 font-mono" />
+                    </x-field>
+                    <x-field label="Pfad beginnt mit" for="ex-path" feld="exception.path_prefix" hilfe="Leer = für den ganzen Host.">
+                        <x-input.text id="ex-path" feld="exception.path_prefix" wire:model="exception.path_prefix" class="mt-1 w-full font-mono" />
+                    </x-field>
+                    <x-field label="Notiz" for="ex-note" feld="exception.note">
+                        <x-input.text id="ex-note" feld="exception.note" wire:model="exception.note" maxlength="200" placeholder="Zum Beispiel: Editor sendet HTML" class="mt-1 w-full" />
+                    </x-field>
+                </div>
+            </x-modal>
+        @endif
+
+        {{-- figures --}}
+        <x-panel class="m-3" data-waf-summary>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="font-DINPro-bold text-gray-900 dark:text-gray-100">Übersicht{{ $host !== '' ? ': '.($hostNames[$host] ?? 'Host '.$host) : '' }}</div>
+                <div class="inline-flex rounded-lg border border-gray-200 p-0.5 dark:border-gray-700" role="group" aria-label="Zeitraum">
+                    @foreach (WebFirewall::DAYS as $d => $l)
+                        <button type="button" wire:click="period('{{ $d }}')" aria-pressed="{{ $days === (string) $d ? 'true' : 'false' }}"
+                            @class(['rounded-md px-2.5 py-1 text-xs', 'bg-cerulean-600 text-white' => $days === (string) $d, 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700' => $days !== (string) $d])>{{ $l }}</button>
+                    @endforeach
+                </div>
+            </div>
+            @if ($statsError)
+                <p class="mt-2 text-sm text-amber-800 dark:text-amber-300">{{ $statsError }}</p>
+            @elseif ($stats)
+                <div class="mt-3 grid grid-cols-2 gap-3">
+                    <div><div class="{{ $label }}">Treffer</div><div class="text-2xl font-DINPro-bold tabular-nums text-gray-900 dark:text-gray-100" data-waf-hits>{{ Fmt::num((int) ($stats['hits'] ?? 0)) }}</div></div>
+                    <div><div class="{{ $label }}">Blockiert</div><div class="text-2xl font-DINPro-bold tabular-nums text-gray-900 dark:text-gray-100" data-waf-blocks>{{ Fmt::num((int) ($stats['blocks'] ?? 0)) }}</div></div>
+                </div>
+                <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div class="min-w-0">
+                        <div class="{{ $label }}">Häufigste Regeln</div>
+                        @if (! ($stats['top_rules'] ?? []))
+                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Keine Treffer.</p>
+                        @else
+                            <ul class="mt-1 space-y-1 text-sm" data-waf-top="rules">
+                                @foreach (array_slice((array) $stats['top_rules'], 0, 8) as $r)
+                                    <li class="flex items-baseline justify-between gap-2">
+                                        <button type="button" wire:click="filterBy('rule', {{ Js::from((string) ($r['rule_id'] ?? '')) }})" class="min-w-0 truncate text-left text-cerulean-700 hover:underline dark:text-cerulean-300" data-tip="{{ $r['msg'] ?? '' }}">
+                                            <span class="font-mono">{{ $r['rule_id'] ?? '?' }}</span> <span class="text-gray-600 dark:text-gray-300">{{ $r['msg'] ?? '' }}</span>
+                                        </button>
+                                        <span class="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ Fmt::num((int) ($r['count'] ?? 0)) }}</span>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endif
+                    </div>
+                    <div class="min-w-0">
+                        <div class="{{ $label }}">Häufigste Hosts</div>
+                        @if (! ($stats['top_hosts'] ?? []))
+                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Keine Treffer.</p>
+                        @else
+                            <ul class="mt-1 space-y-1 text-sm" data-waf-top="hosts">
+                                @foreach (array_slice((array) $stats['top_hosts'], 0, 8) as $h)
+                                    <li class="flex items-baseline justify-between gap-2">
+                                        <button type="button" wire:click="filterBy('host', {{ Js::from((string) ($h['host_id'] ?? '')) }})" class="min-w-0 truncate text-left text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $h['domain'] ?? '?' }}</button>
+                                        <span class="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ Fmt::num((int) ($h['count'] ?? 0)) }}</span>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endif
+                    </div>
+                </div>
+            @endif
+        </x-panel>
+
+        {{-- filters --}}
+        <div class="mx-3 mt-2 flex flex-wrap items-center gap-2">
+            <x-input.combobox wire:model.live="host" label="Host" :options="$hostNames" placeholder="Alle Hosts" reset="Alle Hosts" :search="true" class="w-full sm:w-56" />
+            <x-input.combobox wire:model.live="action" label="Aktion" :options="Waf::ACTIONS" placeholder="Erkannt und blockiert" reset="Erkannt und blockiert" class="w-full sm:w-52" />
+            <input type="search" wire:model.live.debounce.300ms="rule" placeholder="Regel-ID" aria-label="Regel-ID" inputmode="numeric" class="{{ $input }} w-28">
+            <input type="search" wire:model.live.debounce.300ms="ip" placeholder="IP-Adresse" aria-label="IP-Adresse" class="{{ $input }} w-40">
+            <input type="search" wire:model.live.debounce.300ms="q" placeholder="Pfad enthält …" aria-label="Pfad" class="{{ $input }} w-48">
+            @if ($country)
+                <button type="button" wire:click="filterBy('country', '')" data-tip="Filter entfernen" class="{{ $chip }}">{{ Fmt::flag($country) }} Land: {{ Fmt::country($country) }} ×</button>
+            @endif
+            @if ($filtered)
+                <button type="button" wire:click="clearFilters" class="text-xs text-cerulean-700 underline hover:no-underline dark:text-cerulean-300">Filter zurücksetzen</button>
+            @endif
+        </div>
+
+        @if ($loadError)
+            <x-callout title="Treffer konnten nicht geladen werden" ton="gelb" class="m-3">{{ $loadError }}</x-callout>
+        @elseif (! $rows)
+            <x-panel class="m-3" polster="weit">
+                <div class="text-center">
+                    <div class="font-DINPro-bold text-gray-900 dark:text-gray-100">{{ $filtered ? 'Keine passenden Treffer' : 'Noch keine Treffer' }}</div>
+                    <p class="mt-2 text-sm text-gray-500">Hier erscheinen Anfragen, bei denen eine Regel angeschlagen hat.</p>
+                </div>
+            </x-panel>
+        @else
+            <x-panel class="m-3" polster="keins">
+                <ul class="divide-y divide-gray-100 dark:divide-gray-700" data-waf-events>
+                    @foreach ($rows as $hit)
+                        @php $action = (string) ($hit['action'] ?? 'detect'); @endphp
+                        <li class="px-4 py-3" wire:key="hit-{{ $hit['id'] ?? $loop->index }}" data-waf-hit="{{ $hit['id'] ?? '' }}">
+                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                                <span class="rounded px-1.5 py-0.5 text-xs font-medium {{ $badge($action) }}">{{ Waf::ACTIONS[$action] ?? $action }}</span>
+                                <span class="tabular-nums text-gray-500 dark:text-gray-400" data-tip="{{ Fmt::dateTime((int) ($hit['ts'] ?? 0)) }}">{{ Fmt::stamp((int) ($hit['ts'] ?? 0)) }}</span>
+                                <button type="button" wire:click="filterBy('host', {{ Js::from((string) ($hit['host_id'] ?? '')) }})" class="font-medium text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $hit['domain'] ?? '?' }}</button>
+                                <button type="button" wire:click="filterBy('ip', {{ Js::from((string) ($hit['ip'] ?? '')) }})" class="font-mono text-xs text-gray-600 hover:underline dark:text-gray-300">{{ Fmt::flag($hit['country'] ?? null) }} {{ $hit['ip'] ?? '' }}</button>
+                                <span class="text-xs text-gray-500 dark:text-gray-400">{{ (int) ($hit['anomaly_score'] ?? 0) }} Punkte</span>
+                            </div>
+                            <div class="mt-1 break-all font-mono text-xs text-gray-700 dark:text-gray-300">{{ $hit['method'] ?? '' }} {{ $hit['path'] ?? '' }}</div>
+                            <ul class="mt-2 space-y-1">
+                                @foreach ((array) ($hit['rules'] ?? []) as $r)
+                                    <li class="flex flex-wrap items-start justify-between gap-2 rounded-lg bg-gray-50 px-3 py-1.5 text-xs dark:bg-gray-900/40" data-waf-rule="{{ $r['id'] ?? '' }}">
+                                        <div class="min-w-0 flex-1">
+                                            <button type="button" wire:click="filterBy('rule', {{ Js::from((string) ($r['id'] ?? '')) }})" class="font-mono text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $r['id'] ?? '?' }}</button>
+                                            <span class="text-gray-700 dark:text-gray-200">{{ $r['msg'] ?? '' }}</span>
+                                            @if (($r['target'] ?? '') !== '')
+                                                <span class="block break-all text-gray-500 dark:text-gray-400">in {{ $r['target'] }}@if (($r['data'] ?? '') !== ''): <span class="font-mono">{{ $r['data'] }}</span>@endif</span>
+                                            @endif
+                                        </div>
+                                        @if (($hit['host_id'] ?? 0) && Waf::excludable($r['id'] ?? ''))
+                                            <button type="button" data-waf-except
+                                                wire:click="newException({{ (int) $hit['host_id'] }}, {{ Js::from((string) ($hit['domain'] ?? '')) }}, {{ Js::from((string) $r['id']) }}, {{ Js::from((string) ($hit['path'] ?? '/')) }})"
+                                                class="shrink-0 rounded-md border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-100 max-md:min-h-11 max-md:px-3 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Ausnahme anlegen</button>
+                                        @endif
+                                    </li>
+                                @endforeach
+                            </ul>
+                        </li>
+                    @endforeach
+                </ul>
+            </x-panel>
+            @if (count($rows) >= $limit && $limit < 500)
+                <div class="m-3 text-center">
+                    <x-input.button type="button" color="gray" wire:click="older">Ältere laden</x-input.button>
+                </div>
+            @endif
+        @endif
+    @endif
+</div>

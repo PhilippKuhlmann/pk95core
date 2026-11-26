@@ -22,6 +22,8 @@ class ProxyModule extends Module
             'access-lists' => AccessLists::class,
             'certificates' => Certificates::class,
             'security' => Security::class,
+            // web firewall (only in the menu of a Proxy that has it)
+            'waf' => WebFirewall::class,
             'error-pages' => ErrorPages::class,
             'updates' => Maintenance::class,
             'settings' => Settings::class,
