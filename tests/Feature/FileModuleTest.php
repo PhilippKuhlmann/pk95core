@@ -821,7 +821,8 @@ class FileModuleTest extends FeatureTestCase
     {
         $this->ready();
         Livewire::test(Shares::class, ['installedApp' => $this->file])->call('openSnapshots', 'Buchhaltung')
-            ->assertSee('Vorgängerversionen von Buchhaltung')->assertSee('25.11.2025, 12:00')->assertSee('700,0 MB')->assertSee('letzte, täglich')
+            ->assertSee('Vorgängerversionen von Buchhaltung')
+            ->assertSee('Wiederherstellen über Windows-Explorer → Vorgängerversionen')->assertDontSee('/restore')->assertSee('25.11.2025, 12:00')->assertSee('700,0 MB')->assertSee('letzte, täglich')
             ->call('snapshotNow')->assertDispatched('notice', kind: 'success', text: 'Die Sicherung von Buchhaltung läuft. Sie erscheint hier, sobald sie fertig ist.')
             ->call('deleteSnapshot', '@GMT-2026.11.25-11.00.00')->assertDispatched('notice', kind: 'success', text: 'Die Vorgängerversion wird gelöscht.')
             ->call('cancel')->assertSet('snapshotsFor', null);
@@ -879,6 +880,7 @@ class FileModuleTest extends FeatureTestCase
         $this->ready();
         $this->fs['free_percent'] = 8;
         $this->fs['warnings'][] = ['level' => 'critical', 'code' => 'disk', 'message' => 'Nur noch 8 % frei.'];
+        $this->fs['warnings'][] = ['level' => 'warning', 'code' => 'snapshot', 'message' => 'Vorgängerversion von „Buchhaltung“ fehlgeschlagen.'];
         $f = app(AppFigures::class)->for($this->file);
         $this->assertSame([true, 1, 1, 'bad', 'files.ad.example.com'], [$f['ready'], $f['shares'], $f['sessions'], $f['diskTone'], $f['fqdn']]);
         Livewire::withoutLazyLoading()->test(AppPanel::class, ['appId' => 'file'])
@@ -888,6 +890,7 @@ class FileModuleTest extends FeatureTestCase
         $problems = app(Problems::class)->collect();
         $this->assertSame(['tone' => 'bad', 'text' => 'PK95 File: Nur noch 8 % frei.', 'href' => route('apps.page', [$this->file, 'server'])], $problems[0]);
         $this->assertContains(['tone' => 'warn', 'text' => 'PK95 File: Freigabe „Buchhaltung“: 93 % des Kontingents belegt.', 'href' => route('apps.page', [$this->file, 'shares'])], $problems);
+        $this->assertContains(['tone' => 'warn', 'text' => 'PK95 File: Vorgängerversion von „Buchhaltung“ fehlgeschlagen.', 'href' => route('apps.page', [$this->file, 'shares'])], $problems);
         Livewire::withoutLazyLoading()->test(ProblemList::class)->assertSee('PK95 File: Nur noch 8 % frei.');
         $this->assertContains('file', Dashboard::PANELS);
     }

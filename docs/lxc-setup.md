@@ -129,6 +129,10 @@ Vorgängerversionen brauchen grob das Doppelte der Daten: Auf 50 GB passen etwa 
 Mountpoint lässt sich später mit `pct resize 950 mp0 +50G` vergrößern. Ohne eigenen Mountpoint meldet der
 Einrichtungsassistent „Die Daten lägen auf der Systemplatte des LXC“.
 
+Die Rechte auf den Freigaben prüft allein Samba über die NT-ACLs. Wer auf dem LXC oder dem Proxmox-Host direkt in
+`/srv/pk95/files` arbeitet, umgeht sie: Den Ordner nur PK95 File überlassen, nichts anderes darauf mounten oder per
+Skript darin ändern.
+
 **Eigene IP-Adresse im LAN.** Der Dateiserver antwortet auf einer zweiten Adresse im Netz des LXC (z. B.
 `192.168.1.20`, der LXC selbst hat etwa `192.168.1.10`). Sie muss **außerhalb des DHCP-Bereichs** des Routers
 liegen, sonst vergibt der Router sie später an ein anderes Gerät. Die App legt sie beim Start selbst auf `eth0` und

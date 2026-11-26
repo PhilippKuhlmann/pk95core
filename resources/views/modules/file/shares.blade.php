@@ -178,7 +178,7 @@
             <x-slot:title>{{ $snapshotsTitle }}</x-slot:title>
             @php $hostManaged = ($snapshots['backend'] ?? '') === 'zfs-host'; @endphp
             <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
-                <p class="text-sm text-gray-500 dark:text-gray-400">Benutzer holen Dateien selbst zurück: Explorer → Eigenschaften → Vorgängerversionen.</p>
+                <p class="text-sm text-gray-600 dark:text-gray-300" data-restore-hint>Wiederherstellen über Windows-Explorer → Vorgängerversionen <span class="text-gray-500 dark:text-gray-400">(Rechtsklick auf die Datei oder den Ordner → Eigenschaften).</span></p>
                 @unless ($hostManaged)
                     <x-input.button type="button" size="sm" wire:click="snapshotNow" wire:loading.attr="disabled" wire:target="snapshotNow" data-snapshot-now>Jetzt sichern</x-input.button>
                 @endunless
