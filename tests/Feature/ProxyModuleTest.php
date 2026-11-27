@@ -10,6 +10,7 @@ use App\Modules\Proxy\Certificates;
 use App\Modules\Proxy\Daily;
 use App\Modules\Proxy\ErrorPages;
 use App\Modules\Proxy\Hosts;
+use App\Modules\Proxy\Overview;
 use App\Modules\Proxy\ProxyModule;
 use App\Modules\Proxy\Security;
 use App\Modules\Proxy\Streams;
@@ -1721,6 +1722,60 @@ class ProxyModuleTest extends FeatureTestCase
         Livewire::withoutLazyLoading()->withQueryParams(['tab' => 'ausnahmen'])->test(WebFirewall::class, ['installedApp' => $this->installed])
             ->assertSee('Zu viele Hosts')->assertSee('h10.example.de')->assertDontSeeHtml('data-waf-host-exception-rows');
         $this->assertSame([], array_filter(array_column($this->calls, 'path'), fn ($p) => preg_match('#^/api/hosts/\d+/waf$#', $p)));
+    }
+
+    // ---- the web firewall of today on the Proxy overview -----------------------------------------
+
+    public function test_the_overview_shows_what_the_web_firewall_blocked_today(): void
+    {
+        $this->enableWaf19();
+        $now = (int) (microtime(true) * 1000);
+        $this->waf['events'][] = ['id' => 600, 'ts' => $now - 30000, 'host_id' => 1, 'domain' => 'app.example.de', 'method' => 'POST', 'path' => '/wp-login.php?x=1',
+            'ip' => '203.0.113.50', 'country' => 'US', 'anomaly_score' => 15, 'action' => 'block', 'block_paranoia' => 1,
+            'rules' => [['id' => 949110, 'msg' => 'Inbound Anomaly Score Exceeded', 'severity' => 'critical', 'target' => '', 'paranoia' => 1],
+                ['id' => 932160, 'msg' => 'Remote Command Execution: Unix Shell Code Found', 'severity' => 'critical', 'target' => 'ARGS:pwd', 'paranoia' => 1]]];
+        Cache::flush();
+        $html = Livewire::test(Overview::class, ['installedApp' => $this->installed])
+            ->assertSee('Web-Firewall heute')->assertSeeHtml('data-waf-blocked>4')->assertSeeHtml('data-waf-detected>33')
+            // the ban of the faked /api/security is from today
+            ->assertSeeHtml('data-waf-bans>1')
+            // the rule that hit, not the score rule; the path in short
+            ->assertSee('Remote Command Execution: Unix Shell Code Found')->assertSee('/wp-login.php?x=1')
+            ->assertSee('SQL Injection Attack Detected via libinjection')
+            // host 1 only detects and had hits today
+            ->assertSee('1 Host erkennt nur, 37 Treffer heute.')->html();
+        $waf = route('apps.page', [$this->installed, 'waf']);
+        $this->assertStringContainsString(e($waf.'?tab=protokoll&action=block&host=1&rule=932160'), $html);
+        $this->assertStringContainsString(e($waf.'?tab=protokoll&action=detect'), $html);
+        $this->assertStringContainsString(e($waf.'?tab=protokoll&rule=942100'), $html);
+        $this->assertStringContainsString('action=block&limit=5', $this->lastQuery('/api/waf/events'));
+
+        // cached like the dashboard tile: a second render asks the panel again only for its status
+        $count = count(array_filter($this->calls, fn ($c) => $c['path'] === '/api/waf/stats'));
+        Livewire::test(Overview::class, ['installedApp' => $this->installed]);
+        $this->assertCount($count, array_filter($this->calls, fn ($c) => $c['path'] === '/api/waf/stats'));
+    }
+
+    public function test_the_overview_card_without_active_waf_without_figures_and_without_waf(): void
+    {
+        // nowhere switched on: a note with the way to the settings instead of empty figures
+        $this->enableWaf19();
+        $this->waf['status']['hosts'] = [['host_id' => 1, 'domain' => 'app.example.de', 'mode' => 'off', 'error' => '']];
+        Cache::flush();
+        $html = Livewire::test(Overview::class, ['installedApp' => $this->installed])->assertSee('Die Web-Firewall ist auf keinem Host eingeschaltet.')
+            ->assertDontSeeHtml('data-waf-blocked')->html();
+        $this->assertStringContainsString(e(route('apps.page', [$this->installed, 'waf']).'?tab=einstellungen'), $html);
+
+        // the figures do not answer: the card stays, empty, the page whole
+        $this->waf['status']['hosts'][0]['mode'] = 'block';
+        $this->waf['stats'] = null;
+        Cache::flush();
+        Livewire::test(Overview::class, ['installedApp' => $this->installed])->assertSeeHtml('data-waf-blocked>–')->assertSee('Anfragen');
+
+        // an older Proxy: no card
+        $this->waf = null;
+        Cache::flush();
+        Livewire::test(Overview::class, ['installedApp' => $this->installed])->assertDontSee('Web-Firewall heute')->assertSee('Anfragen');
     }
 
     // ---- slow pages open at once (lazy) -----------------------------------------------------------
