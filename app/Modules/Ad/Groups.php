@@ -3,6 +3,7 @@
 namespace App\Modules\Ad;
 
 use App\Modules\Ad\Concerns\AdPage;
+use App\Modules\Concerns\LoadsLazily;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -14,6 +15,9 @@ use Livewire\Component;
 class Groups extends Component
 {
     use AdPage;
+    use LoadsLazily;
+
+    public const PLACEHOLDER = [['header', 'Gruppen', 1, 'sub' => 1], ['filters', 4], ['table', 8, 5, 2]];
 
     #[Url]
     public string $q = '';

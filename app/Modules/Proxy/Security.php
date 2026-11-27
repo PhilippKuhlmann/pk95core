@@ -6,20 +6,18 @@ use App\Models\InstalledApp;
 use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
 use Illuminate\Support\Facades\Cache;
-use Livewire\Attributes\Defer;
 use Livewire\Component;
 
 /**
  * PK95 Proxy: country rules (nftables), blocklists, automatic IP ban and the server
  * signature switch. Lazy: the page opens at once, the data follow.
  */
-#[Defer]
 class Security extends Component
 {
     use LoadsLazily;
     use TalksToApp;
 
-    public const PLACEHOLDER = ['Sicherheit', 'Lade Sicherheitseinstellungen …', 3];
+    public const PLACEHOLDER = [['header', 'Sicherheit'], ['panel', 'h-[51rem] md:h-[43rem]'], ['panel', 'h-[33rem] md:h-[19rem]'], ['panel', 'h-[39rem] md:h-96'], ['panel', 'h-44 md:h-36']];
 
     /** Country counts of 7 days only sort the picker: Core keeps them this long (seconds). */
     public const TRAFFIC_TTL = 600;

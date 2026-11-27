@@ -2,6 +2,7 @@
 
 namespace App\Modules\ProxApps\Pages;
 
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\ProxApps\Bridged;
 use Livewire\Component;
 
@@ -11,6 +12,9 @@ use Livewire\Component;
 class Settings extends Component
 {
     use Bridged;
+    use LoadsLazily;
+
+    public const PLACEHOLDER = [['header', 'Einstellungen', 'sub' => 1], ['panels', 2, 'h-96', 'xl:grid-cols-[minmax(0,1fr)_28rem]'], ['header', 'Netzwerkprofile'], ['table', 3, 4]];
 
     public $vmid_min = '';
 

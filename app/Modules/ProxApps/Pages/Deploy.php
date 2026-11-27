@@ -2,7 +2,9 @@
 
 namespace App\Modules\ProxApps\Pages;
 
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\ProxApps\Bridged;
+use App\Support\PageQuery;
 use Livewire\Component;
 
 /**
@@ -13,6 +15,9 @@ use Livewire\Component;
 class Deploy extends Component
 {
     use Bridged;
+    use LoadsLazily;
+
+    public const PLACEHOLDER = [['header', null, 1, true, 'sub' => 1], ['form', 10]];
 
     public $appId = '';
 
@@ -42,12 +47,13 @@ class Deploy extends Component
 
     protected function mountArgs(): array
     {
-        return ['app' => (string) request()->query('app')];
+        return ['app' => (string) PageQuery::get('app')];
     }
 
     protected function query(): array
     {
-        $from = request()->query('from');
+        // only the first call clones (the page URL keeps ?from= while the form is edited)
+        $from = $this->mounting ? PageQuery::get('from') : null;
 
         return is_numeric($from) ? ['from' => (int) $from] : [];
     }

@@ -3,6 +3,7 @@
 namespace App\Modules\Proxy;
 
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
 use App\Services\Automation\LanIp;
 use App\Services\Catalog\AppDefinition;
@@ -20,7 +21,10 @@ use Throwable;
  */
 class Certificates extends Component
 {
+    use LoadsLazily;
     use TalksToApp;
+
+    public const PLACEHOLDER = [['header', 'Zertifikate'], ['table', 4, 4], ['table', 6, 5], ['table', 3, 4]];
 
     /** From this version the exported files belong to the group of proxy_certs_gid (readable by certsync). */
     public const CERTS_GROUP = '1.7.0';

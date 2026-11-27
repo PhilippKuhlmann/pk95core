@@ -2,7 +2,9 @@
 
 namespace App\Modules\ProxApps\Pages;
 
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\ProxApps\Bridged;
+use App\Support\PageQuery;
 use Livewire\Component;
 
 /**
@@ -11,6 +13,9 @@ use Livewire\Component;
 class ConnectionForm extends Component
 {
     use Bridged;
+    use LoadsLazily;
+
+    public const PLACEHOLDER = [['root', 'mx-auto max-w-3xl'], ['form', 8]];
 
     public $connectionId = null;
 
@@ -46,7 +51,7 @@ class ConnectionForm extends Component
 
     protected function mountArgs(): array
     {
-        $id = request()->query('id');
+        $id = PageQuery::get('id');
 
         return ['connection' => is_numeric($id) ? (int) $id : null];
     }

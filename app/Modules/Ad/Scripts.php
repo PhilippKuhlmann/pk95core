@@ -3,6 +3,7 @@
 namespace App\Modules\Ad;
 
 use App\Modules\Ad\Concerns\AdPage;
+use App\Modules\Concerns\LoadsLazily;
 use Livewire\Component;
 
 /**
@@ -12,6 +13,9 @@ use Livewire\Component;
 class Scripts extends Component
 {
     use AdPage;
+    use LoadsLazily;
+
+    public const PLACEHOLDER = [['header', 'Skripte', 1, 'sub' => 1], ['table', 6, 4]];
 
     /** null closed, 'new' or the file name */
     public ?string $editing = null;

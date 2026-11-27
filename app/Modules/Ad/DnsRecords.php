@@ -3,6 +3,7 @@
 namespace App\Modules\Ad;
 
 use App\Modules\Ad\Concerns\AdPage;
+use App\Modules\Concerns\LoadsLazily;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -14,6 +15,9 @@ use Livewire\Component;
 class DnsRecords extends Component
 {
     use AdPage;
+    use LoadsLazily;
+
+    public const PLACEHOLDER = [['header', 'DNS der Domäne', 1, 'sub' => 1], ['filters', 3], ['table', 8, 4]];
 
     #[Url]
     public string $zone = '';

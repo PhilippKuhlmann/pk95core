@@ -3,6 +3,7 @@
 namespace App\Modules\Ad;
 
 use App\Modules\Ad\Concerns\AdPage;
+use App\Modules\Concerns\LoadsLazily;
 use Livewire\Component;
 
 /**
@@ -13,6 +14,9 @@ use Livewire\Component;
 class Ous extends Component
 {
     use AdPage;
+    use LoadsLazily;
+
+    public const PLACEHOLDER = [['header', 'Organisationseinheiten', 1, 'sub' => 1], ['table', 8, 4]];
 
     /** null closed, 'new' or the OU id */
     public ?string $editing = null;

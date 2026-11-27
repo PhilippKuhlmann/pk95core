@@ -3,6 +3,7 @@
 namespace App\Modules\Ad;
 
 use App\Modules\Ad\Concerns\AdPage;
+use App\Modules\Concerns\LoadsLazily;
 use App\Services\Apps\AppException;
 use Livewire\Component;
 
@@ -15,6 +16,9 @@ use Livewire\Component;
 class Domain extends Component
 {
     use AdPage;
+    use LoadsLazily;
+
+    public const PLACEHOLDER = [['header', 'Domäne', 'sub' => 1], ['tiles', 4, 'grid-cols-1 md:grid-cols-2 xl:grid-cols-4', 'h-20'], ['panel', 'h-28'], ['panel', 'h-48'], ['panel', 'h-36'], ['cards', 4, 'h-40', 'lg:grid-cols-2']];
 
     /** @var array<string, string> */
     public array $setupForm = ['realm' => '', 'netbios_domain' => '', 'hostname' => '', 'host_ip' => '', 'dns_forwarder' => '127.0.0.1', 'admin_password' => ''];

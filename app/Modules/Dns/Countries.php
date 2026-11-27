@@ -3,6 +3,7 @@
 namespace App\Modules\Dns;
 
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
 use App\Services\Apps\AppException;
 use App\Support\Countries as CountryNames;
@@ -17,7 +18,10 @@ use Livewire\Component;
  */
 class Countries extends Component
 {
+    use LoadsLazily;
     use TalksToApp;
+
+    public const PLACEHOLDER = [['header', 'Länder', 'sub' => 1], ['table', 10, 4], ['panel', 'h-32']];
 
     public InstalledApp $installedApp;
 

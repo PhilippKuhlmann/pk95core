@@ -28,7 +28,6 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Js;
-use Livewire\Features\SupportLazyLoading\SupportLazyLoading;
 use Livewire\Livewire;
 use Tests\Unit\CertsyncKeysTest;
 
@@ -1672,10 +1671,10 @@ class ProxyModuleTest extends FeatureTestCase
         $this->assertStringContainsString('wire:poll', $page->html());
         $this->assertStringNotContainsString('wire:poll', $page->call('show', 'einstellungen')->html());
 
-        // the page opens with the skeleton, before any call to the panel
-        SupportLazyLoading::$disableWhileTesting = false;
+        // the page opens with the skeleton (its tabs included), before any call to the panel
+        $this->withSkeletons();
         $this->calls = [];
-        $this->get(route('apps.page', [$this->installed, 'waf']))->assertOk()->assertSee('Lade Web-Firewall …')->assertSee('data-page-placeholder', false);
+        $this->get(route('apps.page', [$this->installed, 'waf']))->assertOk()->assertSee('Web-Firewall')->assertSee('data-skeleton', false);
         $this->assertSame([], $this->calls);
     }
 
@@ -1769,22 +1768,6 @@ class ProxyModuleTest extends FeatureTestCase
         $this->waf = null;
         Cache::flush();
         Livewire::withoutLazyLoading()->test(Overview::class, ['installedApp' => $this->installed])->assertDontSee('Web-Firewall heute')->assertSee('Anfragen');
-    }
-
-    // ---- slow pages open at once (lazy) -----------------------------------------------------------
-
-    public function test_security_and_hosts_open_with_a_placeholder_before_any_panel_call(): void
-    {
-        SupportLazyLoading::$disableWhileTesting = false;
-        foreach (['security' => 'Lade Sicherheitseinstellungen …', 'hosts' => 'Lade Hosts …', 'overview' => 'Lade Statistik …'] as $page => $text) {
-            $this->calls = [];
-            $this->get(route('apps.page', [$this->installed, $page]))->assertOk()
-                ->assertSee('data-page-placeholder', false)->assertSee($text)->assertSee('aria-busy="true"', false)
-                ->assertSee('x-init="$wire.__lazyLoad', false);
-            $this->assertSame([], $this->calls, "{$page}: the placeholder waits on nothing");
-        }
-        // a fast page stays as it is
-        $this->get(route('apps.page', [$this->installed, 'certificates']))->assertOk()->assertDontSee('data-page-placeholder', false);
     }
 
     public function test_the_security_page_loads_its_data_once_and_draws_the_country_picker_from_json(): void
