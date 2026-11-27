@@ -1,6 +1,7 @@
 @php
     use App\Modules\Proxy\Fmt;
     use App\Modules\Proxy\Overview;
+    use App\Modules\Proxy\WafToday;
     $card = 'font-DINPro-bold text-gray-900 dark:text-gray-100';
     $tile = 'rounded-xl border border-gray-200 bg-white p-4 shadow-xs dark:border-gray-700 dark:bg-gray-800';
     $link = fn (array $p) => $this->logLink($logBase, $p);
@@ -31,6 +32,89 @@
 
     @if ($loadError)
         <x-callout title="Statistik konnte nicht geladen werden" ton="gelb" class="m-3">{{ $loadError }}</x-callout>
+    @endif
+
+    {{-- the web firewall of today (PK95 Proxy with WAF only) --}}
+    @if ($waf !== null)
+        @php
+            $wafPage = route('apps.page', [$installedApp, 'waf']);
+            $num = 'text-2xl font-DINPro-bold tabular-nums';
+        @endphp
+        <x-panel class="m-3" data-waf-card>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="{{ $card }}">Web-Firewall heute</div>
+                <a href="{{ $wafPage }}" wire:navigate class="text-sm text-cerulean-700 hover:underline dark:text-cerulean-300">Zur Web-Firewall</a>
+            </div>
+            @if (! $waf['active'])
+                <p class="mt-2 text-sm text-gray-600 dark:text-gray-300" data-waf-inactive>
+                    Die Web-Firewall ist auf keinem Host eingeschaltet.
+                    <a href="{{ $wafPage }}?tab=einstellungen" wire:navigate class="text-cerulean-700 underline hover:no-underline dark:text-cerulean-300">Einstellungen</a>
+                </p>
+            @else
+                <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <a href="{{ WafToday::logUrl($installedApp, ['action' => 'block']) }}" wire:navigate class="rounded-lg bg-rose-50 px-3 py-2 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-950/70">
+                        <div class="text-xs text-rose-800 dark:text-rose-200">Blockiert</div>
+                        <div class="{{ $num }} text-rose-900 dark:text-rose-100" data-waf-blocked>{{ $waf['blocked'] === null ? '–' : Fmt::num($waf['blocked']) }}</div>
+                    </a>
+                    <a href="{{ WafToday::logUrl($installedApp, ['action' => 'detect']) }}" wire:navigate class="rounded-lg bg-gray-50 px-3 py-2 hover:bg-gray-100 dark:bg-gray-900/40 dark:hover:bg-gray-900/70">
+                        <div class="text-xs text-gray-500 dark:text-gray-400">Nur erkannt</div>
+                        <div class="{{ $num }} text-gray-900 dark:text-gray-100" data-waf-detected>{{ $waf['detected'] === null ? '–' : Fmt::num($waf['detected']) }}</div>
+                    </a>
+                    @if ($bansToday !== null)
+                        <a href="{{ route('apps.page', [$installedApp, 'security']) }}" wire:navigate class="rounded-lg bg-gray-50 px-3 py-2 hover:bg-gray-100 dark:bg-gray-900/40 dark:hover:bg-gray-900/70">
+                            <div class="text-xs text-gray-500 dark:text-gray-400">IP-Sperren</div>
+                            <div class="{{ $num }} text-gray-900 dark:text-gray-100" data-waf-bans>{{ Fmt::num($bansToday) }}</div>
+                        </a>
+                    @endif
+                </div>
+                @if ($waf['detectHosts'] > 0)
+                    <p class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-900/30 dark:text-amber-100" data-waf-detect-hint>
+                        {{ $waf['detectHosts'] === 1 ? '1 Host erkennt nur' : $waf['detectHosts'].' Hosts erkennen nur' }}, {{ Fmt::plural($waf['detectHits'], 'Treffer', 'Treffer') }} heute.
+                        <a href="{{ WafToday::logUrl($installedApp, ['action' => 'detect']) }}" wire:navigate class="font-medium underline hover:no-underline">Prüfen</a>
+                    </p>
+                @endif
+                <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+                    <div class="min-w-0 lg:col-span-2">
+                        <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Letzte Blocks</div>
+                        @if (! $waf['recent'])
+                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Heute noch keine.</p>
+                        @else
+                            <ul class="mt-1 divide-y divide-gray-100 dark:divide-gray-700" data-waf-recent>
+                                @foreach ($waf['recent'] as $b)
+                                    <li>
+                                        <a href="{{ WafToday::logUrl($installedApp, ['action' => 'block', 'host' => (string) $b['host_id'], 'rule' => $b['rule']]) }}" wire:navigate
+                                            class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 py-1.5 text-sm hover:bg-gray-50 max-sm:min-h-11 dark:hover:bg-gray-700/40">
+                                            <span class="shrink-0 tabular-nums text-gray-500 dark:text-gray-400">{{ Fmt::time($b['ts']) }}</span>
+                                            <span class="font-medium text-cerulean-700 dark:text-cerulean-300">{{ $b['domain'] }}</span>
+                                            <span class="min-w-0 truncate text-gray-700 dark:text-gray-200">{{ \Illuminate\Support\Str::limit($b['msg'], 50) }}</span>
+                                            <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">{{ Fmt::flag($b['country']) }} {{ $b['country'] }}</span>
+                                            <span class="block w-full truncate font-mono text-xs text-gray-500 dark:text-gray-400">{{ \Illuminate\Support\Str::limit($b['path'], 60) }}</span>
+                                        </a>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endif
+                    </div>
+                    <div class="min-w-0">
+                        <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Häufigste Regeln heute</div>
+                        @if (! $waf['rules'])
+                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Keine Treffer.</p>
+                        @else
+                            <ul class="mt-1 space-y-1 text-sm" data-waf-rules>
+                                @foreach ($waf['rules'] as $r)
+                                    <li class="flex items-baseline justify-between gap-2">
+                                        <a href="{{ WafToday::logUrl($installedApp, ['rule' => (string) ($r['rule_id'] ?? '')]) }}" wire:navigate class="min-w-0 truncate text-cerulean-700 hover:underline dark:text-cerulean-300" data-tip="{{ $r['msg'] ?? '' }}">
+                                            <span class="font-mono">{{ $r['rule_id'] ?? '?' }}</span> <span class="text-gray-600 dark:text-gray-300">{{ $r['msg'] ?? '' }}</span>
+                                        </a>
+                                        <span class="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ Fmt::num((int) ($r['count'] ?? 0)) }}</span>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endif
+                    </div>
+                </div>
+            @endif
+        </x-panel>
     @endif
 
     @if ($d && $d['requests'] === 0)
