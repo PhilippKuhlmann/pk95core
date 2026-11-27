@@ -7,7 +7,7 @@
 
 <div wire:poll.30s @if ($lanIp === '' && $detected === null) wire:init="loadLanIp" @endif>
     <x-page-header title="Automatik">
-        <x-slot:sub>Rollst du mit ProxApps eine App aus, richtet Core sie im Proxy ein, trägt die Domain in PK95 DNS ein und überwacht sie mit Uptime.</x-slot:sub>
+        <x-slot:sub>Rollst du mit PK95 ProxApps eine App aus, richtet Core sie im Proxy ein, trägt die Domain in PK95 DNS ein und überwacht sie mit Uptime.</x-slot:sub>
     </x-page-header>
 
     @if (trim((string) \App\Support\Settings::get('automation_base_domain')) === '')
@@ -61,7 +61,7 @@
             @endif
         </div>
         @if ($links->isEmpty())
-            <p class="px-4 pb-4 pt-2 text-sm text-gray-500 dark:text-gray-400">Noch keine. Rolle eine App mit ProxApps aus, dann erscheint sie hier.</p>
+            <p class="px-4 pb-4 pt-2 text-sm text-gray-500 dark:text-gray-400">Noch keine. Rolle eine App mit PK95 ProxApps aus, dann erscheint sie hier.</p>
         @else
             <table class="mt-2 w-full text-left text-sm">
                 <thead class="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400">

@@ -35,7 +35,7 @@ class DashboardTest extends FeatureTestCase
         parent::setUp();
         config(['pk95.catalog_dir' => base_path('catalog')]);
         $this->signIn();
-        foreach (['dns' => 'PK95 DNS', 'proxy' => 'PK95 Proxy', 'uptime' => 'PK95 Uptime', 'proxapps' => 'ProxApps'] as $id => $name) {
+        foreach (['dns' => 'PK95 DNS', 'proxy' => 'PK95 Proxy', 'uptime' => 'PK95 Uptime', 'proxapps' => 'PK95 ProxApps'] as $id => $name) {
             InstalledApp::factory()->create(['app_id' => $id, 'status' => InstalledApp::RUNNING, 'version' => $id === 'proxy' ? '1.3.0' : '1.0.0',
                 'manifest' => ['id' => $id, 'name' => $name, 'version' => '1.0.0', 'protocol' => 1, 'icon' => 'globe', 'menu' => [], 'capabilities' => [], 'events' => []]]);
         }
@@ -170,7 +170,7 @@ class DashboardTest extends FeatureTestCase
             ->assertSee('Zertifikat für cloud.example.de läuft in 5 Tagen ab.')
             ->assertSee('PK95 Proxy: 1 bekannte Schwachstelle.')
             ->assertSee('Letzte Sicherung von PK95 Uptime ist fehlgeschlagen.')
-            ->assertSee('Letztes Update von ProxApps ist fehlgeschlagen.')
+            ->assertSee('Letztes Update von PK95 ProxApps ist fehlgeschlagen.')
             ->assertSee('Letztes Update von PK95 Core ist fehlgeschlagen, die vorige Version läuft wieder.')
             ->html();
         foreach (['/apps/dns', '/apps/proxy/hosts', '/apps/uptime/monitors', '/apps/proxy/certificates', '/apps/proxy/updates'] as $path) {

@@ -11,7 +11,7 @@ class Dashboard extends Component
     use Bridged;
     use LoadsLazily;
 
-    public const PLACEHOLDER = [['root', 'p-3 sm:p-5'], ['header', 'ProxApps', 1], ['tiles', 5], ['cards', 2, 'h-48'], ['cards', 4, 'h-28']];
+    public const PLACEHOLDER = [['root', 'p-3 sm:p-5'], ['header', 'PK95 ProxApps', 1], ['tiles', 5], ['cards', 2, 'h-48'], ['cards', 4, 'h-28']];
 
     protected function component(): string
     {
