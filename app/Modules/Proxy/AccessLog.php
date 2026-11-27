@@ -8,7 +8,6 @@ use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
 use App\Services\Apps\AppException;
 use App\Services\Updates\UpdateService;
-use App\Support\PageQuery;
 use App\Support\Settings;
 use Illuminate\Support\Carbon;
 use Livewire\Attributes\Locked;
@@ -32,6 +31,9 @@ class AccessLog extends Component
     use TalksToApp;
 
     public const PLACEHOLDER = [['header', 'Zugriffe', 1], ['filters', 5], ['table', 12, 6]];
+
+    /** read from the page URL in the first request (LoadsLazily) */
+    public const QUERY = ['hide'];
 
     public InstalledApp $installedApp;
 
@@ -99,7 +101,7 @@ class AccessLog extends Component
     public function mount(): void
     {
         // the URL wins (a shared link); without it the last choice comes back
-        if (! PageQuery::has('hide')) {
+        if (! $this->inUrl('hide')) {
             $this->hidden = self::clean((array) Settings::get(self::HIDDEN_SETTING));
         }
         if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->day) !== 1) {

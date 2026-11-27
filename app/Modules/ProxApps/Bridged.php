@@ -214,7 +214,7 @@ trait Bridged
             array_filter(
                 (new ReflectionClass($this))->getProperties(ReflectionProperty::IS_PUBLIC),
                 fn (ReflectionProperty $p) => ! $p->isStatic()
-                    && ! in_array($p->getName(), ['installedApp', 'bridgeError', ...$this->localProperties()], true)
+                    && ! in_array($p->getName(), ['installedApp', 'bridgeError', 'pageQuery', ...$this->localProperties()], true)
                     && $p->getDeclaringClass()->getName() !== Component::class,
             ),
         ));

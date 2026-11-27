@@ -4,7 +4,6 @@ namespace App\Modules\ProxApps\Pages;
 
 use App\Modules\Concerns\LoadsLazily;
 use App\Modules\ProxApps\Bridged;
-use App\Support\PageQuery;
 use Livewire\Component;
 
 /**
@@ -16,6 +15,9 @@ class Deployment extends Component
     use LoadsLazily;
 
     public const PLACEHOLDER = [['header', null, 2, true, 'sub' => 1], ['panels', 2, 'h-96', 'xl:grid-cols-[minmax(0,1fr)_24rem]']];
+
+    /** read from the page URL in the first request (LoadsLazily) */
+    public const QUERY = ['id'];
 
     public $deployment = null;
 
@@ -35,7 +37,7 @@ class Deployment extends Component
 
     protected function mountArgs(): array
     {
-        return ['deployment' => (int) PageQuery::get('id')];
+        return ['deployment' => (int) $this->fromUrl('id')];
     }
 
     public function refreshLive(): void

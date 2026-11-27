@@ -29,6 +29,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Js;
 use Livewire\Livewire;
+use Tests\Concerns\LoadsDeferredPages;
 use Tests\Unit\CertsyncKeysTest;
 
 /**
@@ -37,6 +38,8 @@ use Tests\Unit\CertsyncKeysTest;
  */
 class ProxyModuleTest extends FeatureTestCase
 {
+    use LoadsDeferredPages;
+
     private InstalledApp $installed;
 
     /** @var list<array{method: string, path: string, query: string, body: mixed}> */
@@ -384,6 +387,27 @@ class ProxyModuleTest extends FeatureTestCase
     private function requestQueries(): array
     {
         return array_values(array_map(fn ($c) => $c['query'], array_filter($this->calls, fn ($c) => $c['method'] === 'GET' && $c['path'] === '/api/requests')));
+    }
+
+    public function test_deferred_pages_keep_their_url_filters_without_a_referer(): void
+    {
+        // the Livewire request that loads a deferred page may come without a Referer (privacy
+        // settings, extensions, a stricter Referrer-Policy): the URL of the first request counts
+        $this->clientList = [['client' => 'Uptime-Monitor', 'count' => 2880]];
+        Settings::put(AccessLog::HIDDEN_SETTING, ['Uptime-Monitor']);
+        $log = route('apps.page', [$this->installed, 'log']);
+        foreach ([null, '', $log] as $referer) {
+            $this->calls = [];
+            $this->loadDeferred($log.'?status=4xx&day=2026-11-20&q=%2Fadmin&hide[0]=Firefox', $referer);
+            $query = last($this->requestQueries());
+            $this->assertStringContainsString('status=4xx&q=%2Fadmin', $query);
+            $this->assertStringContainsString('from='.Carbon::parse('2026-11-20', Format::timezone())->getTimestampMs(), $query);
+            $this->assertStringContainsString('exclude_client=Firefox', $query);
+            $this->assertStringNotContainsString('Uptime-Monitor', $query, 'the link wins over the remembered choice');
+        }
+
+        $this->enableWaf19();
+        $this->assertStringContainsString('data-tab-panel="protokoll"', $this->loadDeferred(route('apps.page', [$this->installed, 'waf']).'?tab=protokoll'));
     }
 
     public function test_log_hides_clients_through_the_panel_and_remembers_them(): void

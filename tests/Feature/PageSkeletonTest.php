@@ -5,9 +5,10 @@ namespace Tests\Feature;
 use App\Models\InstalledApp;
 use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Module;
-use App\Support\PageQuery;
+use App\Modules\ProxApps\Pages\Deployment;
+use App\Modules\Proxy\AccessLog;
+use App\Modules\Proxy\Hosts;
 use Illuminate\Http\Client\Request;
-use Illuminate\Http\Request as HttpRequest;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -110,27 +111,11 @@ class PageSkeletonTest extends FeatureTestCase
             ->assertDontSee('Demo-App');
     }
 
-    public function test_a_deferred_page_reads_its_query_from_the_page_url(): void
+    public function test_a_page_takes_only_its_own_plain_query_values_into_the_deferred_mount(): void
     {
-        $this->assertSame(['id' => '7'], $this->withRequest(HttpRequest::create('/apps/x/deployment?id=7'), fn () => PageQuery::all()));
-
-        // the Livewire request that loads a deferred page: the page URL is the Referer
-        $update = HttpRequest::create('/livewire/update', 'POST', server: [
-            'HTTP_X_LIVEWIRE' => '1', 'HTTP_REFERER' => 'http://localhost/apps/x/deploy?app=nginx&from=3',
-        ]);
-        $this->assertSame('nginx', $this->withRequest($update, fn () => PageQuery::get('app')));
-        $this->assertTrue($this->withRequest($update, fn () => PageQuery::has('from')));
-        $this->assertFalse($this->withRequest($update, fn () => PageQuery::has('hide')));
-    }
-
-    private function withRequest(HttpRequest $request, callable $read): mixed
-    {
-        $before = app('request');
-        $this->app->instance('request', $request);
-        try {
-            return $read();
-        } finally {
-            $this->app->instance('request', $before);
-        }
+        $this->assertSame(['id' => '7'], Deployment::pageQueryFrom(['id' => '7', 'other' => 'x']));
+        $this->assertSame([], Deployment::pageQueryFrom(['id' => ['a' => ['b']]]), 'no nested values');
+        $this->assertSame(['hide' => ['Firefox']], AccessLog::pageQueryFrom(['hide' => ['Firefox'], 'status' => '4xx']));
+        $this->assertSame([], Hosts::pageQueryFrom(['q' => 'x']), '#[Url] values need no QUERY');
     }
 }
