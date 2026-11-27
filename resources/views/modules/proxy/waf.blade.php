@@ -58,6 +58,15 @@
                     @elseif (($exception['target_hint'] ?? '') !== '')
                         <p class="text-xs text-gray-500 dark:text-gray-400" data-exception-target-hint>Die Regel hat {{ $exception['target_hint'] }} getroffen. Dafür gibt es keine Ausnahme je Parameter, sie gilt für die ganze Regel.</p>
                     @endif
+                    @if ($hasCentral)
+                        <fieldset data-exception-scope>
+                            <legend class="text-sm font-medium text-gray-700 dark:text-gray-300">Gilt für</legend>
+                            <div class="mt-1 flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-700 dark:text-gray-300">
+                                <label class="inline-flex items-center gap-2"><input type="radio" value="host" wire:model="exception.scope" class="border-gray-300 text-cerulean-600 focus:ring-cerulean-500 dark:border-gray-600 dark:bg-gray-700">Nur für {{ $exception['domain'] }}</label>
+                                <label class="inline-flex items-center gap-2"><input type="radio" value="all" wire:model="exception.scope" class="border-gray-300 text-cerulean-600 focus:ring-cerulean-500 dark:border-gray-600 dark:bg-gray-700">Für alle Hosts</label>
+                            </div>
+                        </fieldset>
+                    @endif
                     <x-field label="Notiz" for="ex-note" feld="exception.note">
                         <x-input.text id="ex-note" feld="exception.note" wire:model="exception.note" maxlength="200" placeholder="Zum Beispiel: Editor sendet HTML" class="mt-1 w-full" />
                     </x-field>
@@ -206,20 +215,61 @@
             @endif
         @endif
         @if ($v19)
-            {{-- global settings of PK95 Proxy 1.9.0 --}}
-            <x-panel class="m-3" data-waf-settings>
-                <div class="font-DINPro-bold text-gray-900 dark:text-gray-100">Einstellungen</div>
-                <form wire:submit="saveSettings" class="mt-3 space-y-3">
+            {{-- PK95 Proxy 1.9.0: central settings, hosts take level, limits and groups from here --}}
+            <x-panel class="m-3 scroll-mt-20" id="zentral" data-waf-settings>
+                <div class="font-DINPro-bold text-gray-900 dark:text-gray-100">{{ $hasCentral ? 'Zentrale Einstellungen' : 'Einstellungen' }}</div>
+                @if ($hasCentral)
+                    <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">Gelten für jeden Host mit „Zentrale Einstellungen verwenden“. Modus, Profile, Ausnahmen und eigene Netze stellst du weiter pro Host ein.</p>
+                @endif
+                <form wire:submit="saveSettings" class="mt-3 space-y-4">
+                    @if ($hasCentral)
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <x-field label="Modus für neue Hosts" for="ws-newmode" feld="settings.new_host_mode" hilfe="Damit startet jeder neu angelegte Reverse Proxy.">
+                                <x-input.select id="ws-newmode" feld="settings.new_host_mode" wire:model="settings.new_host_mode" class="mt-1">
+                                    @foreach (Waf::MODES as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach
+                                </x-input.select>
+                            </x-field>
+                        </div>
+                        @include('modules.proxy.partials.waf-tuning', ['m' => 'central', 't' => $central, 'groups' => $groups,
+                            'defaults' => $centralDefaults, 'suggested' => $centralSuggested, 'readonly' => false, 'idp' => 'wc'])
+                    @endif
                     <x-input.checkbox wire:model="settings.use_internal_networks" label="Interne Netze (Zugriffsliste „Intern“) nicht prüfen"
                         hilfe="Anfragen aus diesen Netzen prüft die Web-Firewall auf keinem Host. Ändern sich die Netze der Liste, gilt das sofort." />
                     <x-field label="Weitere Netze nicht prüfen" for="ws-bypass" feld="settings.bypass_cidrs"
-                        hilfe="Eines pro Zeile, für alle Hosts. Pro Host gibt es zusätzlich eigene Netze unter Hosts → Web-Firewall → Erweitert. „Nie sperren“ der IP-Sperre ist davon unabhängig.">
+                        hilfe="Eines pro Zeile, für alle Hosts. Pro Host gibt es zusätzlich eigene Netze im Host-Dialog. „Nie sperren“ der IP-Sperre ist davon unabhängig.">
                         <x-input.textarea id="ws-bypass" rows="3" feld="settings.bypass_cidrs" wire:model="settings.bypass_cidrs" placeholder="192.168.1.0/24" class="mt-1 font-mono" />
                     </x-field>
                     <div class="flex justify-end">
                         <x-input.button type="submit" wire:loading.attr="disabled" wire:target="saveSettings">Speichern</x-input.button>
                     </div>
                 </form>
+
+                @if ($hasCentral)
+                    <div class="mt-4 border-t border-gray-100 pt-3 dark:border-gray-700" data-waf-central-exceptions>
+                        <div class="text-sm font-medium text-gray-700 dark:text-gray-300">Ausnahmen für alle Hosts</div>
+                        @if (! $centralExceptions)
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Keine. Du legst sie im Protokoll unten mit „Ausnahme anlegen“ → „Für alle Hosts“ an.</p>
+                        @else
+                            <ul class="mt-1 divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700">
+                                @foreach ($centralExceptions as $e)
+                                    @php $where = ($e['path_prefix'] ?? '') !== '' ? 'unter '.$e['path_prefix'] : 'überall'; @endphp
+                                    <li class="flex items-start justify-between gap-2 px-3 py-2 text-sm" wire:key="wcx-{{ $e['id'] }}">
+                                        <div class="min-w-0">
+                                            <span class="font-mono">Regel {{ $e['rule_id'] }}</span>
+                                            <span class="text-gray-500 dark:text-gray-400">{{ $where }}</span>
+                                            @if (($e['target'] ?? '') !== '')<span class="font-mono text-xs text-gray-500 dark:text-gray-400">· nur {{ $e['target'] }}</span>@endif
+                                            @if (($e['note'] ?? '') !== '')<span class="block text-xs text-gray-500 dark:text-gray-400">{{ $e['note'] }}</span>@endif
+                                        </div>
+                                        <x-input.symbolknopf titel="Ausnahme löschen" ton="rot"
+                                            x-on:click="$store.confirm.ask({ title: 'Ausnahme löschen?', text: {{ Js::from('Regel '.$e['rule_id'].' prüft dann auf allen Hosts wieder '.$where.'.') }}, button: 'Löschen', ok: () => $wire.deleteCentralException({{ Js::from((string) $e['id']) }}) })">
+                                            <x-icon name="trash" class="h-4 w-4" />
+                                        </x-input.symbolknopf>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endif
+                    </div>
+                @endif
             </x-panel>
         @endif
     @endif

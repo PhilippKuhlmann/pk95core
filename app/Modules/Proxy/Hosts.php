@@ -65,6 +65,15 @@ class Hosts extends Component
     /** @var array<string, int|null> suggested number limits for the placeholders */
     public array $wafSuggested = [];
 
+    /** the host takes level, limits and groups from the central settings (PK95 Proxy 1.9.0) */
+    public bool $wafInherit = true;
+
+    /** @var array<string, mixed> what applies while the host inherits (shown greyed out) */
+    public array $wafEffective = [];
+
+    /** @var array<string, mixed>|null CRS defaults from the central settings (a new host has no others) */
+    public ?array $wafCentralDefaults = null;
+
     public const KINDS = ['proxy' => 'Reverse Proxy', 'redirect' => 'Weiterleitung', 'dead' => '404-Host', 'status' => 'Statusseite'];
 
     public const KIND_HINTS = [
@@ -237,6 +246,9 @@ class Hosts extends Component
         $this->wafGroups = [];
         $this->wafDefaults = null;
         $this->wafSuggested = [];
+        $this->wafInherit = true;
+        $this->wafEffective = [];
+        $this->wafCentralDefaults = null;
         $status = Waf::status($this->installedApp);
         $this->wafOn = $status !== null && ($host === null || array_key_exists('waf_mode', $host));
         if (! $this->wafOn) {
@@ -248,6 +260,13 @@ class Hosts extends Component
         if ($this->wafV19) {
             [$groups] = $this->load('/api/waf/groups');
             $this->wafGroups = is_array($groups) ? array_values(array_filter($groups, 'is_array')) : [];
+            // what a new host (and an inheriting one, until its GET says otherwise) gets: the central settings
+            [$settings] = $this->load('/api/waf/settings');
+            if (is_array($settings)) {
+                $this->wafCentralDefaults = (array) ($settings['defaults'] ?? []);
+                $this->wafSuggested = (array) ($settings['suggested'] ?? []);
+                $this->wafEffective = Waf::tuningForm((array) ($settings['central'] ?? []), $this->wafCentralDefaults);
+            }
         }
         if ($host === null || ($host['kind'] ?? '') !== 'proxy') {
             return; // new host or not a reverse proxy (yet): the defaults
@@ -264,6 +283,10 @@ class Hosts extends Component
         if ($this->wafV19 && array_key_exists('limits', $w)) {
             $this->wafDefaults = (array) ($w['defaults'] ?? []);
             $this->wafSuggested = (array) ($w['suggested'] ?? []);
+            $this->wafInherit = (bool) ($w['inherit'] ?? false);
+            if (is_array($w['effective'] ?? null)) {
+                $this->wafEffective = Waf::tuningForm($w['effective'], $this->wafDefaults);
+            }
         }
         $this->wafExceptions = array_values(array_filter((array) ($w['exceptions'] ?? []), 'is_array'));
         // the resource's own error, else what the status reports for this host
@@ -273,7 +296,7 @@ class Hosts extends Component
     /** PUT of the WAF settings (a partial update: the exceptions stay as they are). */
     private function saveWaf(int $id): bool
     {
-        $body = Waf::payload($this->waf, $this->wafV19, $this->wafDefaults);
+        $body = Waf::payload($this->waf, $this->wafV19, $this->wafDefaults, $this->wafV19 ? $this->wafInherit : null);
         $response = $this->appRequest(fn ($api) => $api->put('/api/hosts/'.$id.'/waf', $body));
         if ($response === null) {
             return false;

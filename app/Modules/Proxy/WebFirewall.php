@@ -46,8 +46,26 @@ class WebFirewall extends Component
     /** @var array<string, mixed>|null the exception being created from a hit */
     public ?array $exception = null;
 
-    /** @var array{use_internal_networks: bool, bypass_cidrs: string} global settings (PK95 Proxy 1.9.0) */
-    public array $settings = ['use_internal_networks' => false, 'bypass_cidrs' => ''];
+    /** @var array{use_internal_networks: bool, bypass_cidrs: string, new_host_mode: string} global settings (PK95 Proxy 1.9.0) */
+    public array $settings = ['use_internal_networks' => false, 'bypass_cidrs' => '', 'new_host_mode' => 'detect'];
+
+    /** the Proxy has central settings hosts inherit (level, limits, groups) and central exceptions */
+    public bool $hasCentral = false;
+
+    /** @var array<string, mixed> central level, limits and groups (Waf::tuningForm) */
+    public array $central = [];
+
+    /** @var array<string, mixed>|null CRS defaults of the limits */
+    public ?array $centralDefaults = null;
+
+    /** @var array<string, int|null> */
+    public array $centralSuggested = [];
+
+    /** @var list<array<string, mixed>> exceptions for all hosts */
+    public array $centralExceptions = [];
+
+    /** @var list<array<string, mixed>> rule groups (/api/waf/groups) for the central form */
+    public array $groups = [];
 
     /** the settings are loaded once, polling must not overwrite what is being typed */
     public bool $settingsLoaded = false;
@@ -109,6 +127,8 @@ class WebFirewall extends Component
         $collections = $target !== '' ? (Waf::status($this->installedApp)['exception_targets'] ?? []) : [];
         $usable = Waf::exceptionTarget($target, $collections);
         $this->exception = ['host_id' => $hostId, 'domain' => $domain, 'rule_id' => $ruleId, 'path_prefix' => Waf::pathPrefix($path), 'note' => '',
+            // only this host (default) or all hosts (a central exception)
+            'scope' => 'host',
             'target' => $usable ?? '', 'use_target' => $usable !== null,
             // the rule hit something an exception cannot name: it holds for the whole rule
             'target_hint' => $target !== '' && $usable === null && $collections !== [] ? $target : ''];
@@ -136,7 +156,8 @@ class WebFirewall extends Component
         if (! empty($e['use_target']) && trim((string) ($e['target'] ?? '')) !== '') {
             $body['target'] = trim((string) $e['target']);
         }
-        $response = $this->appRequest(fn ($api) => $api->post('/api/hosts/'.(int) $e['host_id'].'/waf/exceptions', $body));
+        $central = $this->hasCentral && ($e['scope'] ?? 'host') === 'all';
+        $response = $this->appRequest(fn ($api) => $api->post($central ? '/api/waf/settings/exceptions' : '/api/hosts/'.(int) $e['host_id'].'/waf/exceptions', $body));
         if ($response === null) {
             return;
         }
@@ -149,8 +170,11 @@ class WebFirewall extends Component
 
             return;
         }
-        $where = ($body['path_prefix'] !== '' ? ' unter '.$body['path_prefix'] : ' für den ganzen Host').(isset($body['target']) ? ', nur '.$body['target'] : '');
-        $this->dispatch('notice', kind: 'success', text: "Ausnahme angelegt: Regel {$body['rule_id']}{$where} ({$e['domain']}).");
+        $where = ($body['path_prefix'] !== '' ? ' unter '.$body['path_prefix'] : ($central ? ' überall' : ' für den ganzen Host')).(isset($body['target']) ? ', nur '.$body['target'] : '');
+        $this->dispatch('notice', kind: 'success', text: "Ausnahme angelegt: Regel {$body['rule_id']}{$where} (".($central ? 'alle Hosts' : $e['domain']).').');
+        if ($central) {
+            $this->centralExceptions[] = (array) $response->json();
+        }
         $this->exception = null;
     }
 
@@ -159,13 +183,18 @@ class WebFirewall extends Component
     {
         $this->resetErrorBag();
         $body = ['use_internal_networks' => (bool) $this->settings['use_internal_networks'], 'bypass_cidrs' => Waf::lines((string) $this->settings['bypass_cidrs'])];
+        if ($this->hasCentral) {
+            $body['new_host_mode'] = (string) $this->settings['new_host_mode'];
+            $body['central'] = Waf::tuningPayload($this->central, $this->centralDefaults);
+        }
         $response = $this->appRequest(fn ($api) => $api->put('/api/waf/settings', $body));
         if ($response === null) {
             return;
         }
         if (! $response->successful()) {
+            // central.limits.max_args → the central form, the rest → settings
             foreach (Waf::fieldErrors((array) $response->json('fields')) as $field => $message) {
-                $this->addError('settings.'.$field, $message);
+                $this->addError(str_starts_with($field, 'central.') ? $field : 'settings.'.$field, $message);
             }
             $this->dispatch('notice', kind: 'error', text: (string) ($response->json('error') ?? "Die App antwortet mit HTTP {$response->status()}."));
 
@@ -175,11 +204,36 @@ class WebFirewall extends Component
         $this->dispatch('notice', kind: 'success', text: 'Einstellungen gespeichert.');
     }
 
+    /** A higher central block level takes the detection level along. */
+    public function updatedCentral(mixed $value, string $key): void
+    {
+        if ($key === 'paranoia' && (int) ($this->central['detection_paranoia'] ?? 0) < (int) $value) {
+            $this->central['detection_paranoia'] = (string) $value;
+        }
+    }
+
+    public function deleteCentralException(string $id): void
+    {
+        $response = $this->appRequest(fn ($api) => $api->delete('/api/waf/settings/exceptions/'.rawurlencode($id)));
+        if ($this->succeeded($response, 'settings.')) {
+            $this->centralExceptions = array_values(array_filter($this->centralExceptions, fn ($e) => (string) ($e['id'] ?? '') !== $id));
+            $this->dispatch('notice', kind: 'success', text: 'Ausnahme gelöscht.');
+        }
+    }
+
     /** @param  array<string, mixed>  $s */
     private function fillSettings(array $s): void
     {
-        $this->settings = ['use_internal_networks' => (bool) ($s['use_internal_networks'] ?? false), 'bypass_cidrs' => implode("\n", (array) ($s['bypass_cidrs'] ?? []))];
+        $this->settings = ['use_internal_networks' => (bool) ($s['use_internal_networks'] ?? false), 'bypass_cidrs' => implode("\n", (array) ($s['bypass_cidrs'] ?? [])),
+            'new_host_mode' => isset(Waf::MODES[$s['new_host_mode'] ?? '']) ? $s['new_host_mode'] : 'detect'];
         $this->settingsLoaded = true;
+        $this->hasCentral = is_array($s['central'] ?? null);
+        if ($this->hasCentral) {
+            $this->centralDefaults = (array) ($s['defaults'] ?? []);
+            $this->centralSuggested = (array) ($s['suggested'] ?? []);
+            $this->central = Waf::tuningForm($s['central'], $this->centralDefaults);
+            $this->centralExceptions = array_values(array_filter((array) ($s['exceptions'] ?? []), 'is_array'));
+        }
     }
 
     public function render()
@@ -201,6 +255,10 @@ class WebFirewall extends Component
             [$settings] = $this->load('/api/waf/settings');
             if (is_array($settings)) {
                 $this->fillSettings($settings);
+            }
+            if ($this->hasCentral) {
+                [$groups] = $this->load('/api/waf/groups');
+                $this->groups = is_array($groups) ? array_values(array_filter($groups, 'is_array')) : [];
             }
         }
         $hostNames = collect(is_array($hosts) ? $hosts : [])->where('kind', 'proxy')

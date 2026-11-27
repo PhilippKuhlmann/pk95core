@@ -131,18 +131,34 @@ class Waf
     public static function toForm(array $w): array
     {
         $w += self::DEFAULTS;
-        $form = [
+
+        return [
             'mode' => isset(self::MODES[$w['mode']]) ? $w['mode'] : 'detect',
+            'profiles' => array_values(array_map('strval', (array) $w['profiles'])),
+            'bypass_cidrs' => implode("\n", (array) ($w['bypass_cidrs'] ?? [])),
+        ] + self::tuningForm($w, (array) ($w['defaults'] ?? []));
+    }
+
+    /**
+     * The six settings a host takes from the central configuration (PK95 Proxy 1.9.0: block and
+     * detection level, threshold, body limit, disabled groups, limits) as form state. The same
+     * form serves the host and „Zentrale Einstellungen“ (partial modules.proxy.partials.waf-tuning).
+     *
+     * @param  array<string, mixed>  $w
+     * @param  array<string, mixed>  $defaults  CRS defaults of the limits
+     * @return array<string, mixed>
+     */
+    public static function tuningForm(array $w, array $defaults): array
+    {
+        $w += self::DEFAULTS;
+        $form = [
             'paranoia' => (string) $w['paranoia'],
             'anomaly_threshold' => (string) $w['anomaly_threshold'],
             'body_limit_kb' => (string) $w['body_limit_kb'],
-            'profiles' => array_values(array_map('strval', (array) $w['profiles'])),
             'detection_paranoia' => (string) ($w['detection_paranoia'] ?? $w['paranoia']),
             'disabled_groups' => array_values(array_map('strval', (array) ($w['disabled_groups'] ?? []))),
-            'bypass_cidrs' => implode("\n", (array) ($w['bypass_cidrs'] ?? [])),
         ];
         $limits = (array) ($w['limits'] ?? []);
-        $defaults = (array) ($w['defaults'] ?? []);
         $list = fn (string $k) => array_values(array_map('strval', (array) ($limits[$k] ?? $defaults[$k] ?? [])));
         $form['limits'] = [
             'allowed_methods' => $list('allowed_methods'),
@@ -166,22 +182,44 @@ class Waf
      * @param  array<string, mixed>|null  $defaults  limits defaults of GET /waf
      * @return array<string, mixed>
      */
-    public static function payload(array $f, bool $v19 = false, ?array $defaults = null): array
+    public static function payload(array $f, bool $v19 = false, ?array $defaults = null, ?bool $inherit = null): array
+    {
+        $profiles = array_values(array_map('strval', (array) ($f['profiles'] ?? [])));
+        if (! $v19) {
+            // PK95 Proxy 1.8.0: exactly the request it has always got
+            $t = self::tuningPayload($f, null);
+
+            return ['mode' => (string) ($f['mode'] ?? 'detect'), 'paranoia' => $t['paranoia'], 'anomaly_threshold' => $t['anomaly_threshold'],
+                'body_limit_kb' => $t['body_limit_kb'], 'profiles' => $profiles];
+        }
+        $body = ['mode' => (string) ($f['mode'] ?? 'detect'), 'profiles' => $profiles];
+        $body['bypass_cidrs'] = self::lines((string) ($f['bypass_cidrs'] ?? ''));
+        if ($inherit !== null) {
+            $body['inherit'] = $inherit;
+        }
+
+        // a host that inherits keeps its own values stored at the Proxy: not sent (partial update)
+        return $inherit === true ? $body : $body + self::tuningPayload($f, $defaults);
+    }
+
+    /**
+     * The six tuning fields → API (host or central). limits only when the Proxy's defaults are
+     * known, complete, null = CRS default (also for a list that equals the default).
+     *
+     * @param  array<string, mixed>  $f
+     * @param  array<string, mixed>|null  $defaults
+     * @return array<string, mixed>
+     */
+    public static function tuningPayload(array $f, ?array $defaults): array
     {
         $int = fn ($v) => preg_match('/^\d+$/', trim((string) $v)) ? (int) trim((string) $v) : trim((string) $v);
         $body = [
-            'mode' => (string) ($f['mode'] ?? 'detect'),
             'paranoia' => $int($f['paranoia'] ?? ''),
+            'detection_paranoia' => $int($f['detection_paranoia'] ?? $f['paranoia'] ?? ''),
             'anomaly_threshold' => $int($f['anomaly_threshold'] ?? ''),
             'body_limit_kb' => $int($f['body_limit_kb'] ?? ''),
-            'profiles' => array_values(array_map('strval', (array) ($f['profiles'] ?? []))),
+            'disabled_groups' => array_values(array_map('strval', (array) ($f['disabled_groups'] ?? []))),
         ];
-        if (! $v19) {
-            return $body;
-        }
-        $body['detection_paranoia'] = $int($f['detection_paranoia'] ?? $f['paranoia'] ?? '');
-        $body['disabled_groups'] = array_values(array_map('strval', (array) ($f['disabled_groups'] ?? [])));
-        $body['bypass_cidrs'] = self::lines((string) ($f['bypass_cidrs'] ?? ''));
         if ($defaults !== null) {
             $body['limits'] = self::limitsPayload((array) ($f['limits'] ?? []), $defaults);
         }
@@ -223,13 +261,12 @@ class Waf
      */
     public static function adjusted(array $f, ?array $defaults): int
     {
-        $body = self::payload($f, true, $defaults);
-        $n = (int) ((string) $body['detection_paranoia'] !== (string) $body['paranoia'])
-            + (int) ($body['disabled_groups'] !== []) + (int) ($body['bypass_cidrs'] !== [])
-            + (int) ((string) $body['anomaly_threshold'] !== (string) self::DEFAULTS['anomaly_threshold'])
-            + (int) ((string) $body['body_limit_kb'] !== (string) self::DEFAULTS['body_limit_kb']);
+        $t = self::tuningPayload($f, $defaults);
+        $n = (int) ((string) $t['detection_paranoia'] !== (string) $t['paranoia']) + (int) ($t['disabled_groups'] !== [])
+            + (int) ((string) $t['anomaly_threshold'] !== (string) self::DEFAULTS['anomaly_threshold'])
+            + (int) ((string) $t['body_limit_kb'] !== (string) self::DEFAULTS['body_limit_kb']);
 
-        return $n + count(array_filter($body['limits'] ?? [], fn ($v) => $v !== null));
+        return $n + count(array_filter($t['limits'] ?? [], fn ($v) => $v !== null));
     }
 
     /**
