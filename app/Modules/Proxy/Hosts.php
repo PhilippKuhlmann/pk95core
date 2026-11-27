@@ -266,6 +266,10 @@ class Hosts extends Component
                 $this->wafCentralDefaults = (array) ($settings['defaults'] ?? []);
                 $this->wafSuggested = (array) ($settings['suggested'] ?? []);
                 $this->wafEffective = Waf::tuningForm((array) ($settings['central'] ?? []), $this->wafCentralDefaults);
+                // a new host starts in the mode the central settings name (the Proxy does the same; the PUT after creating must not overwrite it)
+                if ($host === null && isset(Waf::MODES[$settings['new_host_mode'] ?? ''])) {
+                    $this->waf['mode'] = $settings['new_host_mode'];
+                }
             }
         }
         if ($host === null || ($host['kind'] ?? '') !== 'proxy') {

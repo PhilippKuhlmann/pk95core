@@ -1538,8 +1538,9 @@ class ProxyModuleTest extends FeatureTestCase
     public function test_a_new_host_on_proxy_1_9_gets_levels_groups_and_networks_but_no_limits(): void
     {
         $this->enableWaf19();
+        $this->waf['settings']['new_host_mode'] = 'block';
         Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('create')
-            ->assertSet('wafV19', true)->assertSet('wafInherit', true)
+            ->assertSet('wafV19', true)->assertSet('wafInherit', true)->assertSet('waf.mode', 'block', 'the central mode for new hosts')
             ->set('wafInherit', false)->assertSee('Grenzwerte stellst du nach dem Anlegen des Hosts ein.')
             ->set('form.domains', 'neu.example.de')->set('form.upstream_host', '10.0.0.7')->set('form.upstream_port', '80')
             ->set('waf.paranoia', '2')->set('waf.disabled_groups', ['php'])->call('save')->assertSet('editing', null);
