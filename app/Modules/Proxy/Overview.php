@@ -3,19 +3,26 @@
 namespace App\Modules\Proxy;
 
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
+use Livewire\Attributes\Defer;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
  * PK95 Proxy: access statistics (tiles, requests and data over time, world map, top lists) and,
- * with PK95 Proxy 1.8.0+, a card with what the web firewall blocked today.
+ * with PK95 Proxy 1.8.0+, the figures of the web firewall today.
  * Charts are rendered as SVG on the server, the map is drawn in the browser from the
- * panel's map data (public/modules/proxy/world.json).
+ * panel's map data (public/modules/proxy/world.json). Deferred: it waits on several panel
+ * routes, so the page opens at once with a skeleton.
  */
+#[Defer]
 class Overview extends Component
 {
+    use LoadsLazily;
     use TalksToApp;
+
+    public const PLACEHOLDER = ['Übersicht', 'Lade Statistik …', 3];
 
     public InstalledApp $installedApp;
 
