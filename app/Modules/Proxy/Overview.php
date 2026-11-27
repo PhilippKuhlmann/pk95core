@@ -8,7 +8,8 @@ use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
- * PK95 Proxy: access statistics (tiles, requests and data over time, world map, top lists).
+ * PK95 Proxy: access statistics (tiles, requests and data over time, world map, top lists) and,
+ * with PK95 Proxy 1.8.0+, a card with what the web firewall blocked today.
  * Charts are rendered as SVG on the server, the map is drawn in the browser from the
  * panel's map data (public/modules/proxy/world.json).
  */
@@ -65,6 +66,9 @@ class Overview extends Component
             'configured' => $configured,
             'logBase' => route('apps.page', [$this->installedApp, 'log']),
             'loadError' => $error,
+            // the web firewall of today (null: this Proxy has none, no card)
+            'waf' => WafToday::load($this->installedApp),
+            'bansToday' => WafToday::bansToday(is_array($security) ? $security : null),
         ]);
     }
 
