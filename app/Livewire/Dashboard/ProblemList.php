@@ -14,7 +14,7 @@ class ProblemList extends Component
 {
     public function placeholder()
     {
-        return view('livewire.dashboard.placeholder', ['title' => 'Probleme & Warnungen']);
+        return view('partials.skeleton', ['parts' => [['card', 'Probleme & Warnungen', 'h-16']]]);
     }
 
     public function render(Problems $problems)

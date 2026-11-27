@@ -3,6 +3,7 @@
 namespace App\Modules\Proxy;
 
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
 use Livewire\Component;
 
@@ -13,7 +14,10 @@ use Livewire\Component;
  */
 class Maintenance extends Component
 {
+    use LoadsLazily;
     use TalksToApp;
+
+    public const PLACEHOLDER = [['header', 'Wartung', 1, 'sub' => 1], ['panels', 2, 'h-64', 'lg:grid-cols-2'], ['panel', 'h-40']];
 
     public InstalledApp $installedApp;
 

@@ -14,12 +14,15 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Livewire\Component;
 use Livewire\Livewire;
+use Tests\Concerns\LoadsDeferredPages;
 
 /**
  * The ProxApps pages in Core against a fake of ProxApps' /api/bridge.
  */
 class ProxAppsBridgeTest extends FeatureTestCase
 {
+    use LoadsDeferredPages;
+
     private InstalledApp $installed;
 
     /** @var list<array{component: string, body: array<string, mixed>}> */
@@ -182,6 +185,18 @@ class ProxAppsBridgeTest extends FeatureTestCase
         // pages that need their view data show the same hint instead of failing
         foreach (['deployments', 'deploy'] as $page) {
             $this->get(route('apps.page', [$this->installed, $page]))->assertOk()->assertSee('ProxApps antwortet nicht')->assertSee('Erneut versuchen');
+        }
+    }
+
+    public function test_a_deferred_detail_page_takes_its_id_from_the_first_request_not_the_referer(): void
+    {
+        $this->answer = $this->detailView(['status' => 'success', 'step' => 'done'], ['url' => 'http://10.0.0.53/'], []);
+        $url = route('apps.page', [$this->installed, 'deployment']).'?id=6';
+
+        foreach ([null, '', route('apps.page', [$this->installed, 'deployments'])] as $referer) {
+            $this->calls = [];
+            $this->loadDeferred($url, $referer);
+            $this->assertSame(['deployment' => 6], $this->calls[0]['body']['mount'] ?? null, 'referer: '.var_export($referer, true));
         }
     }
 }

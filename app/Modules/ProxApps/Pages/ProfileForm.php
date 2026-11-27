@@ -2,6 +2,7 @@
 
 namespace App\Modules\ProxApps\Pages;
 
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\ProxApps\Bridged;
 use Livewire\Component;
 
@@ -11,6 +12,12 @@ use Livewire\Component;
 class ProfileForm extends Component
 {
     use Bridged;
+    use LoadsLazily;
+
+    public const PLACEHOLDER = [['root', 'mx-auto max-w-3xl'], ['form', 8]];
+
+    /** read from the page URL in the first request (LoadsLazily) */
+    public const QUERY = ['id'];
 
     public $profileId = null;
 
@@ -50,7 +57,7 @@ class ProfileForm extends Component
 
     protected function mountArgs(): array
     {
-        $id = request()->query('id');
+        $id = $this->fromUrl('id');
 
         return ['profile' => is_numeric($id) ? (int) $id : null];
     }

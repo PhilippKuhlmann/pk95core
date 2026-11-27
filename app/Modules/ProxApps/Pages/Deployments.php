@@ -2,12 +2,16 @@
 
 namespace App\Modules\ProxApps\Pages;
 
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\ProxApps\Bridged;
 use Livewire\Component;
 
 class Deployments extends Component
 {
     use Bridged;
+    use LoadsLazily;
+
+    public const PLACEHOLDER = [['header', 'Deployments', 1, 'sub' => 1], ['cards', 4, 'h-36', 'md:grid-cols-2 2xl:grid-cols-3']];
 
     public $status = '';
 

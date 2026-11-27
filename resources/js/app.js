@@ -216,6 +216,21 @@ const tooltip = (() => {
 })();
 window.pk95Tooltip = tooltip;
 
+// ---- loading skeletons (partials/skeleton.blade.php) -----------------------------
+// When a deferred page or tile replaces its skeleton, the real content fades in briefly
+// (150 ms) instead of switching hard. Not with reduced motion.
+document.addEventListener('livewire:init', () => {
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)');
+    window.Livewire.hook('morph', ({ el, toEl }) => {
+        if (el.hasAttribute('data-skeleton') && !toEl.hasAttribute('data-skeleton')) el.__fromSkeleton = true;
+    });
+    window.Livewire.hook('morphed', ({ el }) => {
+        if (!el.__fromSkeleton) return;
+        delete el.__fromSkeleton;
+        if (!calm.matches) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: 'ease-out' });
+    });
+});
+
 document.addEventListener('alpine:init', () => {
     registerProxyMap(window.Alpine);
     const Alpine = window.Alpine;

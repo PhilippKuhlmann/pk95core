@@ -21,9 +21,13 @@ class ModulePageController extends Controller
         $label = collect($installedApp->manifest()?->menu ?? [])->firstWhere('key', $page)['label']
             ?? $registry->module($installedApp)?->pageTitle($page) ?? $page;
 
+        // values of the page URL the page reads in its deferred mount (LoadsLazily::QUERY)
+        $pageQuery = method_exists($component, 'pageQueryFrom') ? $component::pageQueryFrom(request()->query()) : [];
+
         return view('apps.module-page', [
             'installedApp' => $installedApp,
             'pageComponent' => $component,
+            'pageQuery' => $pageQuery,
             'title' => $label.' · '.$installedApp->displayName(),
         ]);
     }

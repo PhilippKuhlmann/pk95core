@@ -2,6 +2,7 @@
 
 namespace App\Modules\File;
 
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\File\Concerns\FilePage;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -14,6 +15,9 @@ use Livewire\Component;
 class Sessions extends Component
 {
     use FilePage;
+    use LoadsLazily;
+
+    public const PLACEHOLDER = [['header', 'Sitzungen', 'sub' => 1], ['table', 4, 4], ['filters', 1, 'mx-3 mt-6'], ['table', 3, 4]];
 
     /** filter of the open files: a share name, '' = all */
     #[Url(as: 'freigabe', except: '')]

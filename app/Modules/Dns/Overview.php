@@ -3,6 +3,7 @@
 namespace App\Modules\Dns;
 
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -13,7 +14,10 @@ use Livewire\Component;
  */
 class Overview extends Component
 {
+    use LoadsLazily;
     use TalksToApp;
+
+    public const PLACEHOLDER = [['header', 'Übersicht', 'w-56', 'sub' => 1], ['panel', 'h-36'], ['tiles', 4], ['panel', 'h-72'], ['panels', 4, 'h-64', 'md:grid-cols-2']];
 
     public InstalledApp $installedApp;
 

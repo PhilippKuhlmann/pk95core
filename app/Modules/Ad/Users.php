@@ -4,6 +4,7 @@ namespace App\Modules\Ad;
 
 use App\Http\Support\Format;
 use App\Modules\Ad\Concerns\AdPage;
+use App\Modules\Concerns\LoadsLazily;
 use Illuminate\Support\Carbon;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -17,6 +18,9 @@ use Livewire\Component;
 class Users extends Component
 {
     use AdPage;
+    use LoadsLazily;
+
+    public const PLACEHOLDER = [['header', 'Benutzer', 1, 'sub' => 1], ['filters', 2], ['table', 8, 5, 2]];
 
     #[Url]
     public string $q = '';

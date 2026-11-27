@@ -2,6 +2,7 @@
 
 namespace App\Modules\File;
 
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\File\Concerns\FilePage;
 use App\Services\Apps\AppException;
 use Livewire\Component;
@@ -20,6 +21,9 @@ use Livewire\Component;
 class Shares extends Component
 {
     use FilePage;
+    use LoadsLazily;
+
+    public const PLACEHOLDER = [['header', 'Freigaben', 1, 'sub' => 2], ['table', 5, 5, 2]];
 
     /** null closed, 'new' or the name of the share being edited */
     public ?string $editing = null;

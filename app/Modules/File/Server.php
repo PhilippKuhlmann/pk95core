@@ -3,6 +3,7 @@
 namespace App\Modules\File;
 
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\File\Concerns\FilePage;
 use App\Services\Apps\AppException;
 use Livewire\Component;
@@ -20,6 +21,9 @@ use Livewire\Component;
 class Server extends Component
 {
     use FilePage;
+    use LoadsLazily;
+
+    public const PLACEHOLDER = [['header', 'Dateiserver', 'sub' => 1], ['panel', 'h-36'], ['tiles', 4, 'grid-cols-2 md:grid-cols-4', 'h-32'], ['panel', 'h-60'], ['panel', 'h-[28rem]']];
 
     /** @var array{hostname: string, ip: string, ip_mode: string, allow_system_disk: bool} */
     public array $setupForm = ['hostname' => 'files', 'ip' => '', 'ip_mode' => 'managed', 'allow_system_disk' => false];

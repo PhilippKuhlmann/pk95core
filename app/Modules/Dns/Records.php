@@ -4,6 +4,7 @@ namespace App\Modules\Dns;
 
 use App\Models\InstalledApp;
 use App\Modules\Ad\DnsForward;
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -16,7 +17,10 @@ use Livewire\Component;
  */
 class Records extends Component
 {
+    use LoadsLazily;
     use TalksToApp;
+
+    public const PLACEHOLDER = [['header', 'DNS-Einträge', 2, 'sub' => 1], ['table', 3, 4], ['filters', 3], ['table', 8, 4]];
 
     public InstalledApp $installedApp;
 

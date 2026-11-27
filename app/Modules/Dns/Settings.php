@@ -3,6 +3,7 @@
 namespace App\Modules\Dns;
 
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -13,7 +14,10 @@ use Livewire\Component;
  */
 class Settings extends Component
 {
+    use LoadsLazily;
     use TalksToApp;
+
+    public const PLACEHOLDER = [['header', 'Einstellungen'], ['panels', 6, 'h-64', 'xl:grid-cols-2']];
 
     public InstalledApp $installedApp;
 

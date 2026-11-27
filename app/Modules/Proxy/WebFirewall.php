@@ -5,7 +5,6 @@ namespace App\Modules\Proxy;
 use App\Models\InstalledApp;
 use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
-use Livewire\Attributes\Defer;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -15,13 +14,12 @@ use Livewire\Component;
  * Ausnahmen (central and per host) and Einstellungen (central settings). Only the open tab
  * loads its data; the page opens at once with a skeleton.
  */
-#[Defer]
 class WebFirewall extends Component
 {
     use LoadsLazily;
     use TalksToApp;
 
-    public const PLACEHOLDER = ['Web-Firewall', 'Lade Web-Firewall …', 2];
+    public const PLACEHOLDER = [['header', 'Web-Firewall', 'sub' => 1], ['tabs', 4], ['filters', 1], ['tiles', 4, 'grid-cols-2 lg:grid-cols-4', 'h-[5.5rem]'], ['cards', 4, 'h-72', 'md:grid-cols-2']];
 
     public const TABS = ['uebersicht' => 'Übersicht', 'protokoll' => 'Protokoll', 'ausnahmen' => 'Ausnahmen', 'einstellungen' => 'Einstellungen'];
 

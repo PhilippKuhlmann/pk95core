@@ -4,6 +4,7 @@ namespace App\Livewire\Apps;
 
 use App\Jobs\AppOperation;
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use App\Services\Apps\AppManager;
 use App\Services\Apps\AppRegistry;
 use App\Services\Catalog\Catalog;
@@ -12,6 +13,7 @@ use App\Services\Docker\DockerClient;
 use App\Services\Updates\CoreUpdater;
 use App\Services\Updates\UpdateAll;
 use Illuminate\Support\Facades\Artisan;
+use Livewire\Attributes\Defer;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 use Throwable;
@@ -20,10 +22,17 @@ use Throwable;
  * The catalog with the state of every app: activate, start, stop, restart, remove, update.
  * On top Core itself: its build, newer builds in the registry and the self update. The
  * header checks all apps for updates and installs them all (UpdateAll, Core last).
+ * Deferred: the catalog, Docker and the registry status take a moment, the page opens at
+ * once with its skeleton.
  */
 #[Title('Apps')]
+#[Defer]
 class Index extends Component
 {
+    use LoadsLazily;
+
+    public const PLACEHOLDER = [['header', 'Apps', 2, 'sub' => 1], ['cards', 7, 'h-[32rem]', 'md:grid-cols-2 xl:grid-cols-3']];
+
     public function activate(string $id, AppManager $manager): void
     {
         $this->run(fn () => $manager->activate($id), 'Aktivierung gestartet – das kann einen Moment dauern.');

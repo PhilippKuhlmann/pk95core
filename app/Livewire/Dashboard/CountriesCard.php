@@ -19,7 +19,7 @@ class CountriesCard extends Component
 
     public function placeholder()
     {
-        return view('livewire.dashboard.placeholder', ['title' => 'Wohin gehen deine Daten?']);
+        return view('partials.skeleton', ['parts' => [['root', 'mt-4'], ['card', 'Wohin gehen deine Daten?', 'h-96']]]);
     }
 
     public function render(AppFigures $figures)

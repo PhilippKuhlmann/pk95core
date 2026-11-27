@@ -6,7 +6,6 @@ use App\Models\InstalledApp;
 use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
 use Illuminate\Support\HtmlString;
-use Livewire\Attributes\Defer;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -15,13 +14,12 @@ use Livewire\Component;
  * target state, maintenance switch and the create/edit form. Lazy: it waits on several panel
  * routes (checks, page views per day, web firewall), so the page opens at once with a skeleton.
  */
-#[Defer]
 class Hosts extends Component
 {
     use LoadsLazily;
     use TalksToApp;
 
-    public const PLACEHOLDER = ['Hosts', 'Lade Hosts …', 1];
+    public const PLACEHOLDER = [['header', 'Hosts', 1, 'sub' => 1], ['filters', 2, 'm-3'], ['text'], ['table', 6, 5, 2]];
 
     public InstalledApp $installedApp;
 

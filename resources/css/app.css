@@ -113,6 +113,38 @@ textarea::placeholder {
 /* Deployment log console */
 .log-console { font-variant-ligatures: none; tab-size: 4; }
 
+/* Loading skeletons (resources/views/partials/skeleton.blade.php): invisible for the first
+   150 ms, so a fast page never flashes it, then a short fade in and a soft shimmer that runs
+   across all bars at once (fixed background). In a layer, so utilities still win. */
+@layer components {
+  .skeleton { animation: skeleton-in 150ms ease-out 150ms both; }
+  .skeleton-bar {
+    display: block;
+    border-radius: var(--radius-md);
+    background-color: var(--color-gray-200);
+    background-image: linear-gradient(100deg, transparent 35%, rgb(255 255 255 / 0.6) 50%, transparent 65%);
+    background-size: 200% 100%;
+    background-attachment: fixed;
+    animation: skeleton-shimmer 1.8s ease-in-out infinite;
+  }
+  .skeleton-surface .skeleton-bar { background-color: var(--color-gray-100); }
+  .dark .skeleton-bar {
+    background-color: var(--color-gray-700);
+    background-image: linear-gradient(100deg, transparent 35%, rgb(255 255 255 / 0.07) 50%, transparent 65%);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton-bar, .dark .skeleton-bar { animation: none; background-image: none; }
+  }
+}
+@keyframes skeleton-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes skeleton-shimmer {
+  from { background-position: 130% 0; }
+  to { background-position: -60% 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .netzplan-paket { animation: none; }
   * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }

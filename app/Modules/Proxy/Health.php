@@ -3,6 +3,7 @@
 namespace App\Modules\Proxy;
 
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
 use Livewire\Component;
 
@@ -12,7 +13,10 @@ use Livewire\Component;
  */
 class Health extends Component
 {
+    use LoadsLazily;
     use TalksToApp;
+
+    public const PLACEHOLDER = [['header', 'Erreichbarkeit', 'sub' => 1], ['table', 8, 5], ['panel', 'h-32']];
 
     public InstalledApp $installedApp;
 

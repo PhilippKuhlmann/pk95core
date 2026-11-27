@@ -87,7 +87,7 @@ class DashboardTest extends FeatureTestCase
     {
         InstalledApp::query()->where('app_id', 'dns')->update(['available_version' => '1.1.0']);
 
-        $this->get('/')->assertOk()
+        $this->withSkeletons()->get('/')->assertOk()
             ->assertSee('4 von 4 Apps laufen')
             ->assertSee('1 Update verfügbar')
             ->assertSee('data-status-line', false)

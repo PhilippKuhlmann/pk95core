@@ -3,6 +3,7 @@
 namespace App\Modules\Proxy;
 
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
 use Livewire\Component;
 
@@ -12,7 +13,10 @@ use Livewire\Component;
  */
 class Settings extends Component
 {
+    use LoadsLazily;
     use TalksToApp;
+
+    public const PLACEHOLDER = [['header', 'Einstellungen'], ['panels', 4, 'h-56', 'lg:grid-cols-2']];
 
     public InstalledApp $installedApp;
 

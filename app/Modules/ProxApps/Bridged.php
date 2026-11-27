@@ -24,6 +24,9 @@ trait Bridged
     /** View data of the last answer (not kept between requests: rebuilt on demand). */
     protected array $view = [];
 
+    /** True during mount(): query() then still sends what only the first call should get. */
+    protected bool $mounting = false;
+
     abstract protected function component(): string;
 
     abstract protected function viewName(): string;
@@ -50,7 +53,9 @@ trait Bridged
 
     public function mount(): void
     {
+        $this->mounting = true;
         $this->bridge(['mount' => $this->mountArgs(), 'query' => $this->query()]);
+        $this->mounting = false;
     }
 
     /** Livewire hook: a bound field changed - let the original react (updated hooks). */
@@ -209,7 +214,7 @@ trait Bridged
             array_filter(
                 (new ReflectionClass($this))->getProperties(ReflectionProperty::IS_PUBLIC),
                 fn (ReflectionProperty $p) => ! $p->isStatic()
-                    && ! in_array($p->getName(), ['installedApp', 'bridgeError', ...$this->localProperties()], true)
+                    && ! in_array($p->getName(), ['installedApp', 'bridgeError', 'pageQuery', ...$this->localProperties()], true)
                     && $p->getDeclaringClass()->getName() !== Component::class,
             ),
         ));

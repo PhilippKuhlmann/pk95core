@@ -5,6 +5,7 @@ namespace App\Modules\Ad;
 use App\Modules\Ad\Concerns\AdPage;
 use App\Modules\Ad\Concerns\EditsPreferences;
 use App\Modules\Ad\Gpp\Kinds;
+use App\Modules\Concerns\LoadsLazily;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -19,6 +20,9 @@ class Gpos extends Component
 {
     use AdPage;
     use EditsPreferences;
+    use LoadsLazily;
+
+    public const PLACEHOLDER = [['header', 'Gruppenrichtlinien', 1, 'sub' => 1], ['table', 6, 5, 2], ['panel', 'h-40']];
 
     /** container whose resulting GPO order is shown (domain or OU id) */
     #[Url]

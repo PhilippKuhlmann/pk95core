@@ -3,6 +3,7 @@
 namespace App\Modules\Uptime;
 
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
 use Livewire\Component;
 
@@ -12,7 +13,10 @@ use Livewire\Component;
  */
 class Monitors extends Component
 {
+    use LoadsLazily;
     use TalksToApp;
+
+    public const PLACEHOLDER = [['header', 'Monitore', 2, 'sub' => 1], ['table', 8, 4, 2]];
 
     public InstalledApp $installedApp;
 

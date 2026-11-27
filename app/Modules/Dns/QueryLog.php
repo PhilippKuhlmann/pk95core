@@ -3,6 +3,7 @@
 namespace App\Modules\Dns;
 
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -13,7 +14,10 @@ use Livewire\Component;
  */
 class QueryLog extends Component
 {
+    use LoadsLazily;
     use TalksToApp;
+
+    public const PLACEHOLDER = [['header', 'Abfragen', 3], ['filters', 3], ['table', 10, 5]];
 
     public InstalledApp $installedApp;
 

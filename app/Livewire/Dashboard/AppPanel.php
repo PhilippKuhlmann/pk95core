@@ -20,7 +20,7 @@ class AppPanel extends Component
     {
         $app = InstalledApp::query()->firstWhere('app_id', $params['appId'] ?? $this->appId ?? '');
 
-        return view('livewire.dashboard.placeholder', ['title' => $app?->displayName() ?? 'App']);
+        return view('partials.skeleton', ['parts' => [['root', 'h-full'], ['card', $app?->displayName() ?? 'App', 'h-full min-h-60']]]);
     }
 
     public function render(AppFigures $figures)

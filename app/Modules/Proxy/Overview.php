@@ -5,7 +5,6 @@ namespace App\Modules\Proxy;
 use App\Models\InstalledApp;
 use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
-use Livewire\Attributes\Defer;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -16,13 +15,12 @@ use Livewire\Component;
  * panel's map data (public/modules/proxy/world.json). Deferred: it waits on several panel
  * routes, so the page opens at once with a skeleton.
  */
-#[Defer]
 class Overview extends Component
 {
     use LoadsLazily;
     use TalksToApp;
 
-    public const PLACEHOLDER = ['Übersicht', 'Lade Statistik …', 3];
+    public const PLACEHOLDER = [['header', 'Übersicht', 'w-64', 'sub' => 1], ['filters', 2], ['panel', 'h-28'], ['tiles', 6, null, 'h-[6.5rem]'], ['panel', 'h-68'], ['panel', 'h-48'], ['panels', 2, 'h-[22rem]', 'lg:grid-cols-[2fr_1fr]'], ['panels', 3, 'h-64', 'md:grid-cols-2 xl:grid-cols-3']];
 
     public InstalledApp $installedApp;
 

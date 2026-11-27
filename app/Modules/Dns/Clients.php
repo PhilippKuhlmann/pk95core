@@ -3,6 +3,7 @@
 namespace App\Modules\Dns;
 
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
 use Livewire\Component;
 
@@ -12,7 +13,10 @@ use Livewire\Component;
  */
 class Clients extends Component
 {
+    use LoadsLazily;
     use TalksToApp;
+
+    public const PLACEHOLDER = [['header', 'Clients', 1, 'sub' => 1], ['table', 4, 4], ['table', 6, 4]];
 
     public InstalledApp $installedApp;
 

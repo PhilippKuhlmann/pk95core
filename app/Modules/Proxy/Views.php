@@ -3,6 +3,7 @@
 namespace App\Modules\Proxy;
 
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -14,6 +15,10 @@ use Livewire\Component;
  */
 class Views extends Component
 {
+    use LoadsLazily;
+
+    public const PLACEHOLDER = [['header', 'Aufrufe', 1, 'sub' => 1], ['filters', 2], ['table', 10, 6]];
+
     public InstalledApp $installedApp;
 
     #[Url]

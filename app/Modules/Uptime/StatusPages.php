@@ -4,6 +4,7 @@ namespace App\Modules\Uptime;
 
 use App\Models\AppLink;
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
 use App\Services\Automation\Linker;
 use App\Services\Docker\DockerClient;
@@ -16,7 +17,10 @@ use Throwable;
  */
 class StatusPages extends Component
 {
+    use LoadsLazily;
     use TalksToApp;
+
+    public const PLACEHOLDER = [['header', 'Statusseiten', 1, 'sub' => 1], ['panel', 'h-40'], ['table', 3, 3]];
 
     public InstalledApp $installedApp;
 
