@@ -882,7 +882,7 @@ class ProxyModuleTest extends FeatureTestCase
             ->call('save')->assertSet('editing', null);
         $this->assertSame([], array_filter($this->calls, fn ($c) => str_contains($c['path'], '/waf') && $c['method'] !== 'GET'));
 
-        Livewire::test(WebFirewall::class, ['installedApp' => $this->installed])->assertSee('Keine Web-Firewall')->assertDontSee('data-waf-summary', false);
+        Livewire::withoutLazyLoading()->test(WebFirewall::class, ['installedApp' => $this->installed])->assertSee('Keine Web-Firewall')->assertDontSee('data-waf-summary', false);
         $this->get(route('apps.page', [$this->installed, 'security']))->assertOk()->assertDontSee('id="g-waf_blocks"', false);
 
         Cache::flush();
@@ -896,7 +896,7 @@ class ProxyModuleTest extends FeatureTestCase
     {
         $this->enableWaf();
         $hidden = function (): void {
-            Livewire::test(WebFirewall::class, ['installedApp' => $this->installed])->assertSee('Keine Web-Firewall')->assertDontSee('data-waf-rules-error', false);
+            Livewire::withoutLazyLoading()->test(WebFirewall::class, ['installedApp' => $this->installed])->assertSee('Keine Web-Firewall')->assertDontSee('data-waf-rules-error', false);
             Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('edit', 1)->assertSet('wafOn', false);
             Cache::flush();
             $f = app(AppFigures::class)->for($this->installed);
@@ -916,7 +916,7 @@ class ProxyModuleTest extends FeatureTestCase
         $this->waf['status'] = ['crs_version' => '4.10.0', 'coraza_version' => '3.3.0', 'module' => true, 'rules_loaded' => false, 'error' => 'Caddy ohne WAF-Modul', 'hosts' => []];
         Cache::flush();
         $this->assertSame('bad', app(AppFigures::class)->for($this->installed)['warnings'][0]['tone']);
-        Livewire::test(WebFirewall::class, ['installedApp' => $this->installed])->assertSeeHtml('data-waf-rules-error');
+        Livewire::withoutLazyLoading()->test(WebFirewall::class, ['installedApp' => $this->installed])->assertSeeHtml('data-waf-rules-error');
     }
 
     public function test_the_host_form_edits_the_waf_and_deletes_an_exception(): void
@@ -981,11 +981,12 @@ class ProxyModuleTest extends FeatureTestCase
     {
         $this->enableWaf();
         $this->waf['status']['hosts'][0]['error'] = 'Regeldatei fehlt';
-        $page = Livewire::test(WebFirewall::class, ['installedApp' => $this->installed])
+        $page = Livewire::withoutLazyLoading()->test(WebFirewall::class, ['installedApp' => $this->installed])
             ->assertSee('CRS 4.10.0')->assertSee('app.example.de läuft ohne Web-Firewall:')->assertSee('Regeldatei fehlt')
-            ->assertSeeHtml('data-waf-hits>37')->assertSeeHtml('data-waf-blocks>4')
-            ->assertSee('SQL Injection Attack Detected via libinjection')->assertSee('in ARGS:q')->assertSee('198.51.100.23')->assertSee('10 Punkte');
+            ->assertSeeHtml('data-waf-hits>37')->assertSeeHtml('data-waf-blocks>4');
         $this->assertMatchesRegularExpression('/from=\d+&to=\d+/', $this->lastQuery('/api/waf/stats'));
+        $page->call('show', 'protokoll')
+            ->assertSee('SQL Injection Attack Detected via libinjection')->assertSee('in ARGS:q')->assertSee('198.51.100.23')->assertSee('10 Punkte');
         // the score rule 949110 gets no „Ausnahme anlegen“: it would switch off blocking on the path
         $this->assertSame(1, substr_count($page->html(), 'data-waf-except'));
 
@@ -994,6 +995,7 @@ class ProxyModuleTest extends FeatureTestCase
         foreach (['rule=942100', 'action=block', 'host=1', 'limit=100'] as $part) {
             $this->assertStringContainsString($part, $this->lastQuery('/api/waf/events'));
         }
+        $page->call('show', 'uebersicht');
         $this->assertStringContainsString('host=1', $this->lastQuery('/api/waf/stats'));
         $page->call('clearFilters')->assertSet('rule', '')->assertSet('host', '');
 
@@ -1036,7 +1038,7 @@ class ProxyModuleTest extends FeatureTestCase
         $this->waf['status']['error'] = 'CRS-Regeln beschädigt';
         $this->assertContains(['tone' => 'bad', 'text' => 'Web-Firewall: Die Regeln sind nicht geladen, kein Host ist geschützt: CRS-Regeln beschädigt',
             'href' => route('apps.page', [$this->installed, 'waf'])], app(Problems::class)->collect());
-        Livewire::test(WebFirewall::class, ['installedApp' => $this->installed])->assertSee('Die Regeln sind nicht geladen, kein Host ist geschützt:');
+        Livewire::withoutLazyLoading()->test(WebFirewall::class, ['installedApp' => $this->installed])->assertSee('Die Regeln sind nicht geladen, kein Host ist geschützt:');
 
         // stats not answering: the line stays, without figures
         Cache::flush();
@@ -1491,7 +1493,7 @@ class ProxyModuleTest extends FeatureTestCase
             ->assertDontSeeHtml('data-waf-advanced')->call('save')->assertHasNoErrors();
         $put = last($this->bodies('PUT', '/api/hosts/1/waf'));
         $this->assertSame(['mode', 'paranoia', 'anomaly_threshold', 'body_limit_kb', 'profiles'], array_keys($put), 'nothing of 1.9.0 to a 1.8.0');
-        Livewire::test(WebFirewall::class, ['installedApp' => $this->installed])->assertDontSeeHtml('data-waf-settings')->assertDontSeeHtml('data-waf-rule-level');
+        Livewire::withoutLazyLoading()->test(WebFirewall::class, ['installedApp' => $this->installed])->assertDontSeeHtml('data-waf-settings')->assertDontSeeHtml('data-waf-rule-level');
     }
 
     public function test_the_advanced_section_saves_levels_groups_networks_and_limits(): void
@@ -1552,9 +1554,10 @@ class ProxyModuleTest extends FeatureTestCase
     public function test_the_page_shows_levels_takes_the_parameter_and_saves_the_settings(): void
     {
         $this->enableWaf19();
-        $page = Livewire::test(WebFirewall::class, ['installedApp' => $this->installed])
-            ->assertSee('Stufe 1')->assertSee('Stufe 2 · nur erkannt')->assertSee('Treffer nach Stufe:')->assertSee('vor 1.9: 3')
-            ->assertSee('Heute umgangen (eigene Netze): 7')->assertSeeHtml('data-waf-settings');
+        $page = Livewire::withoutLazyLoading()->test(WebFirewall::class, ['installedApp' => $this->installed])
+            ->assertSee('Treffer nach Stufe')->assertSee('vor 1.9: 3')->assertSee('Heute umgangen')->assertSeeHtml('data-waf-bypassed')
+            ->call('show', 'protokoll')->assertSee('Stufe 1')->assertSee('Stufe 2 · nur erkannt')
+            ->call('show', 'einstellungen')->assertSeeHtml('data-waf-settings');
 
         // the parameter of the rule, 1:1 (also a header name as the event has it)
         $page->call('newException', 1, 'app.example.de', '920320', '/search', 'REQUEST_HEADERS:User-Agent')
@@ -1610,10 +1613,9 @@ class ProxyModuleTest extends FeatureTestCase
     public function test_the_central_settings_and_central_exceptions(): void
     {
         $this->enableWaf19();
-        $page = Livewire::test(WebFirewall::class, ['installedApp' => $this->installed])
-            ->assertSet('hasCentral', true)->assertSee('Zentrale Einstellungen')->assertSeeHtml('id="zentral"')
+        $page = Livewire::withoutLazyLoading()->test(WebFirewall::class, ['installedApp' => $this->installed])->call('show', 'einstellungen')
+            ->assertSet('hasCentral', true)->assertSee('Zentrale Einstellungen')->assertSeeHtml('data-waf-settings')
             ->assertSeeHtml('data-waf-tuning="central"')->assertSet('central.paranoia', '2')->assertSet('settings.new_host_mode', 'detect')
-            ->assertSee('IP als Host')
             // the same form as at the host: a higher level takes detection along
             ->set('central.paranoia', '4')->assertSet('central.detection_paranoia', '4')
             ->set('settings.new_host_mode', 'block')->set('central.disabled_groups', ['php'])->call('saveSettings')->assertHasNoErrors();
@@ -1632,10 +1634,93 @@ class ProxyModuleTest extends FeatureTestCase
             ->assertDispatched('notice', kind: 'success', text: 'Ausnahme angelegt: Regel 942100 unter /search, nur ARGS:q (alle Hosts).');
         $this->assertSame(['rule_id' => 942100, 'path_prefix' => '/search', 'note' => '', 'target' => 'ARGS:q'], last($this->bodies('POST', '/api/waf/settings/exceptions')));
         $this->assertSame([], $this->bodies('POST', '/api/hosts/1/waf/exceptions'));
-        $page->assertSet('centralExceptions', fn ($l) => array_column($l, 'rule_id') === [920350, 942100])
+        $page->call('show', 'ausnahmen')->assertSee('IP als Host')->assertSet('centralExceptions', fn ($l) => array_column($l, 'rule_id') === [920350, 942100])
             ->call('deleteCentralException', '7')->assertDispatched('notice', kind: 'success', text: 'Ausnahme gelöscht.')
             ->assertSet('centralExceptions', fn ($l) => array_column($l, 'rule_id') === [942100]);
         $this->assertCount(1, array_filter($this->calls, fn ($c) => $c['method'] === 'DELETE' && $c['path'] === '/api/waf/settings/exceptions/7'));
+    }
+
+    // ---- web firewall page in tabs ---------------------------------------------------------------
+
+    public function test_the_tab_comes_from_the_url_and_only_the_open_tab_loads_its_data(): void
+    {
+        $this->enableWaf19();
+        $paths = fn () => array_values(array_unique(array_column($this->calls, 'path')));
+
+        // default: the overview, no log and no settings loaded
+        Livewire::withoutLazyLoading()->test(WebFirewall::class, ['installedApp' => $this->installed])
+            ->assertSet('tab', 'uebersicht')->assertSeeHtml('data-tab-panel="uebersicht"')->assertSeeHtml('aria-selected="true" data-tab="uebersicht"');
+        $this->assertContains('/api/waf/stats', $paths());
+        $this->assertNotContains('/api/waf/events', $paths());
+        $this->assertNotContains('/api/waf/settings', $paths());
+
+        // ?tab=einstellungen opens the settings straight away: no figures, no log
+        $this->calls = [];
+        Livewire::withoutLazyLoading()->withQueryParams(['tab' => 'einstellungen'])->test(WebFirewall::class, ['installedApp' => $this->installed])
+            ->assertSet('tab', 'einstellungen')->assertSeeHtml('data-waf-settings')->assertDontSeeHtml('data-waf-summary');
+        $this->assertContains('/api/waf/settings', $paths());
+        $this->assertNotContains('/api/waf/stats', $paths());
+        $this->assertNotContains('/api/waf/events', $paths());
+
+        // an unknown tab is the overview; switching loads the tab's data then
+        $this->calls = [];
+        $page = Livewire::withoutLazyLoading()->withQueryParams(['tab' => 'quatsch'])->test(WebFirewall::class, ['installedApp' => $this->installed])
+            ->assertSet('tab', 'uebersicht')->call('show', 'protokoll')->assertSet('tab', 'protokoll')->assertSeeHtml('data-waf-events');
+        $this->assertContains('/api/waf/events', $paths());
+        // polling only where the figures change by themselves, not under a form
+        $this->assertStringContainsString('wire:poll', $page->html());
+        $this->assertStringNotContainsString('wire:poll', $page->call('show', 'einstellungen')->html());
+
+        // the page opens with the skeleton, before any call to the panel
+        SupportLazyLoading::$disableWhileTesting = false;
+        $this->calls = [];
+        $this->get(route('apps.page', [$this->installed, 'waf']))->assertOk()->assertSee('Lade Web-Firewall …')->assertSee('data-page-placeholder', false);
+        $this->assertSame([], $this->calls);
+    }
+
+    public function test_a_click_in_the_overview_filters_the_log_and_the_host_dialog_links_the_settings_tab(): void
+    {
+        $this->enableWaf19();
+        Livewire::withoutLazyLoading()->test(WebFirewall::class, ['installedApp' => $this->installed])
+            ->assertSeeHtml('data-waf-top="rules"')->call('filterBy', 'rule', '942100')
+            ->assertSet('tab', 'protokoll')->assertSet('rule', '942100')->assertSeeHtml('data-waf-events');
+        $this->assertStringContainsString('rule=942100', $this->lastQuery('/api/waf/events'));
+
+        // „Zentral bearbeiten“ of an inheriting host leads to the settings tab
+        $this->waf['hosts'][1]['inherit'] = true;
+        $html = Livewire::test(Hosts::class, ['installedApp' => $this->installed])->call('edit', 1)->html();
+        $this->assertStringContainsString(e(route('apps.page', [$this->installed, 'waf']).'?tab=einstellungen'), $html);
+    }
+
+    public function test_the_exceptions_tab_lists_central_and_host_exceptions_and_deletes(): void
+    {
+        $this->enableWaf19();
+        $this->hosts[4] = $this->host(4, ['shop.example.de'], ['enabled' => true]);
+        $this->waf['hosts'][4] = ['mode' => 'block', 'exceptions' => [['id' => 41, 'rule_id' => 932160, 'path_prefix' => '/wp-login.php', 'note' => 'Passwortfeld',
+            'target' => 'ARGS:pwd', 'created_at' => 1]]] + $this->waf['hosts'][1];
+        $this->hosts[5] = $this->host(5, ['aus.example.de'], ['enabled' => true]);
+        $this->waf['hosts'][5] = ['mode' => 'off'] + $this->waf['hosts'][1];
+
+        $page = Livewire::withoutLazyLoading()->withQueryParams(['tab' => 'ausnahmen'])->test(WebFirewall::class, ['installedApp' => $this->installed])
+            ->assertSee('Für alle Hosts')->assertSee('IP als Host')
+            ->assertSeeHtml('data-waf-host-exception-rows')->assertSee('shop.example.de')->assertSee('/wp-login.php')->assertSee('ARGS:pwd')->assertSee('Passwortfeld')
+            ->assertSee('App sendet IP als Host');
+        // only hosts with WAF are asked (host 5 has it off)
+        $this->assertSame(['/api/hosts/1/waf', '/api/hosts/4/waf'], array_values(array_unique(array_filter(array_column($this->calls, 'path'), fn ($p) => preg_match('#^/api/hosts/\d+/waf$#', $p)))));
+
+        $page->call('deleteHostException', 4, '41')->assertDispatched('notice', kind: 'success', text: 'Ausnahme gelöscht.')->assertDontSee('Passwortfeld');
+        $this->assertCount(1, array_filter($this->calls, fn ($c) => $c['method'] === 'DELETE' && $c['path'] === '/api/hosts/4/waf/exceptions/41'));
+    }
+
+    public function test_with_many_hosts_the_exceptions_tab_links_the_hosts_instead_of_loading_each(): void
+    {
+        $this->enableWaf19();
+        foreach (range(10, 10 + WebFirewall::HOST_EXCEPTIONS_MAX) as $id) {
+            $this->hosts[$id] = $this->host($id, ["h{$id}.example.de"], ['enabled' => true]);
+        }
+        Livewire::withoutLazyLoading()->withQueryParams(['tab' => 'ausnahmen'])->test(WebFirewall::class, ['installedApp' => $this->installed])
+            ->assertSee('Zu viele Hosts')->assertSee('h10.example.de')->assertDontSeeHtml('data-waf-host-exception-rows');
+        $this->assertSame([], array_filter(array_column($this->calls, 'path'), fn ($p) => preg_match('#^/api/hosts/\d+/waf$#', $p)));
     }
 
     // ---- slow pages open at once (lazy) -----------------------------------------------------------

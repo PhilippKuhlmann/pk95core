@@ -3,18 +3,34 @@
 namespace App\Modules\Proxy;
 
 use App\Models\InstalledApp;
+use App\Modules\Concerns\LoadsLazily;
 use App\Modules\Concerns\TalksToApp;
+use Livewire\Attributes\Defer;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
- * PK95 Proxy: the web firewall (Coraza + OWASP CRS, PK95 Proxy 1.8.0). Figures of hits and
- * blocks, the log of hits with filters and, per rule of a hit, „Ausnahme anlegen“ for that
- * host and path.
+ * PK95 Proxy: the web firewall (Coraza + OWASP CRS, PK95 Proxy 1.8.0/1.9.0) in four tabs:
+ * Übersicht (figures, top rules and hosts), Protokoll (hits with filters, „Ausnahme anlegen“),
+ * Ausnahmen (central and per host) and Einstellungen (central settings). Only the open tab
+ * loads its data; the page opens at once with a skeleton.
  */
+#[Defer]
 class WebFirewall extends Component
 {
+    use LoadsLazily;
     use TalksToApp;
+
+    public const PLACEHOLDER = ['Web-Firewall', 'Lade Web-Firewall …', 2];
+
+    public const TABS = ['uebersicht' => 'Übersicht', 'protokoll' => 'Protokoll', 'ausnahmen' => 'Ausnahmen', 'einstellungen' => 'Einstellungen'];
+
+    /** above this many hosts with WAF the tab Ausnahmen lists links instead of loading each host */
+    public const HOST_EXCEPTIONS_MAX = 25;
+
+    /** the open tab, in the URL (?tab=einstellungen) */
+    #[Url(except: 'uebersicht')]
+    public string $tab = 'uebersicht';
 
     public InstalledApp $installedApp;
 
@@ -76,6 +92,9 @@ class WebFirewall extends Component
 
     public function mount(): void
     {
+        if (! isset(self::TABS[$this->tab])) {
+            $this->tab = 'uebersicht';
+        }
         if (! isset(self::DAYS[$this->days])) {
             $this->days = '1';
         }
@@ -84,8 +103,16 @@ class WebFirewall extends Component
         }
     }
 
+    public function show(string $tab): void
+    {
+        $this->tab = isset(self::TABS[$tab]) ? $tab : 'uebersicht';
+    }
+
     public function updated(string $property): void
     {
+        if ($property === 'tab' && ! isset(self::TABS[$this->tab])) {
+            $this->tab = 'uebersicht';
+        }
         if (in_array($property, self::FILTERS, true)) {
             $this->limit = 100;
         }
@@ -96,11 +123,13 @@ class WebFirewall extends Component
         $this->days = isset(self::DAYS[$days]) ? $days : '1';
     }
 
+    /** A filter from a rule, host or address: always shown in the log. */
     public function filterBy(string $key, string $value): void
     {
         if (in_array($key, self::FILTERS, true)) {
             $this->{$key} = $value;
             $this->limit = 100;
+            $this->tab = 'protokoll';
         }
     }
 
@@ -124,6 +153,7 @@ class WebFirewall extends Component
     public function newException(int $hostId, string $domain, string $ruleId, string $path, string $target = ''): void
     {
         $this->resetErrorBag();
+        $this->loadSettings(); // „Für alle Hosts“ needs to know whether the Proxy has central settings
         $collections = $target !== '' ? (Waf::status($this->installedApp)['exception_targets'] ?? []) : [];
         $usable = Waf::exceptionTarget($target, $collections);
         $this->exception = ['host_id' => $hostId, 'domain' => $domain, 'rule_id' => $ruleId, 'path_prefix' => Waf::pathPrefix($path), 'note' => '',
@@ -172,7 +202,7 @@ class WebFirewall extends Component
         }
         $where = ($body['path_prefix'] !== '' ? ' unter '.$body['path_prefix'] : ($central ? ' überall' : ' für den ganzen Host')).(isset($body['target']) ? ', nur '.$body['target'] : '');
         $this->dispatch('notice', kind: 'success', text: "Ausnahme angelegt: Regel {$body['rule_id']}{$where} (".($central ? 'alle Hosts' : $e['domain']).').');
-        if ($central) {
+        if ($central && $this->settingsLoaded) {
             $this->centralExceptions[] = (array) $response->json();
         }
         $this->exception = null;
@@ -222,6 +252,27 @@ class WebFirewall extends Component
     }
 
     /** @param  array<string, mixed>  $s */
+    /** Removes an exception of one host (from the tab Ausnahmen). */
+    public function deleteHostException(int $hostId, string $id): void
+    {
+        $response = $this->appRequest(fn ($api) => $api->delete('/api/hosts/'.$hostId.'/waf/exceptions/'.rawurlencode($id)));
+        if ($this->succeeded($response, 'settings.')) {
+            $this->dispatch('notice', kind: 'success', text: 'Ausnahme gelöscht.');
+        }
+    }
+
+    /** The central settings, once (polling and other tabs must not overwrite what is being typed). */
+    private function loadSettings(): void
+    {
+        if ($this->settingsLoaded || ! (Waf::status($this->installedApp)['v19'] ?? false)) {
+            return;
+        }
+        [$settings] = $this->load('/api/waf/settings');
+        if (is_array($settings)) {
+            $this->fillSettings($settings);
+        }
+    }
+
     private function fillSettings(array $s): void
     {
         $this->settings = ['use_internal_networks' => (bool) ($s['use_internal_networks'] ?? false), 'bypass_cidrs' => implode("\n", (array) ($s['bypass_cidrs'] ?? [])),
@@ -242,40 +293,79 @@ class WebFirewall extends Component
         if ($status === null) {
             return view('modules.proxy.waf', ['status' => null]);
         }
+        $data = ['status' => $status, 'hostErrors' => Waf::hostErrors($status), 'v19' => $status['v19'],
+            'bypassedToday' => $status['bypassed_today'], 'filtered' => collect(self::FILTERS)->contains(fn ($k) => $this->{$k} !== ''),
+            'hostNames' => [], 'rows' => [], 'loadError' => null, 'stats' => null, 'statsError' => null, 'hostExceptions' => null, 'wafHosts' => []];
+        // host names: for the log (filter, hits) and the exceptions; the overview only for its title
+        if ($this->tab !== 'einstellungen' && ($this->tab !== 'uebersicht' || $this->host !== '')) {
+            [$hosts] = $this->load('/api/hosts');
+            $hosts = is_array($hosts) ? $hosts : [];
+            $data['hostNames'] = collect($hosts)->where('kind', 'proxy')
+                ->mapWithKeys(fn ($h) => [(string) $h['id'] => (string) ($h['domains'][0] ?? '#'.$h['id'])])->sort()->all();
+            $data['wafHosts'] = array_values(array_filter($hosts, fn ($h) => ($h['kind'] ?? '') === 'proxy' && ($h['waf_mode'] ?? 'off') !== 'off'));
+        }
+
+        match ($this->tab) {
+            'protokoll' => $this->loadLog($data),
+            'ausnahmen' => $this->loadExceptions($data),
+            'einstellungen' => $this->loadSettingsTab(),
+            default => $this->loadOverview($data),
+        };
+
+        return view('modules.proxy.waf', $data);
+    }
+
+    /** @param  array<string, mixed>  $data */
+    private function loadOverview(array &$data): void
+    {
+        [$stats, $data['statsError']] = $this->load('/api/waf/stats', array_filter([
+            'from' => Waf::from((int) $this->days), 'to' => now()->getTimestampMs(), 'host' => $this->host,
+        ], fn ($v) => $v !== ''));
+        $data['stats'] = is_array($stats) ? $stats : null;
+    }
+
+    /** @param  array<string, mixed>  $data */
+    private function loadLog(array &$data): void
+    {
         $query = array_filter([
             'host' => $this->host, 'rule' => trim($this->rule), 'action' => $this->action, 'ip' => trim($this->ip),
             'country' => $this->country, 'q' => trim($this->q), 'limit' => $this->limit,
         ], fn ($v) => $v !== '' && $v !== null);
-        [$rows, $error] = $this->load('/api/waf/events', $query);
-        [$stats, $statsError] = $this->load('/api/waf/stats', array_filter([
-            'from' => Waf::from((int) $this->days), 'to' => now()->getTimestampMs(), 'host' => $this->host,
-        ], fn ($v) => $v !== ''));
-        [$hosts] = $this->load('/api/hosts');
-        if ($status['v19'] && ! $this->settingsLoaded) {
-            [$settings] = $this->load('/api/waf/settings');
-            if (is_array($settings)) {
-                $this->fillSettings($settings);
-            }
-            if ($this->hasCentral) {
-                [$groups] = $this->load('/api/waf/groups');
-                $this->groups = is_array($groups) ? array_values(array_filter($groups, 'is_array')) : [];
+        [$rows, $data['loadError']] = $this->load('/api/waf/events', $query);
+        $data['rows'] = is_array($rows) ? array_values(array_filter($rows['items'] ?? $rows, 'is_array')) : [];
+    }
+
+    /**
+     * The central exceptions and those of every host with WAF (one GET /waf per host; above
+     * HOST_EXCEPTIONS_MAX hosts only links to them).
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function loadExceptions(array &$data): void
+    {
+        $this->loadSettings();
+        if (count($data['wafHosts']) > self::HOST_EXCEPTIONS_MAX) {
+            return; // hostExceptions null: the view lists links
+        }
+        $rows = [];
+        foreach ($data['wafHosts'] as $h) {
+            [$w] = $this->load('/api/hosts/'.(int) $h['id'].'/waf');
+            foreach (is_array($w) ? (array) ($w['exceptions'] ?? []) : [] as $e) {
+                if (is_array($e)) {
+                    $rows[] = $e + ['host_id' => (int) $h['id'], 'domain' => (string) ($h['domains'][0] ?? '#'.$h['id'])];
+                }
             }
         }
-        $hostNames = collect(is_array($hosts) ? $hosts : [])->where('kind', 'proxy')
-            ->mapWithKeys(fn ($h) => [(string) $h['id'] => (string) ($h['domains'][0] ?? '#'.$h['id'])])->sort()->all();
-        $rows = is_array($rows) ? array_values(array_filter($rows['items'] ?? $rows, 'is_array')) : [];
+        usort($rows, fn ($a, $b) => [$a['domain'], (int) $a['rule_id']] <=> [$b['domain'], (int) $b['rule_id']]);
+        $data['hostExceptions'] = $rows;
+    }
 
-        return view('modules.proxy.waf', [
-            'status' => $status,
-            'rows' => $rows,
-            'loadError' => $error,
-            'stats' => is_array($stats) ? $stats : null,
-            'statsError' => $statsError,
-            'hostNames' => $hostNames,
-            'filtered' => collect(self::FILTERS)->contains(fn ($k) => $this->{$k} !== ''),
-            'hostErrors' => Waf::hostErrors($status),
-            'v19' => $status['v19'],
-            'bypassedToday' => $status['bypassed_today'],
-        ]);
+    private function loadSettingsTab(): void
+    {
+        $this->loadSettings();
+        if ($this->hasCentral && $this->groups === []) {
+            [$groups] = $this->load('/api/waf/groups');
+            $this->groups = is_array($groups) ? array_values(array_filter($groups, 'is_array')) : [];
+        }
     }
 }

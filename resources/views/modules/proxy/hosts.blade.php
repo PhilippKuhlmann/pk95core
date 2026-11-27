@@ -184,7 +184,7 @@
                         @if ($wafInherit)
                             <p class="mb-2 text-xs text-gray-500 dark:text-gray-400" data-waf-inherited>
                                 Gilt wie zentral eingestellt.
-                                <a href="{{ route('apps.page', [$installedApp, 'waf']) }}#zentral" wire:navigate class="text-cerulean-700 underline hover:no-underline dark:text-cerulean-300">Zentral bearbeiten</a>
+                                <a href="{{ route('apps.page', [$installedApp, 'waf']) }}?tab=einstellungen" wire:navigate data-waf-central-link class="text-cerulean-700 underline hover:no-underline dark:text-cerulean-300">Zentral bearbeiten</a>
                             </p>
                             @include('modules.proxy.partials.waf-tuning', ['m' => 'wafEffective', 't' => $wafEffective, 'groups' => $wafGroups,
                                 'defaults' => $wafDefaults ?? $wafCentralDefaults, 'suggested' => $wafSuggested, 'readonly' => true, 'idp' => 'we'])
