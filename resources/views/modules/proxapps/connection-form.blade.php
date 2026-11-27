@@ -9,7 +9,7 @@
             </a>
             <div class="text-2xl font-CoconPro">{{ $connectionId ? 'Verbindung bearbeiten' : 'Neue Proxmox-Verbindung' }}</div>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                ProxApps spricht die Proxmox-API mit einem API-Token an. Ein einzelner Node oder ein Cluster-Mitglied genügt.
+                PK95 ProxApps spricht die Proxmox-API mit einem API-Token an. Ein einzelner Node oder ein Cluster-Mitglied genügt.
             </p>
 
             <x-input.fehler feld="_form" art="banner" class="mt-4" />
@@ -109,8 +109,8 @@
                 <div class="mt-3 space-y-2 text-gray-600 dark:text-gray-300">
                     <p>Auf einem Proxmox-Node als root ausführen. Das Secret wird nur einmal angezeigt.</p>
                     <pre class="overflow-x-auto rounded-lg bg-gray-950 p-3 font-mono text-xs leading-relaxed text-gray-200">pveum role add ProxApps --privs "VM.Allocate,VM.Audit,VM.Config.CPU,VM.Config.Memory,VM.Config.Disk,VM.Config.Network,VM.Config.Options,VM.PowerMgmt,VM.Snapshot,VM.Snapshot.Rollback,Datastore.AllocateSpace,Datastore.AllocateTemplate,Datastore.Audit,SDN.Use,SDN.Audit,Sys.Audit,Pool.Audit"
-pveum user add proxapps@pve --comment "ProxApps deployer"
-pveum user token add proxapps@pve deploy --privsep 1 --comment "ProxApps"
+pveum user add proxapps@pve --comment "PK95 ProxApps deployer"
+pveum user token add proxapps@pve deploy --privsep 1 --comment "PK95 ProxApps"
 # mit privsep gilt: Rechte = Benutzer-ACL ∩ Token-ACL, deshalb beide setzen
 pveum acl modify / --roles ProxApps --users proxapps@pve
 pveum acl modify / --roles ProxApps --tokens 'proxapps@pve!deploy'</pre>

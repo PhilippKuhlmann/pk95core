@@ -1,11 +1,11 @@
 {{-- ProxApps start page (port of proxapps livewire/dashboard). --}}
 <div class="p-3 sm:p-5">
     @if ($bridgeError)
-        <x-callout title="ProxApps antwortet nicht" ton="gelb" class="mb-5">{{ $bridgeError }}</x-callout>
+        <x-callout title="PK95 ProxApps antwortet nicht" ton="gelb" class="mb-5">{{ $bridgeError }}</x-callout>
     @else
         @php $active = ($counts['queued'] ?? 0) + ($counts['running'] ?? 0); @endphp
         <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
-            <div class="text-3xl font-CoconPro text-gray-900 dark:text-gray-100">ProxApps</div>
+            <div class="text-3xl font-CoconPro text-gray-900 dark:text-gray-100">PK95 ProxApps</div>
             <x-input.linkbutton :href="$this->pageUrl('apps')">
                 <x-icon name="rocket" class="w-4 h-4" sw="2" />App ausrollen
             </x-input.linkbutton>
@@ -30,7 +30,7 @@
             </x-callout>
         @elseif ($profileCount === 0)
             <x-callout title="Tipp: Netzwerkprofil anlegen" class="mb-5">
-                Mit einem Netzwerkprofil (Bridge, VLAN, Netz, Gateway, IP-Pool, VMID-Muster) schlägt ProxApps freie IPs und passende VMIDs automatisch vor.
+                Mit einem Netzwerkprofil (Bridge, VLAN, Netz, Gateway, IP-Pool, VMID-Muster) schlägt PK95 ProxApps freie IPs und passende VMIDs automatisch vor.
                 <x-slot:aktionen>
                     <x-input.linkbutton :href="$this->pageUrl('profile-form')" color="gray">Profil anlegen</x-input.linkbutton>
                 </x-slot:aktionen>

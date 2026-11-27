@@ -38,7 +38,7 @@ class ProxAppsBridgeTest extends FeatureTestCase
         $this->signIn();
         $this->installed = InstalledApp::factory()->create([
             'app_id' => 'proxapps', 'version' => '1.0.0',
-            'manifest' => ['id' => 'proxapps', 'name' => 'ProxApps', 'version' => '1.0.0', 'protocol' => 1, 'icon' => 'server',
+            'manifest' => ['id' => 'proxapps', 'name' => 'PK95 ProxApps', 'version' => '1.0.0', 'protocol' => 1, 'icon' => 'server',
                 'menu' => [['key' => 'dashboard', 'label' => 'Start', 'icon' => 'home'], ['key' => 'deployments', 'label' => 'Deployments', 'icon' => 'rocket']],
                 'capabilities' => [], 'events' => []],
         ]);
@@ -181,10 +181,10 @@ class ProxAppsBridgeTest extends FeatureTestCase
 
         Http::swap(new Factory(app('events')));
         Http::fake(['*' => Http::failedConnection()]);
-        $this->get(route('apps.page', [$this->installed, 'dashboard']))->assertOk()->assertSee('ProxApps antwortet nicht');
+        $this->get(route('apps.page', [$this->installed, 'dashboard']))->assertOk()->assertSee('PK95 ProxApps antwortet nicht');
         // pages that need their view data show the same hint instead of failing
         foreach (['deployments', 'deploy'] as $page) {
-            $this->get(route('apps.page', [$this->installed, $page]))->assertOk()->assertSee('ProxApps antwortet nicht')->assertSee('Erneut versuchen');
+            $this->get(route('apps.page', [$this->installed, $page]))->assertOk()->assertSee('PK95 ProxApps antwortet nicht')->assertSee('Erneut versuchen');
         }
     }
 

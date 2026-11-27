@@ -52,7 +52,7 @@
                     <x-input.text id="p-pe" feld="pool_end" wire:model="pool_end" class="mt-1 w-full font-mono" placeholder="192.168.1.99" />
                 </x-field>
                 <x-input.hilfe class="sm:col-span-2 -mt-1">
-                    Aus diesem Bereich schlägt ProxApps die nächste freie Adresse vor (belegt sind alle Adressen aus Gast-Konfigurationen des Clusters).
+                    Aus diesem Bereich schlägt PK95 ProxApps die nächste freie Adresse vor (belegt sind alle Adressen aus Gast-Konfigurationen des Clusters).
                     Leer = ganzes Netz ohne Gateway.
                 </x-input.hilfe>
                 <x-field label="VMID-Muster" for="p-pattern" feld="vmid_pattern" class="sm:col-span-2"

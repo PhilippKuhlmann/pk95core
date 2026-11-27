@@ -135,7 +135,7 @@ trait Bridged
             return;
         }
         if (! $response->successful()) {
-            $message = (string) ($response->json('error') ?? $response->json('message') ?? "ProxApps antwortet mit HTTP {$response->status()}.");
+            $message = (string) ($response->json('error') ?? $response->json('message') ?? "PK95 ProxApps antwortet mit HTTP {$response->status()}.");
             $this->dispatch('notice', kind: 'error', text: $message);
             $this->bridgeError = $response->status() >= 500 ? $message : null;
 

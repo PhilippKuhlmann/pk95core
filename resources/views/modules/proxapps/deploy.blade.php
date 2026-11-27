@@ -107,7 +107,7 @@
                 </x-field>
 
                 <x-field label="Debian-Vorlage" for="f-tpl" feld="template" class="sm:col-span-2"
-                    :hilfe="'Paket '.$app->template.'. Fehlt die Vorlage, lädt ProxApps sie vor dem Anlegen herunter.'">
+                    :hilfe="'Paket '.$app->template.'. Fehlt die Vorlage, lädt PK95 ProxApps sie vor dem Anlegen herunter.'">
                     <x-input.select id="f-tpl" feld="template" wire:model.live="v.template" class="mt-1">
                         <option value="">Automatisch (neueste vorhandene)</option>
                         @if ($templateChoices['local'])
@@ -237,7 +237,7 @@
                 </x-field>
 
                 <div class="grid grid-cols-2 gap-3 sm:col-span-2" role="radiogroup" aria-label="Adressierung">
-                    @foreach (['static' => ['Statische IP', 'Feste Adresse – empfohlen für Dienste wie DNS.'], 'dhcp' => ['DHCP', 'Adresse vom DHCP-Server; ProxApps wartet auf die Zuweisung.']] as $mode => [$label, $text])
+                    @foreach (['static' => ['Statische IP', 'Feste Adresse – empfohlen für Dienste wie DNS.'], 'dhcp' => ['DHCP', 'Adresse vom DHCP-Server; PK95 ProxApps wartet auf die Zuweisung.']] as $mode => [$label, $text])
                         <button type="button" wire:click="setNetMode('{{ $mode }}')" role="radio" aria-checked="{{ $v['net_mode'] === $mode ? 'true' : 'false' }}"
                             @class([
                                 'rounded-lg border p-3 text-left transition-colors',
@@ -373,7 +373,7 @@
                     @if ($pubkey)
                         <div class="sm:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-2.5 dark:border-gray-600 dark:bg-gray-900/40">
                             <div class="mb-1 flex items-center justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
-                                <span>Deployer-Schlüssel (wird immer hinterlegt, damit ProxApps einrichten kann)</span>
+                                <span>Deployer-Schlüssel (wird immer hinterlegt, damit PK95 ProxApps einrichten kann)</span>
                                 <x-copy :value="$pubkey" :show="false" />
                             </div>
                             <div class="font-mono text-[11px] leading-relaxed text-gray-700 wrap-anywhere dark:text-gray-300">{{ $pubkey }}</div>
@@ -458,7 +458,7 @@
                     <x-kv label="Vorlage" :value="$templateLabel" />
                 </table>
                 <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                    ProxApps legt einen neuen Container mit dem Tag <span class="font-mono">proxapps</span> an und verändert keine bestehenden Gäste.
+                    PK95 ProxApps legt einen neuen Container mit dem Tag <span class="font-mono">proxapps</span> an und verändert keine bestehenden Gäste.
                 </p>
             </x-panel>
         </aside>

@@ -69,12 +69,12 @@
             @endif
             @if ($canManage)
                 <x-input.button type="button" color="red"
-                    x-on:click="$store.confirm.ask({ title: {{ \Illuminate\Support\Js::from('Container '.$d->vmid.' ('.$d->hostname.') entfernen?') }}, text: 'Der Container wird auf Proxmox gestoppt und samt Disks unwiderruflich gelöscht. ProxApps prüft vorher Tag und Hostname.', button: 'Container entfernen', ok: () => $wire.destroyContainer() })">
+                    x-on:click="$store.confirm.ask({ title: {{ \Illuminate\Support\Js::from('Container '.$d->vmid.' ('.$d->hostname.') entfernen?') }}, text: 'Der Container wird auf Proxmox gestoppt und samt Disks unwiderruflich gelöscht. PK95 ProxApps prüft vorher Tag und Hostname.', button: 'Container entfernen', ok: () => $wire.destroyContainer() })">
                     <x-icon name="trash" class="h-4 w-4" />Container entfernen
                 </x-input.button>
             @endif
             <x-input.symbolknopf titel="Eintrag löschen" ton="rot"
-                x-on:click="$store.confirm.ask({ title: 'Eintrag löschen?', text: 'Nur der Eintrag und das Protokoll in ProxApps werden gelöscht – der Container selbst bleibt unberührt.', button: 'Eintrag löschen', ok: () => $wire.deleteEntry() })">
+                x-on:click="$store.confirm.ask({ title: 'Eintrag löschen?', text: 'Nur der Eintrag und das Protokoll in PK95 ProxApps werden gelöscht – der Container selbst bleibt unberührt.', button: 'Eintrag löschen', ok: () => $wire.deleteEntry() })">
                 <x-icon name="x" class="h-5 w-5" />
             </x-input.symbolknopf>
         @endif

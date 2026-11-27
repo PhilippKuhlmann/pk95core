@@ -111,7 +111,7 @@
                     </table>
                 </div>
                 <p class="mt-2 px-1 text-xs text-gray-500 dark:text-gray-400">
-                    ProxApps prüft alle 6 Stunden automatisch auf neue Versionen. Details und Protokoll jedes Updates stehen beim jeweiligen Deployment.
+                    PK95 ProxApps prüft alle 6 Stunden automatisch auf neue Versionen. Details und Protokoll jedes Updates stehen beim jeweiligen Deployment.
                 </p>
             @endif
         </div>
@@ -120,7 +120,7 @@
             <x-panel>
                 <div class="text-xl font-CoconPro text-gray-900 dark:text-gray-100">Automatische Updates</div>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    Im Update-Fenster prüft ProxApps alle Container und aktualisiert die mit ausstehenden Updates.
+                    Im Update-Fenster prüft PK95 ProxApps alle Container und aktualisiert die mit ausstehenden Updates.
                 </p>
                 <div class="mt-4 flex flex-col gap-3">
                     <x-input.checkbox label="Update-Fenster aktiv" wire:model="auto_update_enabled" />
@@ -132,7 +132,7 @@
                         hilfe="Proxmox-Snapshot des Containers – Rollback mit einem Klick." />
                     <x-input.checkbox label="Bei Fehlschlag automatisch zurückrollen" wire:model="auto_rollback"
                         hilfe="Schlägt ein Schritt oder die Funktionsprüfung fehl, wird der Snapshot wiederhergestellt." />
-                    <x-field label="Snapshots behalten (pro Container)" for="u-keep" feld="keep_snapshots" hilfe="Ältere ProxApps-Snapshots werden nach erfolgreichen Updates gelöscht.">
+                    <x-field label="Snapshots behalten (pro Container)" for="u-keep" feld="keep_snapshots" hilfe="Ältere Snapshots von PK95 ProxApps werden nach erfolgreichen Updates gelöscht.">
                         <x-input.text id="u-keep" feld="keep_snapshots" type="number" min="1" max="20" wire:model="keep_snapshots" class="mt-1 w-full font-mono" />
                     </x-field>
                 </div>

@@ -66,7 +66,7 @@
                     </x-input.button>
                 </div>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    ProxApps hinterlegt diesen öffentlichen Schlüssel in jedem neuen Container und richtet die App darüber per SSH ein.
+                    PK95 ProxApps hinterlegt diesen öffentlichen Schlüssel in jedem neuen Container und richtet die App darüber per SSH ein.
                 </p>
                 @if ($pubkey)
                     <div class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-2.5 dark:border-gray-600 dark:bg-gray-900/40">
