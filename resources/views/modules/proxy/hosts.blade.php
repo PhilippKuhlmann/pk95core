@@ -148,17 +148,19 @@
                             @foreach (Waf::MODES as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach
                         </x-input.select>
                     </x-field>
-                    <x-field label="Strenge" for="w-paranoia" feld="waf.paranoia" hilfe="Stufe 2 findet mehr, meldet aber auch öfter harmlose Anfragen.">
-                        <x-input.select id="w-paranoia" feld="waf.paranoia" wire:model="waf.paranoia" class="mt-1">
-                            @foreach (Waf::PARANOIA as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach
-                        </x-input.select>
-                    </x-field>
-                    <x-field label="Schwelle" for="w-threshold" feld="waf.anomaly_threshold" hilfe="Punktzahl, ab der eine Anfrage als Angriff gilt, 2 bis 100. Standard 5: ein schwerer Treffer genügt.">
-                        <x-input.text id="w-threshold" type="number" min="2" max="100" feld="waf.anomaly_threshold" wire:model="waf.anomaly_threshold" class="mt-1 w-32" />
-                    </x-field>
-                    <x-field label="Body prüfen bis (KB)" for="w-body" feld="waf.body_limit_kb" hilfe="0 bis 8192, 0 = Body nicht prüfen. Größere Uploads gehen ungeprüft durch.">
-                        <x-input.text id="w-body" type="number" min="0" max="8192" feld="waf.body_limit_kb" wire:model="waf.body_limit_kb" class="mt-1 w-32" />
-                    </x-field>
+                    @unless ($wafV19)
+                        <x-field label="Strenge" for="w-paranoia" feld="waf.paranoia" hilfe="Stufe 2 findet mehr, meldet aber auch öfter harmlose Anfragen.">
+                            <x-input.select id="w-paranoia" feld="waf.paranoia" wire:model="waf.paranoia" class="mt-1">
+                                @foreach (Waf::PARANOIA as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach
+                            </x-input.select>
+                        </x-field>
+                        <x-field label="Schwelle" for="w-threshold" feld="waf.anomaly_threshold" hilfe="Punktzahl, ab der eine Anfrage als Angriff gilt, 2 bis 100. Standard 5: ein schwerer Treffer genügt.">
+                            <x-input.text id="w-threshold" type="number" min="2" max="100" feld="waf.anomaly_threshold" wire:model="waf.anomaly_threshold" class="mt-1 w-32" />
+                        </x-field>
+                        <x-field label="Body prüfen bis (KB)" for="w-body" feld="waf.body_limit_kb" hilfe="0 bis 8192, 0 = Body nicht prüfen. Größere Uploads gehen ungeprüft durch.">
+                            <x-input.text id="w-body" type="number" min="0" max="8192" feld="waf.body_limit_kb" wire:model="waf.body_limit_kb" class="mt-1 w-32" />
+                        </x-field>
+                    @endunless
                 </div>
                 @if ($wafProfiles)
                     <x-field label="Anwendungsprofile" feld="waf.profiles" class="mt-3" hilfe="Nehmen Regeln zurück, die bei dieser Anwendung zu Fehlalarmen führen.">
@@ -170,6 +172,30 @@
                                 </label>
                             @endforeach
                         </div>
+                    </x-field>
+                @endif
+                @if ($wafV19)
+                    {{-- PK95 Proxy 1.9.0: level, limits and groups from the central settings, or the host's own --}}
+                    <div class="mt-4" data-waf-inherit>
+                        <x-input.checkbox wire:model.live="wafInherit" label="Zentrale Einstellungen verwenden"
+                            hilfe="Strenge, Grenzwerte und Regelgruppen kommen aus den zentralen Einstellungen der Seite Web-Firewall. Ausnahmen und eigene Netze bleiben pro Host." />
+                    </div>
+                    <div class="mt-3">
+                        @if ($wafInherit)
+                            <p class="mb-2 text-xs text-gray-500 dark:text-gray-400" data-waf-inherited>
+                                Gilt wie zentral eingestellt.
+                                <a href="{{ route('apps.page', [$installedApp, 'waf']) }}#zentral" wire:navigate class="text-cerulean-700 underline hover:no-underline dark:text-cerulean-300">Zentral bearbeiten</a>
+                            </p>
+                            @include('modules.proxy.partials.waf-tuning', ['m' => 'wafEffective', 't' => $wafEffective, 'groups' => $wafGroups,
+                                'defaults' => $wafDefaults ?? $wafCentralDefaults, 'suggested' => $wafSuggested, 'readonly' => true, 'idp' => 'we'])
+                        @else
+                            @include('modules.proxy.partials.waf-tuning', ['m' => 'waf', 't' => $waf, 'groups' => $wafGroups,
+                                'defaults' => $wafDefaults, 'suggested' => $wafSuggested, 'readonly' => false, 'idp' => 'w'])
+                        @endif
+                    </div>
+                    <x-field label="Web-Firewall umgehen für" for="w-bypass" feld="waf.bypass_cidrs" class="mt-3"
+                        hilfe="Netze oder Adressen, eine pro Zeile, höchstens 50. Anfragen von dort prüft die Web-Firewall nicht und protokolliert sie nicht. Dazu kommen die Netze aus den zentralen Einstellungen.">
+                        <x-input.textarea id="w-bypass" rows="2" feld="waf.bypass_cidrs" wire:model="waf.bypass_cidrs" placeholder="192.168.1.0/24" class="mt-1 font-mono" />
                     </x-field>
                 @endif
                 @if ($editing !== 'new')
@@ -184,6 +210,7 @@
                                         <div class="min-w-0">
                                             <span class="font-mono">Regel {{ $e['rule_id'] }}</span>
                                             <span class="text-gray-500 dark:text-gray-400">{{ ($e['path_prefix'] ?? '') !== '' ? 'unter '.$e['path_prefix'] : 'überall' }}</span>
+                                            @if (($e['target'] ?? '') !== '')<span class="font-mono text-xs text-gray-500 dark:text-gray-400" data-waf-exception-target>· nur {{ $e['target'] }}</span>@endif
                                             @if (($e['note'] ?? '') !== '')<span class="block text-xs text-gray-500 dark:text-gray-400">{{ $e['note'] }}</span>@endif
                                         </div>
                                         <x-input.symbolknopf titel="Ausnahme löschen" ton="rot"
@@ -336,6 +363,9 @@
                                         <span class="rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-800 dark:bg-green-900/60 dark:text-green-100" data-waf-badge="block">WAF blockiert</span>
                                     @elseif ($x['kind'] === 'proxy' && ($x['waf_mode'] ?? 'off') === 'detect')
                                         <span class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300" data-waf-badge="detect">WAF erkennt</span>
+                                    @endif
+                                    @if ($x['kind'] === 'proxy' && ($x['waf_inherit'] ?? true) === false)
+                                        <span class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300" data-waf-own>Eigene WAF-Einstellungen</span>
                                     @endif
                                 </div>
                                 @if ($x['notes'])

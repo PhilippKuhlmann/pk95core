@@ -49,6 +49,24 @@
                     <x-field label="Pfad beginnt mit" for="ex-path" feld="exception.path_prefix" hilfe="Leer = für den ganzen Host.">
                         <x-input.text id="ex-path" feld="exception.path_prefix" wire:model="exception.path_prefix" class="mt-1 w-full font-mono" />
                     </x-field>
+                    @if (($exception['target'] ?? '') !== '')
+                        <div data-exception-target>
+                            <x-input.checkbox wire:model="exception.use_target" :label="'Nur für den Parameter '.$exception['target']"
+                                hilfe="Enger und sicherer: Die Regel prüft alle anderen Parameter weiter." />
+                            <x-input.fehler feld="exception.target" />
+                        </div>
+                    @elseif (($exception['target_hint'] ?? '') !== '')
+                        <p class="text-xs text-gray-500 dark:text-gray-400" data-exception-target-hint>Die Regel hat {{ $exception['target_hint'] }} getroffen. Dafür gibt es keine Ausnahme je Parameter, sie gilt für die ganze Regel.</p>
+                    @endif
+                    @if ($hasCentral)
+                        <fieldset data-exception-scope>
+                            <legend class="text-sm font-medium text-gray-700 dark:text-gray-300">Gilt für</legend>
+                            <div class="mt-1 flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-700 dark:text-gray-300">
+                                <label class="inline-flex items-center gap-2"><input type="radio" value="host" wire:model="exception.scope" class="border-gray-300 text-cerulean-600 focus:ring-cerulean-500 dark:border-gray-600 dark:bg-gray-700">Nur für {{ $exception['domain'] }}</label>
+                                <label class="inline-flex items-center gap-2"><input type="radio" value="all" wire:model="exception.scope" class="border-gray-300 text-cerulean-600 focus:ring-cerulean-500 dark:border-gray-600 dark:bg-gray-700">Für alle Hosts</label>
+                            </div>
+                        </fieldset>
+                    @endif
                     <x-field label="Notiz" for="ex-note" feld="exception.note">
                         <x-input.text id="ex-note" feld="exception.note" wire:model="exception.note" maxlength="200" placeholder="Zum Beispiel: Editor sendet HTML" class="mt-1 w-full" />
                     </x-field>
@@ -74,6 +92,20 @@
                     <div><div class="{{ $label }}">Treffer</div><div class="text-2xl font-DINPro-bold tabular-nums text-gray-900 dark:text-gray-100" data-waf-hits>{{ Fmt::num((int) ($stats['hits'] ?? 0)) }}</div></div>
                     <div><div class="{{ $label }}">Blockiert</div><div class="text-2xl font-DINPro-bold tabular-nums text-gray-900 dark:text-gray-100" data-waf-blocks>{{ Fmt::num((int) ($stats['blocks'] ?? 0)) }}</div></div>
                 </div>
+                @php $byLevel = array_filter((array) ($stats['hits_by_paranoia'] ?? []), fn ($n) => (int) $n > 0); @endphp
+                @if ($byLevel || ($v19 && $bypassedToday))
+                    <p class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400" data-waf-levels>
+                        @if ($byLevel)
+                            <span>Treffer nach Stufe:</span>
+                            @foreach (['1', '2', '3', '4', '0'] as $lvl)
+                                @if (isset($byLevel[$lvl]))<span class="tabular-nums">{{ $lvl === '0' ? 'vor 1.9' : 'Stufe '.$lvl }}: {{ Fmt::num((int) $byLevel[$lvl]) }}</span>@endif
+                            @endforeach
+                        @endif
+                        @if ($v19 && $bypassedToday)
+                            <span class="tabular-nums" data-waf-bypassed>Heute umgangen (eigene Netze): {{ Fmt::num($bypassedToday) }}</span>
+                        @endif
+                    </p>
+                @endif
                 <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div class="min-w-0">
                         <div class="{{ $label }}">Häufigste Regeln</div>
@@ -155,13 +187,18 @@
                                         <div class="min-w-0 flex-1">
                                             <button type="button" wire:click="filterBy('rule', {{ Js::from((string) ($r['id'] ?? '')) }})" class="font-mono text-cerulean-700 hover:underline dark:text-cerulean-300">{{ $r['id'] ?? '?' }}</button>
                                             <span class="text-gray-700 dark:text-gray-200">{{ $r['msg'] ?? '' }}</span>
+                                            @if (($r['paranoia'] ?? 0) > 0)
+                                                @php $onlyDetected = ($hit['block_paranoia'] ?? 0) > 0 && $r['paranoia'] > $hit['block_paranoia']; @endphp
+                                                <span @class(['ml-1 rounded px-1 py-0.5 text-[11px]', 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' => ! $onlyDetected,
+                                                    'bg-sky-100 text-sky-800 dark:bg-sky-900/60 dark:text-sky-100' => $onlyDetected]) data-waf-rule-level="{{ $r['paranoia'] }}">Stufe {{ $r['paranoia'] }}{{ $onlyDetected ? ' · nur erkannt' : '' }}</span>
+                                            @endif
                                             @if (($r['target'] ?? '') !== '')
                                                 <span class="block break-all text-gray-500 dark:text-gray-400">in {{ $r['target'] }}@if (($r['data'] ?? '') !== ''): <span class="font-mono">{{ $r['data'] }}</span>@endif</span>
                                             @endif
                                         </div>
                                         @if (($hit['host_id'] ?? 0) && Waf::excludable($r['id'] ?? ''))
                                             <button type="button" data-waf-except
-                                                wire:click="newException({{ (int) $hit['host_id'] }}, {{ Js::from((string) ($hit['domain'] ?? '')) }}, {{ Js::from((string) $r['id']) }}, {{ Js::from((string) ($hit['path'] ?? '/')) }})"
+                                                wire:click="newException({{ (int) $hit['host_id'] }}, {{ Js::from((string) ($hit['domain'] ?? '')) }}, {{ Js::from((string) $r['id']) }}, {{ Js::from((string) ($hit['path'] ?? '/')) }}, {{ Js::from((string) ($r['target'] ?? '')) }})"
                                                 class="shrink-0 rounded-md border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-100 max-md:min-h-11 max-md:px-3 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Ausnahme anlegen</button>
                                         @endif
                                     </li>
@@ -176,6 +213,64 @@
                     <x-input.button type="button" color="gray" wire:click="older">Ältere laden</x-input.button>
                 </div>
             @endif
+        @endif
+        @if ($v19)
+            {{-- PK95 Proxy 1.9.0: central settings, hosts take level, limits and groups from here --}}
+            <x-panel class="m-3 scroll-mt-20" id="zentral" data-waf-settings>
+                <div class="font-DINPro-bold text-gray-900 dark:text-gray-100">{{ $hasCentral ? 'Zentrale Einstellungen' : 'Einstellungen' }}</div>
+                @if ($hasCentral)
+                    <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">Gelten für jeden Host mit „Zentrale Einstellungen verwenden“. Modus, Profile, Ausnahmen und eigene Netze stellst du weiter pro Host ein.</p>
+                @endif
+                <form wire:submit="saveSettings" class="mt-3 space-y-4">
+                    @if ($hasCentral)
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <x-field label="Modus für neue Hosts" for="ws-newmode" feld="settings.new_host_mode" hilfe="Damit startet jeder neu angelegte Reverse Proxy.">
+                                <x-input.select id="ws-newmode" feld="settings.new_host_mode" wire:model="settings.new_host_mode" class="mt-1">
+                                    @foreach (Waf::MODES as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach
+                                </x-input.select>
+                            </x-field>
+                        </div>
+                        @include('modules.proxy.partials.waf-tuning', ['m' => 'central', 't' => $central, 'groups' => $groups,
+                            'defaults' => $centralDefaults, 'suggested' => $centralSuggested, 'readonly' => false, 'idp' => 'wc'])
+                    @endif
+                    <x-input.checkbox wire:model="settings.use_internal_networks" label="Interne Netze (Zugriffsliste „Intern“) nicht prüfen"
+                        hilfe="Anfragen aus diesen Netzen prüft die Web-Firewall auf keinem Host. Ändern sich die Netze der Liste, gilt das sofort." />
+                    <x-field label="Weitere Netze nicht prüfen" for="ws-bypass" feld="settings.bypass_cidrs"
+                        hilfe="Eines pro Zeile, für alle Hosts. Pro Host gibt es zusätzlich eigene Netze im Host-Dialog. „Nie sperren“ der IP-Sperre ist davon unabhängig.">
+                        <x-input.textarea id="ws-bypass" rows="3" feld="settings.bypass_cidrs" wire:model="settings.bypass_cidrs" placeholder="192.168.1.0/24" class="mt-1 font-mono" />
+                    </x-field>
+                    <div class="flex justify-end">
+                        <x-input.button type="submit" wire:loading.attr="disabled" wire:target="saveSettings">Speichern</x-input.button>
+                    </div>
+                </form>
+
+                @if ($hasCentral)
+                    <div class="mt-4 border-t border-gray-100 pt-3 dark:border-gray-700" data-waf-central-exceptions>
+                        <div class="text-sm font-medium text-gray-700 dark:text-gray-300">Ausnahmen für alle Hosts</div>
+                        @if (! $centralExceptions)
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Keine. Du legst sie im Protokoll unten mit „Ausnahme anlegen“ → „Für alle Hosts“ an.</p>
+                        @else
+                            <ul class="mt-1 divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700">
+                                @foreach ($centralExceptions as $e)
+                                    @php $where = ($e['path_prefix'] ?? '') !== '' ? 'unter '.$e['path_prefix'] : 'überall'; @endphp
+                                    <li class="flex items-start justify-between gap-2 px-3 py-2 text-sm" wire:key="wcx-{{ $e['id'] }}">
+                                        <div class="min-w-0">
+                                            <span class="font-mono">Regel {{ $e['rule_id'] }}</span>
+                                            <span class="text-gray-500 dark:text-gray-400">{{ $where }}</span>
+                                            @if (($e['target'] ?? '') !== '')<span class="font-mono text-xs text-gray-500 dark:text-gray-400">· nur {{ $e['target'] }}</span>@endif
+                                            @if (($e['note'] ?? '') !== '')<span class="block text-xs text-gray-500 dark:text-gray-400">{{ $e['note'] }}</span>@endif
+                                        </div>
+                                        <x-input.symbolknopf titel="Ausnahme löschen" ton="rot"
+                                            x-on:click="$store.confirm.ask({ title: 'Ausnahme löschen?', text: {{ Js::from('Regel '.$e['rule_id'].' prüft dann auf allen Hosts wieder '.$where.'.') }}, button: 'Löschen', ok: () => $wire.deleteCentralException({{ Js::from((string) $e['id']) }}) })">
+                                            <x-icon name="trash" class="h-4 w-4" />
+                                        </x-input.symbolknopf>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endif
+                    </div>
+                @endif
+            </x-panel>
         @endif
     @endif
 </div>

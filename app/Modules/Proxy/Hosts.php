@@ -53,6 +53,27 @@ class Hosts extends Component
     /** @var list<array<string, mixed>> application profiles from /api/waf/profiles */
     public array $wafProfiles = [];
 
+    /** PK95 Proxy 1.9.0: paranoia 1–4 and the section „Erweitert“ */
+    public bool $wafV19 = false;
+
+    /** @var list<array<string, mixed>> rule groups (1.9.0) from /api/waf/groups */
+    public array $wafGroups = [];
+
+    /** @var array<string, mixed>|null CRS defaults of the limits (GET /waf); null = unknown (new host) */
+    public ?array $wafDefaults = null;
+
+    /** @var array<string, int|null> suggested number limits for the placeholders */
+    public array $wafSuggested = [];
+
+    /** the host takes level, limits and groups from the central settings (PK95 Proxy 1.9.0) */
+    public bool $wafInherit = true;
+
+    /** @var array<string, mixed> what applies while the host inherits (shown greyed out) */
+    public array $wafEffective = [];
+
+    /** @var array<string, mixed>|null CRS defaults from the central settings (a new host has no others) */
+    public ?array $wafCentralDefaults = null;
+
     public const KINDS = ['proxy' => 'Reverse Proxy', 'redirect' => 'Weiterleitung', 'dead' => '404-Host', 'status' => 'Statusseite'];
 
     public const KIND_HINTS = [
@@ -188,6 +209,14 @@ class Hosts extends Component
         $this->editing = null;
     }
 
+    /** A higher block level takes the detection level along (it may not be below). */
+    public function updatedWaf(mixed $value, string $key): void
+    {
+        if ($key === 'paranoia' && (int) ($this->waf['detection_paranoia'] ?? 0) < (int) $value) {
+            $this->waf['detection_paranoia'] = (string) $value;
+        }
+    }
+
     /** Removes an exception of the web firewall right away (not only on saving). */
     public function deleteException(string $exceptionId): void
     {
@@ -213,6 +242,13 @@ class Hosts extends Component
         $this->wafExceptions = [];
         $this->wafError = null;
         $this->wafProfiles = [];
+        $this->wafV19 = false;
+        $this->wafGroups = [];
+        $this->wafDefaults = null;
+        $this->wafSuggested = [];
+        $this->wafInherit = true;
+        $this->wafEffective = [];
+        $this->wafCentralDefaults = null;
         $status = Waf::status($this->installedApp);
         $this->wafOn = $status !== null && ($host === null || array_key_exists('waf_mode', $host));
         if (! $this->wafOn) {
@@ -220,6 +256,22 @@ class Hosts extends Component
         }
         [$profiles] = $this->load('/api/waf/profiles');
         $this->wafProfiles = is_array($profiles) ? array_values(array_filter($profiles, 'is_array')) : [];
+        $this->wafV19 = $status['v19'];
+        if ($this->wafV19) {
+            [$groups] = $this->load('/api/waf/groups');
+            $this->wafGroups = is_array($groups) ? array_values(array_filter($groups, 'is_array')) : [];
+            // what a new host (and an inheriting one, until its GET says otherwise) gets: the central settings
+            [$settings] = $this->load('/api/waf/settings');
+            if (is_array($settings)) {
+                $this->wafCentralDefaults = (array) ($settings['defaults'] ?? []);
+                $this->wafSuggested = (array) ($settings['suggested'] ?? []);
+                $this->wafEffective = Waf::tuningForm((array) ($settings['central'] ?? []), $this->wafCentralDefaults);
+                // a new host starts in the mode the central settings name (the Proxy does the same; the PUT after creating must not overwrite it)
+                if ($host === null && isset(Waf::MODES[$settings['new_host_mode'] ?? ''])) {
+                    $this->waf['mode'] = $settings['new_host_mode'];
+                }
+            }
+        }
         if ($host === null || ($host['kind'] ?? '') !== 'proxy') {
             return; // new host or not a reverse proxy (yet): the defaults
         }
@@ -231,6 +283,15 @@ class Hosts extends Component
         }
         $w = (array) $response->json();
         $this->waf = Waf::toForm($w);
+        // the limits of 1.9.0 (with their CRS defaults) only when the Proxy sends them
+        if ($this->wafV19 && array_key_exists('limits', $w)) {
+            $this->wafDefaults = (array) ($w['defaults'] ?? []);
+            $this->wafSuggested = (array) ($w['suggested'] ?? []);
+            $this->wafInherit = (bool) ($w['inherit'] ?? false);
+            if (is_array($w['effective'] ?? null)) {
+                $this->wafEffective = Waf::tuningForm($w['effective'], $this->wafDefaults);
+            }
+        }
         $this->wafExceptions = array_values(array_filter((array) ($w['exceptions'] ?? []), 'is_array'));
         // the resource's own error, else what the status reports for this host
         $this->wafError = trim((string) ($w['error'] ?? '')) ?: (Waf::hostErrors($status)[(int) $host['id']] ?? null);
@@ -239,8 +300,18 @@ class Hosts extends Component
     /** PUT of the WAF settings (a partial update: the exceptions stay as they are). */
     private function saveWaf(int $id): bool
     {
-        $response = $this->appRequest(fn ($api) => $api->put('/api/hosts/'.$id.'/waf', Waf::payload($this->waf)));
-        if (! $this->succeeded($response, 'waf.')) {
+        $body = Waf::payload($this->waf, $this->wafV19, $this->wafDefaults, $this->wafV19 ? $this->wafInherit : null);
+        $response = $this->appRequest(fn ($api) => $api->put('/api/hosts/'.$id.'/waf', $body));
+        if ($response === null) {
+            return false;
+        }
+        if (! $response->successful()) {
+            // a line of a list in the message, the error on its field (bypass_cidrs.2 → waf.bypass_cidrs)
+            foreach (Waf::fieldErrors((array) $response->json('fields')) as $field => $message) {
+                $this->addError('waf.'.$field, $message);
+            }
+            $this->dispatch('notice', kind: 'error', text: (string) ($response->json('error') ?? "Die App antwortet mit HTTP {$response->status()}."));
+
             return false;
         }
         $this->wafExceptions = array_values(array_filter((array) $response->json('exceptions'), 'is_array'));
